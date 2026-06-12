@@ -497,11 +497,22 @@ BUILDERS.settings = (el) => {
 
   const save = async () => { await saveCfg(); };
 
-  /* 事業情報(任意) */
-  fld(el, "お店・事業の情報をAIに教える");
+  /* 業種(常に表示・無料予想などの振り分けに使う) */
+  fld(el, "業種");
+  const typeIn = document.createElement("input");
+  typeIn.placeholder = "例: シーシャバー / 美容室 / 居酒屋 / 競艇予想";
+  typeIn.value = CFG.bizType || "";
+  typeIn.oninput = () => { CFG.bizType = typeIn.value; save(); };
+  el.appendChild(typeIn);
+  const typeNote = document.createElement("p"); typeNote.className = "desc"; typeNote.style.margin = "6px 0 0";
+  typeNote.textContent = "ここに「競艇」または「ボート」と入れると、カレンダーに🚤無料予想ボタンが出る。";
+  el.appendChild(typeNote);
+
+  /* 店名・エリア(任意・AIに教えるか選べる) */
+  fld(el, "店名・エリアをAIに教える");
   const bizNote = document.createElement("p"); bizNote.className = "desc";
   bizNote.style.margin = "0 0 8px";
-  bizNote.textContent = "「使う」にすると、下に入れた店名・エリア・業種をAIが理解して、その店に合った投稿を作る。空欄でもOK。";
+  bizNote.textContent = "「使う」にすると、下の店名・エリアをAIが理解してその店に合った投稿を作る。空欄でもOK。";
   el.appendChild(bizNote);
   const bizToggle = document.createElement("div"); bizToggle.className = "chips"; el.appendChild(bizToggle);
   const bizBox = document.createElement("div"); el.appendChild(bizBox);
@@ -523,7 +534,6 @@ BUILDERS.settings = (el) => {
     };
     mk("店名・事業名(任意)", "bizName", "例: 噂のシーシャBar");
     mk("エリア(任意)", "bizArea", "例: 金沢・片町");
-    mk("業種(任意)", "bizType", "例: シーシャバー / 美容室 / 居酒屋");
   }
   drawBizToggle(); drawBizBox();
 
