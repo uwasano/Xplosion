@@ -511,7 +511,7 @@ BUILDERS.score = (el) => aiTab(el, {
 BUILDERS.calendar = (el) => {
   head(el, "投稿カレンダー自動生成",
     "事業ジャンルを配分した投稿計画+バズりやすい推奨時間付き。完成文はそのまま予約に送れる。",
-    ["ジャンルを選ぶ(追加・×で削除可)","週間/月間と予定を入れて生成","各投稿を「予約に送る」→自動投稿へ"]);
+    ["ジャンルを選ぶ(追加・×で削除可)","週間/月間と予定を入れて生成","「予約管理に送る」(一括可)→予約管理タブでGOを出すと自動投稿が確定"]);
 
   fld(el, "事業ジャンル(複数選択)");
   const gwrap = document.createElement("div"); gwrap.className = "chips"; el.appendChild(gwrap);
@@ -588,6 +588,22 @@ BUILDERS.calendar = (el) => {
 
   function renderPlan(plan) {
     listEl.innerHTML = "";
+    if (S.sns === "X") {
+      const bulk = document.createElement("button");
+      bulk.className = "btn"; bulk.textContent = "完成してる分を全部 予約管理に送る";
+      bulk.onclick = async () => {
+        if (!acct.value) { out.err("クライアント未登録。先に認証リンクから登録して。"); return; }
+        const rows = plan.filter((p) => p._text).map((p) => ({
+          screen_name: acct.value, text: p._text, scheduled_at: planDate(p).toISOString(), status: "draft",
+        }));
+        if (!rows.length) { out.err("完成した投稿文がまだない。"); return; }
+        bulk.disabled = true;
+        const { error } = await sb.from("scheduled_posts").insert(rows);
+        if (error) { out.err("送信エラー: " + error.message); bulk.disabled = false; return; }
+        bulk.textContent = rows.length + "件送った✓ 予約管理タブでGOを出すと確定";
+      };
+      listEl.appendChild(bulk);
+    }
     plan.forEach((p, i) => {
       const div = document.createElement("div"); div.className = "row";
       const meta = '<div class="meta"><span class="pill time">' + esc(p.d) + "(" + esc(p.w||"") + ")</span>" +
@@ -614,6 +630,7 @@ BUILDERS.calendar = (el) => {
   }
 
   function drawText(body, p, text) {
+    p._text = text;
     const box = document.createElement("div");
     box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px";
     box.textContent = text; body.appendChild(box);
@@ -622,15 +639,15 @@ BUILDERS.calendar = (el) => {
     cp.onclick = () => { navigator.clipboard.writeText(text); cp.textContent = "コピー済"; setTimeout(()=>cp.textContent="コピー",1500); };
     acts.appendChild(cp);
     if (S.sns === "X") {
-      const sd = document.createElement("button"); sd.className = "mini primary"; sd.textContent = "予約に送る";
+      const sd = document.createElement("button"); sd.className = "mini primary"; sd.textContent = "予約管理に送る";
       sd.onclick = async () => {
         if (!acct.value) { out.err("クライアント未登録。先に認証リンクから登録して。"); return; }
         sd.disabled = true;
         const { error } = await sb.from("scheduled_posts").insert({
-          screen_name: acct.value, text: text, scheduled_at: planDate(p).toISOString(),
+          screen_name: acct.value, text: text, scheduled_at: planDate(p).toISOString(), status: "draft",
         });
-        if (error) { out.err("予約エラー: " + error.message); sd.disabled = false; return; }
-        sd.textContent = "予約済✓";
+        if (error) { out.err("送信エラー: " + error.message); sd.disabled = false; return; }
+        sd.textContent = "送った✓";
       };
       acts.appendChild(sd);
       const a = document.createElement("a"); a.className = "mini"; a.textContent = "Xで投稿→";
@@ -865,8 +882,8 @@ BUILDERS.style = (el) => {
 
 /* ---- 12 予約管理 ---- */
 BUILDERS.schedule = (el) => {
-  head(el, "予約管理", "予約中の投稿の確認・編集・削除と履歴。新規予約はカレンダーの「予約に送る」か、ここから手動で。",
-    ["アカウント・日時・本文で予約","時間が来たらGASが自動投稿","エラーは理由付きで履歴に出る"]);
+  head(el, "予約管理", "カレンダーから送った投稿はまず「承認待ち」に入る。GOを出した分だけ予約確定になり、時間が来たら自動投稿される。GOを出すまでは何も投稿されない。",
+    ["承認待ちを確認 → 個別GOか「全部GO」","予約確定分は時間が来たらGASが自動投稿","ミスったらキャンセル(投稿前ならいつでも消せる)"]);
   fld(el, "アカウント");
   const acct = document.createElement("select"); el.appendChild(acct);
   S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
@@ -901,26 +918,65 @@ BUILDERS.schedule = (el) => {
 
   const fmtD = (iso) => { const d = new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
 
+  function postRow(p, actions) {
+    const d = document.createElement("div"); d.className = "row";
+    d.innerHTML = '<div class="meta"><span class="pill time">'+fmtD(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span></div><pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
+      '<div class="acts">' + actions.map((a,i)=>'<button class="mini '+(a.primary?'primary':'')+'" data-i="'+i+'">'+a.label+'</button>').join("") + '</div>';
+    d.querySelector("pre").textContent = p.text;
+    actions.forEach((a,i)=>{ d.querySelector('[data-i="'+i+'"]').onclick = a.fn; });
+    return d;
+  }
+
+  function editPost(p) {
+    editingId = p.id; acct.value = p.screen_name; text.value = p.text;
+    const dt = new Date(p.scheduled_at); dt.setMinutes(dt.getMinutes()-dt.getTimezoneOffset());
+    when.value = dt.toISOString().slice(0,16); cnt.textContent = p.text.length+"字";
+    save.textContent = "更新する"; cancel.classList.remove("hidden"); window.scrollTo({top:0,behavior:"smooth"});
+  }
+
   async function load() {
     const { data, error } = await sb.from("scheduled_posts").select("*").order("scheduled_at");
     if (error) { out.err(error.message); return; }
+    const drafts = data.filter((p)=>p.status==="draft");
     const pending = data.filter((p)=>p.status==="pending");
-    const done = data.filter((p)=>p.status!=="pending").sort((a,b)=>(b.posted_at||b.scheduled_at).localeCompare(a.posted_at||a.scheduled_at)).slice(0,20);
-    pendEl.innerHTML = ""; fld(pendEl, "予約中");
+    const done = data.filter((p)=>p.status!=="pending"&&p.status!=="draft").sort((a,b)=>(b.posted_at||b.scheduled_at).localeCompare(a.posted_at||a.scheduled_at)).slice(0,20);
+    pendEl.innerHTML = "";
+
+    /* 承認待ち */
+    fld(pendEl, "承認待ち(" + drafts.length + "件) — GOで予約確定");
+    if (!drafts.length) pendEl.innerHTML += '<div class="muted">承認待ちなし</div>';
+    else {
+      const bulkRow = document.createElement("div"); bulkRow.className = "acts";
+      const goAll = document.createElement("button"); goAll.className = "mini primary"; goAll.textContent = "全部GO(" + drafts.length + "件を一括確定)";
+      goAll.onclick = async () => {
+        await sb.from("scheduled_posts").update({ status: "pending" }).eq("status", "draft");
+        load();
+      };
+      const delAll = document.createElement("button"); delAll.className = "mini"; delAll.textContent = "全部キャンセル";
+      delAll.onclick = async () => {
+        if (!confirm("承認待ち" + drafts.length + "件を全部キャンセルする?")) return;
+        await sb.from("scheduled_posts").delete().eq("status", "draft");
+        load();
+      };
+      bulkRow.appendChild(goAll); bulkRow.appendChild(delAll);
+      pendEl.appendChild(bulkRow);
+      drafts.forEach((p) => {
+        pendEl.appendChild(postRow(p, [
+          { label: "GO", primary: true, fn: async () => { await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id); load(); } },
+          { label: "編集", fn: () => editPost(p) },
+          { label: "キャンセル", fn: async () => { await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
+        ]));
+      });
+    }
+
+    /* 予約確定 */
+    fld(pendEl, "予約確定(" + pending.length + "件) — 時間が来たら自動投稿");
     if (!pending.length) pendEl.innerHTML += '<div class="muted">予約なし</div>';
     pending.forEach((p) => {
-      const d = document.createElement("div"); d.className = "row";
-      d.innerHTML = '<div class="meta"><span class="pill time">'+fmtD(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span></div><pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
-        '<div class="acts"><button class="mini" data-a="e">編集</button><button class="mini" data-a="d">削除</button></div>';
-      d.querySelector("pre").textContent = p.text;
-      d.querySelector('[data-a="d"]').onclick = async () => { if (!confirm("削除する?")) return; await sb.from("scheduled_posts").delete().eq("id", p.id); load(); };
-      d.querySelector('[data-a="e"]').onclick = () => {
-        editingId = p.id; acct.value = p.screen_name; text.value = p.text;
-        const dt = new Date(p.scheduled_at); dt.setMinutes(dt.getMinutes()-dt.getTimezoneOffset());
-        when.value = dt.toISOString().slice(0,16); cnt.textContent = p.text.length+"字";
-        save.textContent = "更新する"; cancel.classList.remove("hidden"); window.scrollTo({top:0,behavior:"smooth"});
-      };
-      pendEl.appendChild(d);
+      pendEl.appendChild(postRow(p, [
+        { label: "編集", fn: () => editPost(p) },
+        { label: "予約キャンセル", fn: async () => { if (!confirm("この予約をキャンセルする?")) return; await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
+      ]));
     });
     histEl.innerHTML = ""; fld(histEl, "履歴(直近20件)");
     if (!done.length) histEl.innerHTML += '<div class="muted">履歴なし</div>';
