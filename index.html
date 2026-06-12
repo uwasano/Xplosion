@@ -168,17 +168,35 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* ============ 状態 ============ */
-const S = { sns: "X", mode: "標準", profile: "", genres: ["シーシャバー(店舗)","ゲーム制作","開発・ツール"], tab: "calendar", clients: [] };
+const S = { sns: "X", mode: "標準", profile: "", genres: ["シーシャバー(店舗)","ゲーム制作","開発・ツール"], tab: "calendar", clients: [], activeAccount: "_default_" };
 
-/* 生成設定(全AI機能共通・Supabaseに保存) */
-const CFG = {
-  useBiz: false, bizName: "", bizArea: "", bizType: "",
-  tone: "カジュアル",      // 丁寧/カジュアル/専門的/フランク/強め
-  emoji: "少なめ",         // なし/少なめ/普通/多め
-  words: "",               // 入れたいワード(カンマ区切り)
-  wordFreq: 30,            // %
-  hook: 60,                // 冒頭フックの強さ %
-};
+/* 生成設定のひな形 */
+function defaultCfg() {
+  return {
+    useBiz: false, bizName: "", bizArea: "", bizType: "",
+    tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
+  };
+}
+
+/* 現在アクティブなアカウントの設定。各AI機能はこれを読む */
+let CFG = defaultCfg();
+
+/* アカウント名→設定 のキャッシュ */
+const CFG_CACHE = {};
+
+/* 指定アカウントの設定をSupabaseから読み込んでCFGにセット */
+async function loadCfgFor(account) {
+  S.activeAccount = account || "_default_";
+  if (CFG_CACHE[S.activeAccount]) { CFG = CFG_CACHE[S.activeAccount]; return; }
+  const saved = await kvGet("gen_config:" + S.activeAccount, null);
+  const c = Object.assign(defaultCfg(), saved || {});
+  CFG_CACHE[S.activeAccount] = c;
+  CFG = c;
+}
+async function saveCfg() {
+  CFG_CACHE[S.activeAccount] = CFG;
+  await kvSet("gen_config:" + S.activeAccount, CFG);
+}
 
 /* 店舗情報の文を作る(オフor未入力なら空) */
 function bizClause() {
@@ -273,8 +291,9 @@ async function enter() {
   $("app").classList.remove("hidden");
   S.profile = await kvGet("style_profile", "");
   S.genres = await kvGet("genres", S.genres);
-  const savedCfg = await kvGet("gen_config", null);
-  if (savedCfg) Object.assign(CFG, savedCfg);
+  const legacy = await kvGet("gen_config", null);
+  if (legacy) { CFG_CACHE["_default_"] = Object.assign(defaultCfg(), legacy); }
+  await loadCfgFor("_default_");
   await loadClients();
   renderTop(); renderNav(); showTab(S.tab);
 }
@@ -440,10 +459,26 @@ const BUILDERS = {};
 
 /* ---- 00 生成設定 ---- */
 BUILDERS.settings = (el) => {
-  head(el, "生成設定", "ここの設定が全AI機能(カレンダー・スコア診断・リプ等)の文章生成に反映される。設定は自動保存される。",
-    ["事業情報・文体・絵文字・ワード・フックを決める","スライダーは指でドラッグ","下の「保存」を押すと全機能に効く"]);
+  head(el, "生成設定", "アカウントごとに性格・絵文字・ワードを変えられる。上で対象アカウントを選んでから設定する。設定は自動保存。",
+    ["対象アカウントを選ぶ(共通設定=未選択時の既定)","性格・絵文字・ワード・フックを決める","保存を押すとそのアカウントの全AI生成に効く"]);
 
-  const save = async () => { await kvSet("gen_config", CFG); };
+  /* 対象アカウント選択 */
+  fld(el, "どのアカウントの設定?");
+  const acctSel = document.createElement("select"); el.appendChild(acctSel);
+  const optDef = document.createElement("option"); optDef.value = "_default_"; optDef.textContent = "共通設定(既定)"; acctSel.appendChild(optDef);
+  S.clients.filter((c)=>c.status==="active").forEach((c)=>{
+    const o = document.createElement("option"); o.value = c.screen_name; o.textContent = "@" + c.screen_name; acctSel.appendChild(o);
+  });
+  acctSel.value = S.activeAccount;
+  acctSel.onchange = async () => { await loadCfgFor(acctSel.value); showTab("settings"); };
+
+  const acctNote = document.createElement("p"); acctNote.className = "desc"; acctNote.style.margin = "8px 0 0";
+  acctNote.textContent = S.activeAccount === "_default_"
+    ? "今は「共通設定」を編集中。特定アカウント用に設定したい時は上で選び直して。"
+    : "今は @" + S.activeAccount + " 専用の設定を編集中。";
+  el.appendChild(acctNote);
+
+  const save = async () => { await saveCfg(); };
 
   /* 事業情報(任意) */
   fld(el, "お店・事業の情報をAIに教える");
@@ -697,6 +732,9 @@ BUILDERS.calendar = (el) => {
   const acct = document.createElement("select"); el.appendChild(acct);
   S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
   if (!acct.options.length) { const o=document.createElement("option"); o.textContent="(クライアント未登録)"; o.value=""; acct.appendChild(o); }
+  const acctHint = document.createElement("p"); acctHint.className = "desc"; acctHint.style.margin = "6px 0 0";
+  acctHint.textContent = "選んだアカウントの「生成設定」(性格・絵文字など)で文章が作られる。";
+  el.appendChild(acctHint);
   fld(el, "店・事業の予定やネタ(任意)");
   const events = ta(el, 4, "例:\n6/20 DJイベント\n新フレーバー入荷\n新作ゲームのデモ完成間近");
 
@@ -715,6 +753,8 @@ BUILDERS.calendar = (el) => {
     if (!selected.length) { out.err("ジャンルを1つ以上選んで。"); return; }
     out.clear(); out.err(""); listEl.innerHTML = "";
     gen.disabled = true; gen.textContent = "生成中…";
+    /* 送信先アカウント専用の生成設定を適用(なければ共通) */
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
     const today = new Date();
     const days = span.value === "週間" ? 7 : 30;
     const fmt = S.sns === "X" ? "140字以内" : "キャプション形式・ハッシュタグ5個";
@@ -723,12 +763,20 @@ BUILDERS.calendar = (el) => {
       : "Instagramの伸びやすい時間帯(昼12時前後/夜20-22時)を踏まえる";
     try {
       const text = await callAI(
-        `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。\n\n投稿ジャンル(この中だけで構成・店舗系は週末に厚く):\n${selected.map((g)=>"- "+g).join("\n")}\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
+        `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。\n\n【最重要・厳守】各投稿の"g"(ジャンル)は、必ず次のリストの文字列のどれかと完全一致させること。リスト外のジャンルは絶対に作らない。リストにない話題・派生ジャンル・関連トピックを足すことも禁止:\n${selected.map((g)=>"・「"+g+"」").join("\n")}\n\n上のジャンルだけをバランス良く配分し、店舗系は週末に厚く。\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
         (span.value === "週間"
           ? `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ","y":"投稿の型","x":"完成した投稿文(${fmt})"}] 7要素。${sc()}`
           : `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ(15字以内)","y":"型(6字以内)"}] ${days}要素。完成文は不要。`)
       );
-      renderPlan(parseJSONArr(text));
+      const parsed = parseJSONArr(text);
+      /* AIが選択外ジャンルを混ぜてきたら除外。gが選択肢に部分一致するものだけ残す */
+      const filtered = parsed.filter((p) => {
+        if (!p.g) return true;
+        return selected.some((g) => p.g === g || p.g.includes(g) || g.includes(p.g));
+      });
+      const dropped = parsed.length - filtered.length;
+      renderPlan(filtered);
+      if (dropped > 0) out.err("選択外ジャンルの投稿を" + dropped + "件除外した。再生成すると枠が埋まる。");
     } catch (e) { out.err("生成に失敗。もう一度押して。(" + e.message.slice(0, 80) + ")"); }
     gen.disabled = false; gen.textContent = "カレンダーを生成する";
   };
@@ -1049,6 +1097,11 @@ BUILDERS.schedule = (el) => {
   const text = ta(el, 5, "投稿する文面");
   const cnt = document.createElement("div"); cnt.className = "count"; cnt.textContent = "0字"; el.appendChild(cnt);
   text.addEventListener("input", () => { cnt.textContent = text.value.length + "字"; cnt.classList.toggle("over", text.value.length > 140); });
+  fld(el, "画像/動画URL(任意)");
+  const mediaIn = document.createElement("input"); mediaIn.placeholder = "https://〜.jpg / .png / .mp4 (直リンク)"; el.appendChild(mediaIn);
+  const mediaHint = document.createElement("p"); mediaHint.className = "desc"; mediaHint.style.margin = "6px 0 0";
+  mediaHint.textContent = "公開された画像/動画の直リンクURLを入れると添付される。Supabase StorageやImgur等にアップした画像URLでOK。画像は5MBまで。";
+  el.appendChild(mediaHint);
   const save = runBtn(el, "予約する");
   const cancel = document.createElement("button"); cancel.className = "btn btn-ghost hidden"; cancel.textContent = "編集をやめる"; el.appendChild(cancel);
   const out = outArea(el);
@@ -1056,14 +1109,14 @@ BUILDERS.schedule = (el) => {
   const histEl = document.createElement("div"); el.appendChild(histEl);
   let editingId = null;
 
-  function resetForm() { editingId = null; text.value = ""; when.value = ""; cnt.textContent = "0字"; save.textContent = "予約する"; cancel.classList.add("hidden"); }
+  function resetForm() { editingId = null; text.value = ""; when.value = ""; mediaIn.value = ""; cnt.textContent = "0字"; save.textContent = "予約する"; cancel.classList.add("hidden"); }
   cancel.onclick = resetForm;
 
   save.onclick = async () => {
     out.err("");
     if (!acct.value || !when.value || !text.value.trim()) { out.err("全部入れて。"); return; }
     save.disabled = true;
-    const rec = { screen_name: acct.value, scheduled_at: new Date(when.value).toISOString(), text: text.value.trim() };
+    const rec = { screen_name: acct.value, scheduled_at: new Date(when.value).toISOString(), text: text.value.trim(), media_url: mediaIn.value.trim() || null };
     const { error } = editingId
       ? await sb.from("scheduled_posts").update(rec).eq("id", editingId)
       : await sb.from("scheduled_posts").insert(rec);
@@ -1084,7 +1137,7 @@ BUILDERS.schedule = (el) => {
   }
 
   function editPost(p) {
-    editingId = p.id; acct.value = p.screen_name; text.value = p.text;
+    editingId = p.id; acct.value = p.screen_name; text.value = p.text; mediaIn.value = p.media_url || "";
     const dt = new Date(p.scheduled_at); dt.setMinutes(dt.getMinutes()-dt.getTimezoneOffset());
     when.value = dt.toISOString().slice(0,16); cnt.textContent = p.text.length+"字";
     save.textContent = "更新する"; cancel.classList.remove("hidden"); window.scrollTo({top:0,behavior:"smooth"});
