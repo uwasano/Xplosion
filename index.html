@@ -170,12 +170,69 @@ const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",
 /* ============ 状態 ============ */
 const S = { sns: "X", mode: "標準", profile: "", genres: ["シーシャバー(店舗)","ゲーム制作","開発・ツール"], tab: "calendar", clients: [] };
 
+/* 生成設定(全AI機能共通・Supabaseに保存) */
+const CFG = {
+  useBiz: false, bizName: "", bizArea: "", bizType: "",
+  tone: "カジュアル",      // 丁寧/カジュアル/専門的/フランク/強め
+  emoji: "少なめ",         // なし/少なめ/普通/多め
+  words: "",               // 入れたいワード(カンマ区切り)
+  wordFreq: 30,            // %
+  hook: 60,                // 冒頭フックの強さ %
+};
+
+/* 店舗情報の文を作る(オフor未入力なら空) */
+function bizClause() {
+  if (!CFG.useBiz) return "";
+  const parts = [];
+  if (CFG.bizArea) parts.push(CFG.bizArea);
+  if (CFG.bizType) parts.push(CFG.bizType);
+  if (CFG.bizName) parts.push("「" + CFG.bizName + "」");
+  return parts.length ? "対象の事業: " + parts.join("・") + "。" : "";
+}
+
+/* 文体・絵文字・ワード・フックの指示をまとめて返す */
 function sc() {
+  let out = "";
+  const biz = bizClause();
+  if (biz) out += "\n\n" + biz;
+
   if (S.mode === "自分の文体" && S.profile)
-    return "\n\n【文体指示】以下の文体プロファイルに完全に従い、本人が書いたとしか思えない文章にせよ:\n" + S.profile;
-  if (S.mode === "バズ特化")
-    return "\n\n【文体指示】書き手の個性より拡散力を最優先。スクロールを止める1行目・具体的な数字・感情の起伏・続きを読ませる構成で、バズに全振りした文章にせよ。";
-  return "";
+    out += "\n\n【文体指示】以下の文体プロファイルに完全に従い、本人が書いたとしか思えない文章にせよ:\n" + S.profile;
+  else if (S.mode === "バズ特化")
+    out += "\n\n【文体指示】書き手の個性より拡散力を最優先。スクロールを止める1行目・具体的な数字・感情の起伏・続きを読ませる構成で、バズに全振りした文章にせよ。";
+
+  /* トーン */
+  const toneMap = {
+    "丁寧": "丁寧で礼儀正しい敬語ベースのトーン",
+    "カジュアル": "親しみやすいカジュアルなトーン",
+    "専門的": "専門知識を感じさせる説得力のあるトーン",
+    "フランク": "友達に話すようなフランクなタメ口寄りのトーン",
+    "強め": "断言が多く勢いのある強気なトーン",
+  };
+  out += "\n\n【トーン】" + (toneMap[CFG.tone] || CFG.tone) + "で書く。";
+
+  /* 絵文字 */
+  const emojiMap = {
+    "なし": "絵文字は一切使わない。",
+    "少なめ": "絵文字は1投稿に0〜1個まで。",
+    "普通": "絵文字を適度に(1投稿2〜3個)使う。",
+    "多め": "絵文字を多めに(1投稿4個以上)使い華やかにする。",
+  };
+  out += emojiMap[CFG.emoji] || "";
+
+  /* 入れたいワード */
+  if (CFG.words.trim()) {
+    out += "\n\n【必須ワード】次の語を投稿に自然に織り込む: " + CFG.words.trim() +
+      "。ただし全投稿の約" + CFG.wordFreq + "%程度の頻度で登場させ、毎回は入れない(不自然にならない範囲で)。";
+  }
+
+  /* フック強度 */
+  out += "\n\n【冒頭フック強度】" + CFG.hook + "%。" +
+    (CFG.hook >= 70 ? "1行目で強烈に引き込み、続きを読まずにいられない出だしにする。"
+     : CFG.hook >= 40 ? "1行目はそこそこ引きを作りつつ自然に。"
+     : "1行目は誇張せず落ち着いた入りにする。");
+
+  return out;
 }
 
 /* ============ Supabase KV(設定保存) ============ */
@@ -216,6 +273,8 @@ async function enter() {
   $("app").classList.remove("hidden");
   S.profile = await kvGet("style_profile", "");
   S.genres = await kvGet("genres", S.genres);
+  const savedCfg = await kvGet("gen_config", null);
+  if (savedCfg) Object.assign(CFG, savedCfg);
   await loadClients();
   renderTop(); renderNav(); showTab(S.tab);
 }
@@ -253,6 +312,7 @@ function renderTop() {
 
 /* ============ タブ ============ */
 const TABS = [
+  { id:"settings", num:"00", label:"⚙ 生成設定" },
   { id:"calendar", num:"01", label:"カレンダー" },
   { id:"score", num:"02", label:"スコア診断" },
   { id:"competitor", num:"03", label:"競合分析" },
@@ -378,6 +438,98 @@ function aiTab(el, cfg) {
 
 const BUILDERS = {};
 
+/* ---- 00 生成設定 ---- */
+BUILDERS.settings = (el) => {
+  head(el, "生成設定", "ここの設定が全AI機能(カレンダー・スコア診断・リプ等)の文章生成に反映される。設定は自動保存される。",
+    ["事業情報・文体・絵文字・ワード・フックを決める","スライダーは指でドラッグ","下の「保存」を押すと全機能に効く"]);
+
+  const save = async () => { await kvSet("gen_config", CFG); };
+
+  /* 事業情報(任意) */
+  fld(el, "事業情報をプロンプトに入れる");
+  const bizToggle = document.createElement("div"); bizToggle.className = "chips"; el.appendChild(bizToggle);
+  const bizBox = document.createElement("div"); el.appendChild(bizBox);
+  function drawBizToggle() {
+    bizToggle.innerHTML = "";
+    ["使う","使わない"].forEach((o) => {
+      const on = (o === "使う") === CFG.useBiz;
+      const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = o;
+      b.onclick = () => { CFG.useBiz = (o === "使う"); save(); drawBizToggle(); drawBizBox(); };
+      bizToggle.appendChild(b);
+    });
+  }
+  function drawBizBox() {
+    bizBox.innerHTML = "";
+    if (!CFG.useBiz) return;
+    const mk = (label, key, ph) => {
+      fld(bizBox, label); const i = document.createElement("input"); i.placeholder = ph; i.value = CFG[key] || "";
+      i.oninput = () => { CFG[key] = i.value; save(); }; bizBox.appendChild(i);
+    };
+    mk("店名・事業名(任意)", "bizName", "例: 噂のシーシャBar");
+    mk("エリア(任意)", "bizArea", "例: 金沢・片町");
+    mk("業種(任意)", "bizType", "例: シーシャバー / 美容室 / 居酒屋");
+  }
+  drawBizToggle(); drawBizBox();
+
+  /* 文体 */
+  fld(el, "文体");
+  const toneState = chipsSingle(el, ["丁寧","カジュアル","専門的","フランク","強め"], CFG.tone);
+  const toneWrap = el.lastChild;
+  toneWrap.querySelectorAll("button").forEach((b) => {
+    b.addEventListener("click", () => { CFG.tone = b.textContent; save(); });
+  });
+
+  /* 絵文字 */
+  fld(el, "絵文字");
+  const emojiWrap = el.appendChild(document.createElement("div"));
+  chipsSingleInto(emojiWrap, ["なし","少なめ","普通","多め"], CFG.emoji, (v) => { CFG.emoji = v; save(); });
+
+  /* 入れたいワード */
+  fld(el, "入れたいワード(カンマ区切り・任意)");
+  const win = document.createElement("input"); win.placeholder = "例: 金沢, 隠れ家, 深夜営業"; win.value = CFG.words || "";
+  win.oninput = () => { CFG.words = win.value; save(); }; el.appendChild(win);
+  sliderField(el, "ワードを入れる頻度", "wordFreq", save);
+
+  /* フック */
+  sliderField(el, "冒頭フックの強さ", "hook", save);
+
+  const done = runBtn(el, "保存して全機能に反映");
+  const okm = document.createElement("div"); okm.className = "okmsg"; el.appendChild(okm);
+  done.onclick = async () => { await save(); okm.textContent = "保存した。全AI機能に反映される。"; setTimeout(()=>okm.textContent="",2500); };
+};
+
+/* スライダー付きフィールド(5%〜100%) */
+function sliderField(el, label, key, onChange) {
+  fld(el, label);
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "display:flex;align-items:center;gap:12px";
+  const range = document.createElement("input");
+  range.type = "range"; range.min = "5"; range.max = "100"; range.step = "5"; range.value = CFG[key];
+  range.style.cssText = "flex:1;accent-color:var(--accent)";
+  const val = document.createElement("span");
+  val.style.cssText = "font-family:var(--mono);font-weight:800;color:var(--accent2);min-width:46px;text-align:right";
+  val.textContent = CFG[key] + "%";
+  range.oninput = () => { CFG[key] = parseInt(range.value); val.textContent = CFG[key] + "%"; onChange(); };
+  wrap.appendChild(range); wrap.appendChild(val); el.appendChild(wrap);
+}
+
+/* 単一選択チップを指定要素に描画(コールバック付き) */
+function chipsSingleInto(host, options, initial, onChange) {
+  const w = document.createElement("div"); w.className = "chips"; host.appendChild(w);
+  let cur = initial;
+  function draw() {
+    w.innerHTML = "";
+    options.forEach((o) => {
+      const c = document.createElement("button");
+      c.className = "chip" + (cur === o ? " on" : "");
+      c.textContent = o;
+      c.onclick = () => { cur = o; onChange(o); draw(); };
+      w.appendChild(c);
+    });
+  }
+  draw();
+}
+
 /* ---- 03 競合分析 ---- */
 BUILDERS.competitor = (el) => aiTab(el, {
   title: "競合アカウント分析",
@@ -474,7 +626,7 @@ BUILDERS.reply = (el) => aiTab(el, {
     const extra = S.sns === "X"
       ? "- Xのリプ文化に合わせて硬すぎない\n- ネガティブなリプには引用RTで燃えない大人の返しを"
       : "- Instagramのコメント文化に合わせて絵文字を適度に\n- ネガには丁寧に、必要ならDM誘導を";
-    return `${S.sns}の投稿に届いた以下のコメント・リプそれぞれに、「${v.tone}」なトーンで返信案を作れ。店舗は金沢・片町のシーシャバー。\n\n${v.comments}\n\nルール:\n- 各コメントを引用→その下に返信案\n- 短く自然に(50字前後)\n${extra}\n- 来店につながる一言は自然に混ぜられる場合のみ\n前置き不要。日本語。${sc()}`;
+    return `${S.sns}の投稿に届いた以下のコメント・リプそれぞれに、「${v.tone}」なトーンで返信案を作れ。\n\n${v.comments}\n\nルール:\n- 各コメントを引用→その下に返信案\n- 短く自然に(50字前後)\n${extra}\n- 来店につながる一言は自然に混ぜられる場合のみ\n前置き不要。日本語。${sc()}`;
   },
 });
 
@@ -504,7 +656,7 @@ BUILDERS.score = (el) => aiTab(el, {
   fields: [{ key:"draft", type:"ta", label:"投稿の下書き", rows:7, ph:"これから投稿しようとしてる文を貼る" }],
   btn: "診断する",
   validate: (v) => v.draft.trim(),
-  prompt: (v) => `あなたは${S.sns}でフォロワー数十万のアカウントを複数運用するプロ。以下の${S.sns}投稿の下書きを投稿前診断せよ。店舗は金沢・片町のシーシャバー。\n\n${v.draft}\n\n出力(日本語・前置き不要):\n■総合スコア: ◯◯/100\n■項目別(各20点+一言): フック / 読みやすさ・改行 / 具体性 / 感情・共感 / CTA\n■赤入れ(直すべき箇所を具体的に)\n■修正版(満点を狙った書き直し${S.sns==="X"?"・140字以内":""})${sc()}`,
+  prompt: (v) => `あなたは${S.sns}でフォロワー数十万のアカウントを複数運用するプロ。以下の${S.sns}投稿の下書きを投稿前診断せよ。\n\n${v.draft}\n\n出力(日本語・前置き不要):\n■総合スコア: ◯◯/100\n■項目別(各20点+一言): フック / 読みやすさ・改行 / 具体性 / 感情・共感 / CTA\n■赤入れ(直すべき箇所を具体的に)\n■修正版(満点を狙った書き直し${S.sns==="X"?"・140字以内":""})${sc()}`,
 });
 
 /* ---- 01 カレンダー ---- */
@@ -567,7 +719,7 @@ BUILDERS.calendar = (el) => {
       : "Instagramの伸びやすい時間帯(昼12時前後/夜20-22時)を踏まえる";
     try {
       const text = await callAI(
-        `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。経営者(金沢・片町のシーシャバー運営+ゲーム制作等)の${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。\n\n投稿ジャンル(この中だけで構成・店舗系は週末に厚く):\n${selected.map((g)=>"- "+g).join("\n")}\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
+        `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。\n\n投稿ジャンル(この中だけで構成・店舗系は週末に厚く):\n${selected.map((g)=>"- "+g).join("\n")}\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
         (span.value === "週間"
           ? `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ","y":"投稿の型","x":"完成した投稿文(${fmt})"}] 7要素。${sc()}`
           : `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ(15字以内)","y":"型(6字以内)"}] ${days}要素。完成文は不要。`)
@@ -621,7 +773,7 @@ BUILDERS.calendar = (el) => {
         b.onclick = async () => {
           b.disabled = true; b.textContent = "生成中…";
           try {
-            const text = await callAI(`${S.sns}投稿を1本書け。書き手は金沢の経営者(シーシャバー運営+ゲーム制作等)。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${sc()}`);
+            const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${sc()}`);
             body.innerHTML = ""; drawText(body, p, text.trim());
           } catch (e) { b.disabled = false; b.textContent = "この日の投稿文を作る"; out.err(e.message); }
         };
@@ -800,7 +952,7 @@ BUILDERS.followers = (el) => {
     const b = document.createElement("button"); b.className = "btn btn-ghost"; b.textContent = "AIに推移を分析させる"; aiEl.appendChild(b);
     const out = outArea(aiEl);
     b.onclick = () => runAI(b, out, () =>
-      `${S.sns}アカウント(金沢・片町のシーシャバー)のフォロワー推移:\n${fs.map((r)=>r.date+": "+r.count).join("\n")}\n目標: ${goals[S.sns]||"未設定"}\n\nこのデータから日本語で簡潔に:\n■伸びの評価(加速中/横ばい/鈍化+理由)\n■原因の仮説2つ\n■今週の打ち手3つ(${S.sns}の機能を使った具体策)\n前置き不要。`);
+      `${S.sns}アカウントのフォロワー推移:\n${fs.map((r)=>r.date+": "+r.count).join("\n")}\n目標: ${goals[S.sns]||"未設定"}\n\nこのデータから日本語で簡潔に:\n■伸びの評価(加速中/横ばい/鈍化+理由)\n■原因の仮説2つ\n■今週の打ち手3つ(${S.sns}の機能を使った具体策)\n前置き不要。`);
   }
 
   function drawHist() {
@@ -843,7 +995,7 @@ BUILDERS.report = (el) => {
   const b = runBtn(el, "週報を作る");
   const out = outArea(el);
   b.onclick = () => runAI(b, out, () =>
-    `金沢・片町のシーシャバーの${S.sns}アカウントの週次レポートを作れ。\n\nフォロワー推移(直近):\n${fdata.length?fdata.map((r)=>r.date+": "+r.count).join("\n"):"記録なし"}\n\n今週の投稿:\n${posts.value||"未入力(一般論で構成せよ)"}\n\n出力(日本語・前置き不要):\n■今週の総評(2行以内)\n■数字の動きと投稿の因果仮説\n■見えてきた勝ちパターン\n■来週のアクション3つ(曜日と投稿の型まで具体的に)`);
+    `${S.sns}アカウントの週次レポートを作れ。${bizClause()?"("+bizClause()+")":""}\n\nフォロワー推移(直近):\n${fdata.length?fdata.map((r)=>r.date+": "+r.count).join("\n"):"記録なし"}\n\n今週の投稿:\n${posts.value||"未入力(一般論で構成せよ)"}\n\n出力(日本語・前置き不要):\n■今週の総評(2行以内)\n■数字の動きと投稿の因果仮説\n■見えてきた勝ちパターン\n■来週のアクション3つ(曜日と投稿の型まで具体的に)`);
 };
 
 /* ---- 11 文体学習 ---- */
