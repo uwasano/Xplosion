@@ -177,6 +177,7 @@ function defaultCfg() {
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     useHours: false, openTime: "19:00", closeTime: "02:00",
+    closedDays: [],
   };
 }
 
@@ -205,6 +206,9 @@ function bizClause() {
   let extra = "";
   if (CFG.useHours) {
     extra = "営業時間は" + CFG.openTime + "〜" + CFG.closeTime + "。これと矛盾する時間を本文に書かない。";
+  }
+  if (CFG.closedDays && CFG.closedDays.length) {
+    extra += "定休日は" + CFG.closedDays.join("・") + "曜。定休日には営業を促す告知をせず、休業のお知らせや営業再開日の案内など定休日に合った内容にする。営業日の投稿で定休日を来店日として案内しない。";
   }
   if (!CFG.useBiz) return extra ? "\n\n【店舗情報】" + extra : "";
   const parts = [];
@@ -579,6 +583,31 @@ BUILDERS.settings = (el) => {
   }
   drawHrToggle(); drawHrBox();
 
+  /* 定休日(任意・複数選択) */
+  fld(el, "定休日(任意・複数選べる)");
+  const dayNote = document.createElement("p"); dayNote.className = "desc"; dayNote.style.margin = "0 0 8px";
+  dayNote.textContent = "選んだ曜日を定休日としてAIが把握する。定休日には営業告知をやめ、休業案内や営業再開のお知らせに寄せた投稿になる。";
+  el.appendChild(dayNote);
+  const dayWrap = document.createElement("div"); dayWrap.className = "chips"; el.appendChild(dayWrap);
+  function drawDays() {
+    dayWrap.innerHTML = "";
+    ["月","火","水","木","金","土","日"].forEach((d) => {
+      const on = CFG.closedDays.includes(d);
+      const c = document.createElement("button"); c.className = "chip" + (on ? " on" : ""); c.textContent = d;
+      c.onclick = () => {
+        CFG.closedDays = on ? CFG.closedDays.filter((x)=>x!==d) : [...CFG.closedDays, d];
+        save(); drawDays();
+      };
+      dayWrap.appendChild(c);
+    });
+    const none = document.createElement("button");
+    none.className = "chip" + (CFG.closedDays.length===0 ? " on cyan" : "");
+    none.textContent = "なし(年中無休)";
+    none.onclick = () => { CFG.closedDays = []; save(); drawDays(); };
+    dayWrap.appendChild(none);
+  }
+  drawDays();
+
   /* 性格 */
   fld(el, "性格・キャラ");
   const toneState = chipsSingle(el, ["丁寧","カジュアル","専門的","フランク","強め"], CFG.tone);
@@ -939,7 +968,9 @@ BUILDERS.calendar = (el) => {
       : "Instagramの伸びやすい時間帯(昼12時前後/夜20-22時)を踏まえる";
     try {
       const text = await callAI(
-        `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。\n\n【最重要・厳守】各投稿の"g"(ジャンル)は、必ず次のリストの文字列のどれかと完全一致させること。リスト外のジャンルは絶対に作らない。リストにない話題・派生ジャンル・関連トピックを足すことも禁止:\n${selected.map((g)=>"・「"+g+"」").join("\n")}\n\n上のジャンルだけをバランス良く配分し、店舗系は週末に厚く。\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
+        `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。` +
+        (CFG.closedDays && CFG.closedDays.length ? `\n\n【定休日】${CFG.closedDays.join("・")}曜は定休日。その曜日には来店を促す営業告知を入れず、休業のお知らせや「明日から営業」等の定休日に合った内容にする。` : "") +
+        `\n\n【最重要・厳守】各投稿の"g"(ジャンル)は、必ず次のリストの文字列のどれかと完全一致させること。リスト外のジャンルは絶対に作らない。リストにない話題・派生ジャンル・関連トピックを足すことも禁止:\n${selected.map((g)=>"・「"+g+"」").join("\n")}\n\n上のジャンルだけをバランス良く配分し、店舗系は週末に厚く。\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
         (span.value === "週間"
           ? `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ","y":"投稿の型","x":"完成した投稿文(${fmt})"}] 7要素。${sc()}`
           : `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ(15字以内)","y":"型(6字以内)"}] ${days}要素。完成文は不要。`)
