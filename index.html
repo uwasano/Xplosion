@@ -203,13 +203,13 @@ function sc() {
 
   /* トーン */
   const toneMap = {
-    "丁寧": "丁寧で礼儀正しい敬語ベースのトーン",
-    "カジュアル": "親しみやすいカジュアルなトーン",
-    "専門的": "専門知識を感じさせる説得力のあるトーン",
-    "フランク": "友達に話すようなフランクなタメ口寄りのトーン",
-    "強め": "断言が多く勢いのある強気なトーン",
+    "丁寧": "丁寧で礼儀正しく、敬語ベースの落ち着いた性格",
+    "カジュアル": "親しみやすく明るいカジュアルな性格",
+    "専門的": "専門知識が豊富で説得力のある知的な性格",
+    "フランク": "友達のように話すフランクでタメ口寄りの性格",
+    "強め": "断言が多く勢いのある強気でグイグイくる性格",
   };
-  out += "\n\n【トーン】" + (toneMap[CFG.tone] || CFG.tone) + "で書く。";
+  out += "\n\n【書き手の性格】" + (toneMap[CFG.tone] || CFG.tone) + "で書く。";
 
   /* 絵文字 */
   const emojiMap = {
@@ -446,7 +446,11 @@ BUILDERS.settings = (el) => {
   const save = async () => { await kvSet("gen_config", CFG); };
 
   /* 事業情報(任意) */
-  fld(el, "事業情報をプロンプトに入れる");
+  fld(el, "お店・事業の情報をAIに教える");
+  const bizNote = document.createElement("p"); bizNote.className = "desc";
+  bizNote.style.margin = "0 0 8px";
+  bizNote.textContent = "「使う」にすると、下に入れた店名・エリア・業種をAIが理解して、その店に合った投稿を作る。空欄でもOK。";
+  el.appendChild(bizNote);
   const bizToggle = document.createElement("div"); bizToggle.className = "chips"; el.appendChild(bizToggle);
   const bizBox = document.createElement("div"); el.appendChild(bizBox);
   function drawBizToggle() {
@@ -471,8 +475,8 @@ BUILDERS.settings = (el) => {
   }
   drawBizToggle(); drawBizBox();
 
-  /* 文体 */
-  fld(el, "文体");
+  /* 性格 */
+  fld(el, "性格・キャラ");
   const toneState = chipsSingle(el, ["丁寧","カジュアル","専門的","フランク","強め"], CFG.tone);
   const toneWrap = el.lastChild;
   toneWrap.querySelectorAll("button").forEach((b) => {
