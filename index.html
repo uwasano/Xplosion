@@ -175,7 +175,7 @@ function defaultCfg() {
   return {
     useBiz: false, bizName: "", bizArea: "", bizType: "",
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
-    url: "", urlFreq: 20,
+    url: "", urlFreq: 20, ngWords: "",
   };
 }
 
@@ -256,6 +256,11 @@ function sc() {
     out += "\n\n【URL挿入】次のURLを投稿末尾に置く: " + CFG.url.trim() +
       "。全投稿の約" + CFG.urlFreq + "%程度の頻度で入れ、毎回は入れない(告知・誘導したい投稿に絞る)。" +
       "Xでは140字にURL分を含めて収める。";
+  }
+
+  /* NGワード */
+  if (CFG.ngWords.trim()) {
+    out += "\n\n【禁止ワード】次の語は絶対に使わない(言い換えも含めて避ける): " + CFG.ngWords.trim() + "。";
   }
 
   return out;
@@ -548,6 +553,14 @@ BUILDERS.settings = (el) => {
   uhint.textContent = "予約サイト・LINE公式・プロフィールなどへの誘導URL。下の頻度で投稿末尾に挿入される。";
   el.appendChild(uhint);
   sliderField(el, "URLを入れる頻度", "urlFreq", save);
+
+  /* NGワード */
+  fld(el, "NGワード(使わせない語・カンマ区切り・任意)");
+  const ngin = document.createElement("input"); ngin.placeholder = "例: 絶対, 必ず儲かる, 激安"; ngin.value = CFG.ngWords || "";
+  ngin.oninput = () => { CFG.ngWords = ngin.value; save(); }; el.appendChild(ngin);
+  const nghint = document.createElement("p"); nghint.className = "desc"; nghint.style.margin = "6px 0 0";
+  nghint.textContent = "ここに入れた語はAIが投稿で使わなくなる。NGな表現・薬機法/景表法的にマズい言葉・競合店名などに。";
+  el.appendChild(nghint);
 
   const done = runBtn(el, "保存して全機能に反映");
   const okm = document.createElement("div"); okm.className = "okmsg"; el.appendChild(okm);
@@ -853,22 +866,25 @@ BUILDERS.calendar = (el) => {
         body.innerHTML = "";
         if (p._text) { drawText(body, p, p._text); }
         else {
-          const row = document.createElement("div"); row.className = "acts";
-          const b = document.createElement("button"); b.className = "mini cyan"; b.textContent = "投稿文を作る";
-          b.onclick = async () => { b.disabled = true; b.textContent = "生成中…"; await genOne(p); renderBody(); };
-          row.appendChild(b);
-          body.appendChild(row);
+          const hint = document.createElement("div"); hint.className = "muted"; hint.style.fontSize = "12.5px";
+          hint.textContent = "↓ シャッフルで投稿文を作る";
+          body.appendChild(hint);
         }
       };
 
-      /* この日専用ツール: シャッフル(再生成) / 無料予想 */
+      /* この日専用ツール: シャッフル(生成/作り直し) / 無料予想(競艇のみ) */
       const tools = document.createElement("div"); tools.className = "acts"; tools.style.marginTop = "8px";
-      const shuf = document.createElement("button"); shuf.className = "mini"; shuf.textContent = "🔀 シャッフル(作り直し)";
-      shuf.onclick = async () => { shuf.disabled = true; shuf.textContent = "再生成中…"; await genOne(p, true); shuf.disabled = false; shuf.textContent = "🔀 シャッフル(作り直し)"; renderBody(); };
+      const shuf = document.createElement("button"); shuf.className = "mini cyan";
+      shuf.textContent = p._text ? "🔀 シャッフル(作り直し)" : "✍ 投稿文を作る";
+      shuf.onclick = async () => { shuf.disabled = true; shuf.textContent = "生成中…"; await genOne(p, !!p._text); shuf.disabled = false; shuf.textContent = "🔀 シャッフル(作り直し)"; renderBody(); };
       tools.appendChild(shuf);
-      const yosou = document.createElement("button"); yosou.className = "mini cyan"; yosou.textContent = "🚤 無料予想";
-      yosou.onclick = async () => { yosou.disabled = true; yosou.textContent = "予想生成中…"; await genYosou(p); yosou.disabled = false; yosou.textContent = "🚤 無料予想"; renderBody(); };
-      tools.appendChild(yosou);
+      /* 業種に「競艇」「ボート」が含まれる時だけ無料予想ボタンを出す */
+      const bizText = ((CFG.bizType||"") + (CFG.words||"") + S.genres.join(""));
+      if (/競艇|ボート|レース/.test(bizText)) {
+        const yosou = document.createElement("button"); yosou.className = "mini"; yosou.textContent = "🚤 無料予想";
+        yosou.onclick = async () => { yosou.disabled = true; yosou.textContent = "予想生成中…"; await genYosou(p); yosou.disabled = false; yosou.textContent = "🚤 無料予想"; renderBody(); };
+        tools.appendChild(yosou);
+      }
       div.appendChild(tools);
 
       renderBody();
@@ -888,7 +904,7 @@ BUILDERS.calendar = (el) => {
   async function genYosou(p) {
     try {
       const text = await callAI(
-        `今日(${p.d})の競艇(ボートレース)について、Web検索で当日開催の会場と注目レースを1つ調べ、その1レースの無料予想ポストを作れ。\n\n出力形式(これに厳密に従う・前置き禁止):\n1行目: 「明日の無料予想を1レース公開」または当日なら「本日の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【住之江12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\nルール:\n- 買い目は艇番1〜6の3連単フォーメーション風に5点\n- 検索で会場・締切時刻が取れたら反映、取れなければ開催中の主要会場で\n-\n${sc()}`,
+        `今日(${p.d})の競艇(ボートレース)について、Web検索で当日開催の会場と注目レースを1つ調べ、その1レースの無料予想ポストを作れ。\n\n出力形式(これに厳密に従う・前置き禁止):\n1行目: 「明日の無料予想を1レース公開」または当日なら「本日の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【住之江12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\nルール:\n- 買い目は艇番1〜6の3連単フォーメーション風に5点\n- 検索で会場・締切時刻が取れたら反映、取れなければ開催中の主要会場で\n- 最後に小さく「※予想は参考まで。投資は自己責任で」を1行入れる\n- 140字に収まらなくてOK(スレッドや長文可)\n${sc()}`,
         true /* useSearch */
       );
       p._text = text.trim();
