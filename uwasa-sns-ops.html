@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>XPLOSION</title>
+<!--
+  ============================================================
+  UWASA SNS OPS 合体版 — AIコックピット11機能 + 自動投稿管理
+  ============================================================
+  【セットアップ】
+  1. 下のCONFIGに3つ入れる:
+     - SUPABASE_URL : SupabaseのProject URL
+     - SUPABASE_ANON: anon public(またはsb_publishable_)キー
+     - GAS_URL      : GASウェブアプリのURL(認証リンク兼AI中継)
+  2. GAS側(uwasa_x_autopost.gs v3)に ANTHROPIC_API_KEY を登録して再デプロイ
+  3. このファイルをgithub.io等に置く
+  ログインはSupabase Authのユーザー(Authentication > Users で作成)
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#04060C; --surface:#0F1422; --surface2:#0C1120; --border:#1D2A47;
+    --accent:#FF2E7E; --accent2:#00E5FF; --violet:#B44DFF;
+    --text:#EAF0FF; --muted:#7E8BA8; --ok:#3DFFA8; --bad:#FF7B7B;
+    --mono:"SF Mono",ui-monospace,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(ellipse 90% 40% at 50% -5%, rgba(255,46,126,.13), transparent),
+      radial-gradient(ellipse 70% 40% at 90% 105%, rgba(0,229,255,.08), transparent),
+      repeating-linear-gradient(0deg, rgba(29,42,71,.22) 0 1px, transparent 1px 34px),
+      repeating-linear-gradient(90deg, rgba(29,42,71,.22) 0 1px, transparent 1px 34px);
+  }
+  .wrap{max-width:560px;margin:0 auto;padding:20px 18px 60px}
+  h1{font-size:20px;font-weight:900;letter-spacing:.06em;margin:0;
+    background:linear-gradient(92deg,var(--accent),var(--violet),var(--accent2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .sub{font-size:9px;letter-spacing:.3em;color:var(--muted);font-family:var(--mono);margin-top:2px}
+  .hud{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px;margin-top:14px;position:relative}
+  .hud::before,.hud::after{content:"";position:absolute;width:14px;height:14px;border:1.5px solid rgba(0,229,255,.5);pointer-events:none}
+  .hud::before{top:-1px;left:-1px;border-right:none;border-bottom:none;border-top-left-radius:14px}
+  .hud::after{bottom:-1px;right:-1px;border-left:none;border-top:none;border-bottom-right-radius:14px}
+  h2{margin:0;font-size:17px;font-weight:800}
+  .desc{margin:6px 0 0;font-size:13.5px;line-height:1.7;color:var(--muted)}
+  .howto{margin-top:12px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:10px 14px}
+  .howto .hd{font-size:10px;font-weight:800;letter-spacing:.2em;color:var(--accent);font-family:var(--mono);margin-bottom:6px}
+  .howto .st{display:flex;gap:9px;align-items:baseline;font-size:13px;line-height:1.8}
+  .howto .st b{color:var(--accent);font-family:var(--mono);font-size:11.5px;font-weight:800}
+  label.fld{display:block;font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin:16px 0 8px}
+  input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:12px;
+    color:var(--text);padding:12px 14px;font-size:15px;outline:none;font-family:inherit}
+  textarea{line-height:1.6;resize:vertical}
+  .btn{width:100%;padding:14px;border-radius:12px;border:none;cursor:pointer;margin-top:16px;
+    background:linear-gradient(92deg,var(--accent),var(--violet));color:#fff;
+    font-size:15px;font-weight:800;letter-spacing:.05em;box-shadow:0 0 18px rgba(255,46,126,.35)}
+  .btn:disabled{opacity:.5;cursor:wait}
+  .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--accent2);box-shadow:none}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:transparent;
+    color:var(--muted);font-size:13px;font-weight:700;cursor:pointer}
+  .chip.on{border-color:var(--accent);background:rgba(255,46,126,.12);color:var(--accent);box-shadow:0 0 12px rgba(255,46,126,.3)}
+  .chip.on.cyan{border-color:var(--accent2);background:rgba(0,229,255,.1);color:var(--accent2);box-shadow:0 0 12px rgba(0,229,255,.25)}
+  .out{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent2);
+    border-radius:12px;padding:16px;margin-top:14px;position:relative;box-shadow:0 0 24px rgba(0,229,255,.06)}
+  .out pre{white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;font-size:14.5px;line-height:1.75}
+  .copybtn{position:absolute;top:10px;right:10px;background:var(--surface2);color:var(--muted);
+    border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}
+  nav{display:flex;gap:8px;overflow-x:auto;padding:12px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  .navbtn{flex-shrink:0;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
+    color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px}
+  .navbtn b{font-size:9.5px;opacity:.75;font-family:var(--mono);font-weight:800}
+  .navbtn.on{border-color:var(--accent);background:rgba(255,46,126,.12);color:var(--accent);box-shadow:0 0 14px rgba(255,46,126,.3)}
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .snsw{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:3px;gap:2px}
+  .snsbtn{width:40px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:999px;border:none;
+    background:transparent;color:var(--muted);cursor:pointer}
+  .snsbtn.on{background:linear-gradient(92deg,var(--accent),var(--violet));color:#fff;box-shadow:0 0 12px rgba(255,46,126,.45)}
+  .modes{display:flex;align-items:center;gap:10px;margin-top:8px}
+  .modes .lbl{font-size:9.5px;letter-spacing:.2em;color:var(--muted);font-family:var(--mono);flex-shrink:0}
+  .row{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px;font-size:13.5px;line-height:1.7}
+  .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+  .pill{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 9px;border:1px solid}
+  .pill.time{color:var(--ok);border-color:rgba(61,255,168,.4);font-family:var(--mono)}
+  .pill.acct{color:var(--accent2);border-color:rgba(0,229,255,.4);font-family:var(--mono)}
+  .pill.genre{color:var(--violet);border-color:rgba(180,77,255,.4)}
+  .pill.type{color:var(--accent);border-color:rgba(255,46,126,.35)}
+  .pill.st-pending{color:var(--violet);border-color:rgba(180,77,255,.4)}
+  .pill.st-posted,.pill.st-active{color:var(--ok);border-color:rgba(61,255,168,.4)}
+  .pill.st-error,.pill.st-revoked{color:var(--bad);border-color:rgba(255,123,123,.4)}
+  .acts{display:flex;gap:8px;margin-top:10px}
+  .mini{flex:1;padding:9px;border-radius:10px;border:1px solid var(--border);background:transparent;
+    color:var(--muted);font-size:12.5px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none}
+  .mini.primary{border:none;background:linear-gradient(92deg,var(--accent),var(--violet));color:#fff;font-weight:800}
+  .mini.cyan{border-color:rgba(0,229,255,.4);color:var(--accent2)}
+  .err{color:var(--bad);font-size:13px;margin-top:10px;line-height:1.5}
+  .okmsg{color:var(--ok);font-size:13px;margin-top:10px}
+  .muted{color:var(--muted);font-size:13px}
+  .count{font-size:11px;color:var(--muted);text-align:right;margin-top:4px;font-family:var(--mono)}
+  .count.over{color:var(--bad);font-weight:800}
+  .hidden{display:none}
+  .stat{flex:1;min-width:0;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:11px 8px;text-align:center}
+  .stat .l{font-size:9.5px;color:var(--muted);font-weight:800;letter-spacing:.12em;font-family:var(--mono)}
+  .stat .v{font-size:17px;font-weight:800;margin:3px 0 1px;white-space:nowrap;font-family:var(--mono)}
+  .stat .s{font-size:10.5px;font-weight:700;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <svg width="34" height="34" viewBox="0 0 48 48" aria-hidden="true">
+        <defs>
+          <linearGradient id="xg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#FF2E7E"/><stop offset=".55" stop-color="#B44DFF"/><stop offset="1" stop-color="#00E5FF"/>
+          </linearGradient>
+        </defs>
+        <!-- バーストの火花 -->
+        <g stroke="url(#xg)" stroke-width="2.4" stroke-linecap="round" opacity=".85">
+          <line x1="24" y1="2"  x2="24" y2="8"/>
+          <line x1="24" y1="40" x2="24" y2="46"/>
+          <line x1="2"  y1="24" x2="8"  y2="24"/>
+          <line x1="40" y1="24" x2="46" y2="24"/>
+        </g>
+        <!-- 鋭角のX -->
+        <path d="M10 8 L21.2 24 L10 40 L17.4 40 L24 30.6 L30.6 40 L38 40 L26.8 24 L38 8 L30.6 8 L24 17.4 L17.4 8 Z"
+          fill="url(#xg)"/>
+      </svg>
+      <div><h1>XPLOSION</h1><div class="sub">X OPERATION SYSTEM</div></div>
+    </div>
+    <div class="snsw" id="snsw"></div>
+  </div>
+  <div class="modes" id="modes"></div>
+  <div id="modeWarn" class="err hidden">⚠ 文体プロファイル未学習。「文体学習」タブで先に学習させて。</div>
+
+  <!-- ログイン -->
+  <div id="loginCard" class="hud">
+    <h2>ログイン</h2>
+    <label class="fld">メールアドレス</label>
+    <input id="email" type="email" autocomplete="username">
+    <label class="fld">パスワード</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <button class="btn" id="loginBtn">ログイン</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <nav id="nav"></nav>
+    <div class="hud" id="content"></div>
+    <button class="btn btn-ghost" id="logoutBtn">ログアウト</button>
+  </div>
+</div>
+
+<script>
+/* ============ CONFIG(ここを書き換える) ============ */
+const SUPABASE_URL = "https://hwoltvzmsznprsbyrbaj.supabase.co";
+const SUPABASE_ANON = "sb_publishable_1JsQKCxHNyH4fGzFUJeEHg_czjaZxPR";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcXWtE0N8A3WPH4c4uG-KdyiYwo2HIS0U8IjmS-AHftieOP/exec";
+/* ================================================== */
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ============ 状態 ============ */
+const S = { sns: "X", mode: "標準", profile: "", genres: ["シーシャバー(店舗)","ゲーム制作","開発・ツール"], tab: "calendar", clients: [] };
+
+function sc() {
+  if (S.mode === "自分の文体" && S.profile)
+    return "\n\n【文体指示】以下の文体プロファイルに完全に従い、本人が書いたとしか思えない文章にせよ:\n" + S.profile;
+  if (S.mode === "バズ特化")
+    return "\n\n【文体指示】書き手の個性より拡散力を最優先。スクロールを止める1行目・具体的な数字・感情の起伏・続きを読ませる構成で、バズに全振りした文章にせよ。";
+  return "";
+}
+
+/* ============ Supabase KV(設定保存) ============ */
+async function kvGet(key, fallback) {
+  const { data } = await sb.from("kv_store").select("value").eq("key", key).maybeSingle();
+  return data && data.value !== null && data.value !== undefined ? data.value : fallback;
+}
+async function kvSet(key, value) {
+  await sb.from("kv_store").upsert({ key, value, updated_at: new Date().toISOString() });
+}
+
+/* ============ AI呼び出し(GAS中継) ============ */
+async function callAI(prompt, useSearch) {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) throw new Error("ログインが切れた。リロードして。");
+  const res = await fetch(GAS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ auth: data.session.access_token, prompt, useSearch: !!useSearch }),
+  });
+  const j = await res.json();
+  if (j.error) throw new Error(j.error);
+  return j.text;
+}
+
+/* ============ ログイン ============ */
+$("loginBtn").onclick = async () => {
+  $("loginErr").textContent = "";
+  const { error } = await sb.auth.signInWithPassword({ email: $("email").value.trim(), password: $("password").value });
+  if (error) { $("loginErr").textContent = "ログイン失敗: " + error.message; return; }
+  enter();
+};
+$("logoutBtn").onclick = async () => { await sb.auth.signOut(); location.reload(); };
+sb.auth.getSession().then(({ data }) => { if (data.session) enter(); });
+
+async function enter() {
+  $("loginCard").classList.add("hidden");
+  $("app").classList.remove("hidden");
+  S.profile = await kvGet("style_profile", "");
+  S.genres = await kvGet("genres", S.genres);
+  await loadClients();
+  renderTop(); renderNav(); showTab(S.tab);
+}
+
+async function loadClients() {
+  const { data } = await sb.from("clients").select("*").order("created_at");
+  S.clients = data || [];
+}
+
+/* ============ ヘッダーUI ============ */
+function renderTop() {
+  $("snsw").innerHTML = "";
+  ["X","Instagram"].forEach((s) => {
+    const b = document.createElement("button");
+    b.className = "snsbtn" + (S.sns === s ? " on" : "");
+    b.title = s;
+    b.innerHTML = s === "X"
+      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z"/></svg>'
+      : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>';
+    b.onclick = () => { S.sns = s; renderTop(); showTab(S.tab); };
+    $("snsw").appendChild(b);
+  });
+  $("modes").innerHTML = '<span class="lbl">MODE</span>';
+  const wrap = document.createElement("div"); wrap.className = "chips";
+  ["標準","自分の文体","バズ特化"].forEach((m) => {
+    const c = document.createElement("button");
+    c.className = "chip" + (S.mode === m ? " on cyan" : "");
+    c.textContent = m;
+    c.onclick = () => { S.mode = m; renderTop(); };
+    wrap.appendChild(c);
+  });
+  $("modes").appendChild(wrap);
+  $("modeWarn").classList.toggle("hidden", !(S.mode === "自分の文体" && !S.profile));
+}
+
+/* ============ タブ ============ */
+const TABS = [
+  { id:"calendar", num:"01", label:"カレンダー" },
+  { id:"score", num:"02", label:"スコア診断" },
+  { id:"competitor", num:"03", label:"競合分析" },
+  { id:"buzz", num:"04", label:"バズ構造" },
+  { id:"multi", num:"05", label:"形式展開" },
+  { id:"trend", num:"06", label:"トレンド" },
+  { id:"reply", num:"07", label:"リプ生成" },
+  { id:"remake", num:"08", label:"リメイク" },
+  { id:"followers", num:"09", label:"推移記録" },
+  { id:"report", num:"10", label:"週報" },
+  { id:"style", num:"11", label:"文体学習" },
+  { id:"schedule", num:"12", label:"予約管理" },
+  { id:"clients", num:"13", label:"クライアント" },
+];
+function renderNav() {
+  $("nav").innerHTML = "";
+  TABS.forEach((t) => {
+    const b = document.createElement("button");
+    b.className = "navbtn" + (S.tab === t.id ? " on" : "");
+    b.innerHTML = "<b>" + t.num + "</b>" + t.label;
+    b.onclick = () => { S.tab = t.id; renderNav(); showTab(t.id); };
+    $("nav").appendChild(b);
+  });
+}
+function showTab(id) { $("content").innerHTML = ""; BUILDERS[id]($("content")); }
+
+/* ============ 共通部品 ============ */
+function head(el, title, desc, steps) {
+  const d = document.createElement("div");
+  d.innerHTML = "<h2>" + esc(title) + '</h2><p class="desc">' + esc(desc) + "</p>" +
+    '<div class="howto"><div class="hd">HOW TO USE</div>' +
+    steps.map((s, i) => '<div class="st"><b>' + String(i + 1).padStart(2, "0") + "</b><span>" + esc(s) + "</span></div>").join("") +
+    "</div>";
+  el.appendChild(d);
+}
+function fld(el, label) {
+  const l = document.createElement("label"); l.className = "fld"; l.textContent = "▸ " + label; el.appendChild(l);
+}
+function ta(el, rows, ph) {
+  const t = document.createElement("textarea"); t.rows = rows; t.placeholder = ph || ""; el.appendChild(t); return t;
+}
+function inp(el, ph, type) {
+  const t = document.createElement("input"); t.type = type || "text"; t.placeholder = ph || ""; el.appendChild(t); return t;
+}
+function chipsSingle(el, options, initial, cyan) {
+  const w = document.createElement("div"); w.className = "chips"; el.appendChild(w);
+  const state = { value: initial };
+  function draw() {
+    w.innerHTML = "";
+    options.forEach((o) => {
+      const c = document.createElement("button");
+      c.className = "chip" + (state.value === o ? (cyan ? " on cyan" : " on") : "");
+      c.textContent = o;
+      c.onclick = () => { state.value = o; draw(); };
+      w.appendChild(c);
+    });
+  }
+  draw(); return state;
+}
+function chipsMulti(el, options, initial) {
+  const w = document.createElement("div"); w.className = "chips"; el.appendChild(w);
+  const state = { values: initial.slice() };
+  function draw() {
+    w.innerHTML = "";
+    options.forEach((o) => {
+      const c = document.createElement("button");
+      c.className = "chip" + (state.values.includes(o) ? " on cyan" : "");
+      c.textContent = o;
+      c.onclick = () => {
+        state.values = state.values.includes(o) ? state.values.filter((x) => x !== o) : [...state.values, o];
+        draw();
+      };
+      w.appendChild(c);
+    });
+  }
+  draw(); return state;
+}
+function runBtn(el, label) {
+  const b = document.createElement("button"); b.className = "btn"; b.textContent = label; el.appendChild(b); return b;
+}
+function outArea(el) {
+  const e = document.createElement("div"); el.appendChild(e);
+  return {
+    err(m) { e.innerHTML = m ? '<div class="err">⚠ ' + esc(m) + "</div>" : ""; },
+    show(text) {
+      e.innerHTML = '<div class="out"><button class="copybtn">コピー</button><pre></pre></div>';
+      e.querySelector("pre").textContent = text;
+      const cb = e.querySelector(".copybtn");
+      cb.onclick = () => { navigator.clipboard.writeText(text); cb.textContent = "コピー済"; setTimeout(()=>cb.textContent="コピー",1500); };
+    },
+    clear() { e.innerHTML = ""; },
+  };
+}
+async function runAI(btn, out, promptFn, useSearch) {
+  out.clear(); out.err("");
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = "処理中…";
+  try { out.show(await callAI(promptFn(), useSearch)); }
+  catch (e) { out.err(e.message); }
+  btn.disabled = false; btn.textContent = orig;
+}
+
+/* ============ 汎用AIタブ(02-08) ============ */
+function aiTab(el, cfg) {
+  head(el, cfg.title, cfg.desc, cfg.steps);
+  const refs = {};
+  cfg.fields.forEach((f) => {
+    fld(el, f.label);
+    if (f.type === "ta") refs[f.key] = ta(el, f.rows, f.ph);
+    else if (f.type === "in") refs[f.key] = inp(el, f.ph);
+    else if (f.type === "chips") refs[f.key] = chipsSingle(el, f.options, f.options[0]);
+    else if (f.type === "multi") refs[f.key] = chipsMulti(el, f.options, f.initial || []);
+  });
+  const btn = runBtn(el, cfg.btn);
+  const out = outArea(el);
+  btn.onclick = () => {
+    const v = {};
+    for (const k in refs) v[k] = refs[k].value !== undefined ? refs[k].value : (refs[k].values || refs[k].value);
+    cfg.fields.forEach((f) => { if (f.type === "ta" || f.type === "in") v[f.key] = refs[f.key].value; });
+    if (!cfg.validate(v)) { out.err("入力が足りん。"); return; }
+    runAI(btn, out, () => cfg.prompt(v), cfg.useSearch);
+  };
+}
+
+const BUILDERS = {};
+
+/* ---- 03 競合分析 ---- */
+BUILDERS.competitor = (el) => aiTab(el, {
+  title: "競合アカウント分析",
+  desc: `ライバルの${S.sns}投稿をAIが分解して、「なぜ伸びてるか」「どこで勝てるか」を出す。`,
+  steps: ["競合の投稿を2〜5件コピーして貼る(いいね数も分かれば一緒に)","「分析する」を押す","真似すべき点・差別化すべき点が3つずつ出る"],
+  fields: [
+    { key:"name", type:"in", label:"競合アカウント名", ph:"例: @rival_shisha_bar" },
+    { key:"posts", type:"ta", label:"投稿テキスト(複数可・「---」区切り推奨)", rows:8, ph:"投稿1\n---\n投稿2" },
+  ],
+  btn: "分析する",
+  validate: (v) => v.posts.trim(),
+  prompt: (v) => {
+    const algo = S.sns === "X"
+      ? "■Xアルゴリズム観点(リプ誘発・滞在時間・リポストされやすさ)"
+      : "■Instagramアルゴ観点(保存されやすさ・シェア・リール初速・ハッシュタグ設計)";
+    return `あなたは${S.sns}運用の競合分析の専門家。以下は競合アカウント「${v.name||"不明"}」の投稿。\n\n${v.posts}\n\n次の観点で日本語で分析せよ:\n■投稿の型(リスト型/ストーリー型/問いかけ型/画像頼みなど)\n■フックの手法(1行目・冒頭の引き付け方)\n${algo}\n■伸びてる投稿の共通点\n■この競合に勝つために真似すべき点・差別化すべき点(各3つ)\n簡潔に。前置き不要。`;
+  },
+});
+
+/* ---- 04 バズ構造 ---- */
+BUILDERS.buzz = (el) => aiTab(el, {
+  title: "バズ投稿の構造抽出",
+  desc: "バズ投稿を貼ると、型を取り出して自分の店用に使い回せるテンプレにする。",
+  steps: [`${S.sns}で見かけたバズ投稿を丸ごと貼る`,"「構造を抽出する」を押す","穴埋めテンプレ+例文が出る"],
+  fields: [{ key:"post", type:"ta", label:"バズ投稿のテキスト", rows:8, ph:"バズった投稿を丸ごとコピペ" }],
+  btn: "構造を抽出する",
+  validate: (v) => v.post.trim(),
+  prompt: (v) => {
+    const tail = S.sns === "X"
+      ? "■バズ要因トップ3(Xアルゴ観点:リプ誘発・引用されやすさ・滞在時間も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレでシーシャバー向けに書いた例文1本(140字以内)"
+      : "■バズ要因トップ3(IGアルゴ観点:保存・シェア・冒頭1行でのスワイプ阻止も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレでシーシャバー向けのキャプション例1本(ハッシュタグ5〜10個付き)";
+    return `以下の${S.sns}の投稿がバズった理由を構造分解せよ。\n\n${v.post}\n\n出力形式(日本語・前置き不要):\n■構造分解(フック/共感/展開/オチ/CTA に分けて解説)\n${tail}${sc()}`;
+  },
+});
+
+/* ---- 05 形式展開 ---- */
+BUILDERS.multi = (el) => {
+  const FORMS = {
+    X: { all:["単発ポスト","スレッド","画像付き用","アンケート","固定ポスト用"], init:["単発ポスト","スレッド"],
+      rules:{ "単発ポスト":"140字以内・1行目フック・ハッシュタグなしか最大1個",
+        "スレッド":"5〜7ポストの連投構成。1ポスト目で引き、最後に来店CTA。番号を振る",
+        "画像付き用":"画像が主役前提で短文キャプション(60字以内)+添える画像の指示",
+        "アンケート":"投票機能前提。質問+選択肢2〜4個。リプを誘発する一言付き",
+        "固定ポスト用":"プロフィール固定用。初見に魅力と行く理由が一発で伝わる構成" } },
+    Instagram: { all:["フィード投稿","リール台本","ストーリーズ","カルーセル","プロフィール文"], init:["フィード投稿","リール台本"],
+      rules:{ "フィード投稿":"キャプション形式・改行多め・冒頭1行で惹きつけ・ハッシュタグ5〜10個",
+        "リール台本":"冒頭1〜2秒フック→展開→締めの台本+テロップ案+キャプション",
+        "ストーリーズ":"3〜5枚構成。各枚のテキストとスタンプの使いどころ指示",
+        "カルーセル":"5〜8枚構成。1枚目は表紙、最後は保存・来店CTA。各枚の文言",
+        "プロフィール文":"150字以内のbio。誰向け・何の店・行く理由・予約導線" } },
+  };
+  const cfg = FORMS[S.sns];
+  aiTab(el, {
+    title: "1ネタを複数形式に展開",
+    desc: `1つのネタを${S.sns}内の色んな形式に書き分ける。ネタ1個で何度も投稿できる。`,
+    steps: ["伝えたい内容を貼る","作りたい形式を選ぶ(複数OK)","「書き分ける」で形式ごとに完成文が出る"],
+    fields: [
+      { key:"src", type:"ta", label:"元の投稿・ネタ", rows:6, ph:"伝えたい内容や元投稿を貼る" },
+      { key:"targets", type:"multi", label:"展開先(複数選択)", options:cfg.all, initial:cfg.init },
+    ],
+    btn: "書き分ける",
+    validate: (v) => v.src.trim() && v.targets.length,
+    prompt: (v) => `以下の内容を、${S.sns}の次の形式それぞれに最適化して書き分けよ。\n\n元ネタ:\n${v.src}\n\n形式とルール:\n${v.targets.map((t)=>"- "+t+": "+cfg.rules[t]).join("\n")}\n\n各形式名を見出しにして出力。前置き不要。日本語。${sc()}`,
+  });
+};
+
+/* ---- 06 トレンド ---- */
+BUILDERS.trend = (el) => aiTab(el, {
+  title: "トレンド自動収集",
+  desc: "キーワードを入れると、AIがWebを検索して直近の話題を集めて投稿ネタに変換する。",
+  steps: ["キーワードを入れる(例: シーシャ、金沢 夜遊び)","「収集する」を押す(検索するので少し待つ)","話題+投稿例文がセットで出る"],
+  fields: [{ key:"kw", type:"in", label:"監視キーワード", ph:"例: シーシャ / 金沢 ナイトライフ" }],
+  btn: "トレンドを収集する",
+  useSearch: true,
+  validate: (v) => v.kw.trim(),
+  prompt: (v) => {
+    const ex = S.sns === "X" ? "■各ネタのポスト例文(140字以内・1行目フック重視)" : "■各ネタのキャプション例(冒頭1行フック+ハッシュタグ5個)";
+    return `「${v.kw}」に関して${S.sns}で話題になっていそうな直近1〜2週間のトレンド・ニュース・ネタをWeb検索で調べ、日本語でまとめよ。\n\n出力:\n■今のトレンド要点(3〜5個・出典付き)\n■${S.sns}投稿に使えるネタ角度3つ\n${ex}\n前置き不要。${sc()}`;
+  },
+});
+
+/* ---- 07 リプ生成 ---- */
+BUILDERS.reply = (el) => aiTab(el, {
+  title: "返信コメントの一括生成",
+  desc: `届いた${S.sns==="X"?"リプ":"コメント"}をまとめて貼ると、1件ずつ返信文を作る。ネガも燃えない返し方で。`,
+  steps: ["1行に1件ずつ貼る","トーンを選ぶ","生成→コピーして返信するだけ"],
+  fields: [
+    { key:"comments", type:"ta", label:(S.sns==="X"?"リプライ":"コメント")+"(1行1件)", rows:7, ph:"行きたい!どこにあるんですか?\n初心者でも大丈夫ですか?" },
+    { key:"tone", type:"chips", label:"トーン", options:["フレンドリー","丁寧","ノリ重視","お店の公式"] },
+  ],
+  btn: "返信案を生成する",
+  validate: (v) => v.comments.trim(),
+  prompt: (v) => {
+    const extra = S.sns === "X"
+      ? "- Xのリプ文化に合わせて硬すぎない\n- ネガティブなリプには引用RTで燃えない大人の返しを"
+      : "- Instagramのコメント文化に合わせて絵文字を適度に\n- ネガには丁寧に、必要ならDM誘導を";
+    return `${S.sns}の投稿に届いた以下のコメント・リプそれぞれに、「${v.tone}」なトーンで返信案を作れ。店舗は金沢・片町のシーシャバー。\n\n${v.comments}\n\nルール:\n- 各コメントを引用→その下に返信案\n- 短く自然に(50字前後)\n${extra}\n- 来店につながる一言は自然に混ぜられる場合のみ\n前置き不要。日本語。${sc()}`;
+  },
+});
+
+/* ---- 08 リメイク ---- */
+BUILDERS.remake = (el) => aiTab(el, {
+  title: "過去投稿のリメイク",
+  desc: "昔の投稿を貼るだけで「今出し直す用」に3パターン作り直す。ネタ切れの日はここ。",
+  steps: ["過去の投稿を貼る","当時の反応をメモすると精度UP(任意)","3パターン+狙いが出る"],
+  fields: [
+    { key:"old", type:"ta", label:"過去の投稿", rows:7, ph:"昔の投稿をコピペ" },
+    { key:"note", type:"ta", label:"補足(任意)", rows:2, ph:"例: いいねは多かったが来店に繋がらず" },
+  ],
+  btn: "リメイクする",
+  validate: (v) => v.old.trim(),
+  prompt: (v) => {
+    const third = S.sns === "X" ? "③スレッド化版(1ポスト目+続き2〜3ポストに拡張)" : "③リール台本化版(フック→展開→締めの台本+キャプションに変換)";
+    const limit = S.sns === "X" ? "各140字以内。" : "";
+    return `以下の過去の${S.sns}投稿を、今投稿し直す前提で3パターンに再設計せよ。${limit}\n\n過去投稿:\n${v.old}\n${v.note?"\n補足: "+v.note+"\n":""}\nパターン:\n①フック強化版(1行目を作り直し、構成は維持)\n②角度変更版(別の切り口・別の感情で)\n${third}\n各パターンに「狙い」を1行。前置き不要。日本語。${sc()}`;
+  },
+});
+
+/* ---- 02 スコア診断 ---- */
+BUILDERS.score = (el) => aiTab(el, {
+  title: "投稿前スコア診断",
+  desc: "下書きを貼ると投稿前に100点満点で採点して赤入れ。修正版もその場で出る。",
+  steps: ["投稿前の下書きを貼る","「診断する」を押す","点数・直す箇所・満点狙いの修正版が出る"],
+  fields: [{ key:"draft", type:"ta", label:"投稿の下書き", rows:7, ph:"これから投稿しようとしてる文を貼る" }],
+  btn: "診断する",
+  validate: (v) => v.draft.trim(),
+  prompt: (v) => `あなたは${S.sns}でフォロワー数十万のアカウントを複数運用するプロ。以下の${S.sns}投稿の下書きを投稿前診断せよ。店舗は金沢・片町のシーシャバー。\n\n${v.draft}\n\n出力(日本語・前置き不要):\n■総合スコア: ◯◯/100\n■項目別(各20点+一言): フック / 読みやすさ・改行 / 具体性 / 感情・共感 / CTA\n■赤入れ(直すべき箇所を具体的に)\n■修正版(満点を狙った書き直し${S.sns==="X"?"・140字以内":""})${sc()}`,
+});
+
+/* ---- 01 カレンダー ---- */
+BUILDERS.calendar = (el) => {
+  head(el, "投稿カレンダー自動生成",
+    "事業ジャンルを配分した投稿計画+バズりやすい推奨時間付き。完成文はそのまま予約に送れる。",
+    ["ジャンルを選ぶ(追加・×で削除可)","週間/月間と予定を入れて生成","各投稿を「予約に送る」→自動投稿へ"]);
+
+  fld(el, "事業ジャンル(複数選択)");
+  const gwrap = document.createElement("div"); gwrap.className = "chips"; el.appendChild(gwrap);
+  let selected = S.genres.slice(0, 1);
+  function drawGenres() {
+    gwrap.innerHTML = "";
+    S.genres.forEach((g) => {
+      const c = document.createElement("button");
+      c.className = "chip" + (selected.includes(g) ? " on" : "");
+      c.textContent = g + " ";
+      const x = document.createElement("span"); x.textContent = "×"; x.style.opacity = ".6"; x.style.marginLeft = "6px";
+      x.onclick = (ev) => { ev.stopPropagation(); S.genres = S.genres.filter((y)=>y!==g); selected = selected.filter((y)=>y!==g); kvSet("genres", S.genres); drawGenres(); };
+      c.appendChild(x);
+      c.onclick = () => { selected = selected.includes(g) ? selected.filter((y)=>y!==g) : [...selected, g]; drawGenres(); };
+      gwrap.appendChild(c);
+    });
+  }
+  drawGenres();
+  const addRow = document.createElement("div"); addRow.style.cssText = "display:flex;gap:8px;margin-top:10px"; el.appendChild(addRow);
+  const gin = document.createElement("input"); gin.placeholder = "ジャンルを追加(例: 経営の学び)"; addRow.appendChild(gin);
+  const gbtn = document.createElement("button"); gbtn.className = "mini cyan"; gbtn.style.flex = "0 0 70px"; gbtn.textContent = "追加"; addRow.appendChild(gbtn);
+  gbtn.onclick = () => { const g = gin.value.trim(); if (!g || S.genres.includes(g)) return; S.genres.push(g); selected.push(g); gin.value = ""; kvSet("genres", S.genres); drawGenres(); };
+
+  fld(el, "期間");
+  const span = chipsSingle(el, ["週間","月間"], "週間");
+  fld(el, "予約送信先アカウント(Xのみ)");
+  const acct = document.createElement("select"); el.appendChild(acct);
+  S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
+  if (!acct.options.length) { const o=document.createElement("option"); o.textContent="(クライアント未登録)"; o.value=""; acct.appendChild(o); }
+  fld(el, "店・事業の予定やネタ(任意)");
+  const events = ta(el, 4, "例:\n6/20 DJイベント\n新フレーバー入荷\n新作ゲームのデモ完成間近");
+
+  const gen = runBtn(el, "カレンダーを生成する");
+  const out = outArea(el);
+  const listEl = document.createElement("div"); el.appendChild(listEl);
+
+  function parseJSONArr(text) {
+    let t = text.replace(/```json|```/g, "").trim();
+    t = t.slice(t.indexOf("["));
+    try { return JSON.parse(t); }
+    catch (e) { const cut = t.lastIndexOf("}"); if (cut > 0) return JSON.parse(t.slice(0, cut + 1) + "]"); throw e; }
+  }
+
+  gen.onclick = async () => {
+    if (!selected.length) { out.err("ジャンルを1つ以上選んで。"); return; }
+    out.clear(); out.err(""); listEl.innerHTML = "";
+    gen.disabled = true; gen.textContent = "生成中…";
+    const today = new Date();
+    const days = span.value === "週間" ? 7 : 30;
+    const fmt = S.sns === "X" ? "140字以内" : "キャプション形式・ハッシュタグ5個";
+    const timeRule = S.sns === "X"
+      ? "Xの伸びやすい時間帯(通勤7-8時/昼12時/夜21-23時/深夜0-1時)を踏まえ、内容と客層に合う時間。夜営業の店の告知は夜〜深夜が強い"
+      : "Instagramの伸びやすい時間帯(昼12時前後/夜20-22時)を踏まえる";
+    try {
+      const text = await callAI(
+        `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。経営者(金沢・片町のシーシャバー運営+ゲーム制作等)の${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。\n\n投稿ジャンル(この中だけで構成・店舗系は週末に厚く):\n${selected.map((g)=>"- "+g).join("\n")}\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
+        (span.value === "週間"
+          ? `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ","y":"投稿の型","x":"完成した投稿文(${fmt})"}] 7要素。${sc()}`
+          : `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ(15字以内)","y":"型(6字以内)"}] ${days}要素。完成文は不要。`)
+      );
+      renderPlan(parseJSONArr(text));
+    } catch (e) { out.err("生成に失敗。もう一度押して。(" + e.message.slice(0, 80) + ")"); }
+    gen.disabled = false; gen.textContent = "カレンダーを生成する";
+  };
+
+  function planDate(p) {
+    const [m, d] = p.d.split("/").map(Number);
+    const [hh, mm] = (p.h || "21:00").split(":").map(Number);
+    const now = new Date();
+    let y = now.getFullYear();
+    if (m < now.getMonth() + 1 - 1) y += 1; // 年またぎ対策
+    return new Date(y, m - 1, d, hh, mm || 0);
+  }
+
+  function renderPlan(plan) {
+    listEl.innerHTML = "";
+    plan.forEach((p, i) => {
+      const div = document.createElement("div"); div.className = "row";
+      const meta = '<div class="meta"><span class="pill time">' + esc(p.d) + "(" + esc(p.w||"") + ")</span>" +
+        (p.h ? '<span class="pill time">⏰ ' + esc(p.h) + "</span>" : "") +
+        (p.g ? '<span class="pill genre">' + esc(p.g) + "</span>" : "") +
+        '<span class="pill type">' + esc(p.y||"") + "</span></div>" +
+        '<div style="font-weight:700;margin-bottom:6px">' + esc(p.t||"") + "</div>";
+      div.innerHTML = meta;
+      const body = document.createElement("div"); div.appendChild(body);
+      listEl.appendChild(div);
+      if (p.x) drawText(body, p, p.x);
+      else {
+        const b = document.createElement("button"); b.className = "mini cyan"; b.style.width = "100%"; b.textContent = "この日の投稿文を作る";
+        body.appendChild(b);
+        b.onclick = async () => {
+          b.disabled = true; b.textContent = "生成中…";
+          try {
+            const text = await callAI(`${S.sns}投稿を1本書け。書き手は金沢の経営者(シーシャバー運営+ゲーム制作等)。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${sc()}`);
+            body.innerHTML = ""; drawText(body, p, text.trim());
+          } catch (e) { b.disabled = false; b.textContent = "この日の投稿文を作る"; out.err(e.message); }
+        };
+      }
+    });
+  }
+
+  function drawText(body, p, text) {
+    const box = document.createElement("div");
+    box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px";
+    box.textContent = text; body.appendChild(box);
+    const acts = document.createElement("div"); acts.className = "acts"; body.appendChild(acts);
+    const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "コピー";
+    cp.onclick = () => { navigator.clipboard.writeText(text); cp.textContent = "コピー済"; setTimeout(()=>cp.textContent="コピー",1500); };
+    acts.appendChild(cp);
+    if (S.sns === "X") {
+      const sd = document.createElement("button"); sd.className = "mini primary"; sd.textContent = "予約に送る";
+      sd.onclick = async () => {
+        if (!acct.value) { out.err("クライアント未登録。先に認証リンクから登録して。"); return; }
+        sd.disabled = true;
+        const { error } = await sb.from("scheduled_posts").insert({
+          screen_name: acct.value, text: text, scheduled_at: planDate(p).toISOString(),
+        });
+        if (error) { out.err("予約エラー: " + error.message); sd.disabled = false; return; }
+        sd.textContent = "予約済✓";
+      };
+      acts.appendChild(sd);
+      const a = document.createElement("a"); a.className = "mini"; a.textContent = "Xで投稿→";
+      a.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(text); a.target = "_blank";
+      acts.appendChild(a);
+    }
+  }
+};
+
+/* ---- 09 推移記録 ---- */
+BUILDERS.followers = (el) => {
+  const METRICS = { X: ["フォロワー","インプ(日)"], Instagram: ["フォロワー","リーチ(日)"] };
+  head(el, "フォロワー推移の記録",
+    `毎日の数字を入れるだけで増減・ペース・目標到達予測を自動計算。${S.sns}の数字だけ表示(右上で切替)。同日は上書き。`,
+    [`${S.sns}のアプリでフォロワー数を見る`,"数字を入れて「記録」","目標を設定すると「いつ届くか」も予測"]);
+
+  fld(el, "記録する指標");
+  const metric = chipsSingle(el, METRICS[S.sns], METRICS[S.sns][0]);
+  fld(el, "今日の数値");
+  const rowEl = document.createElement("div"); rowEl.style.cssText = "display:flex;gap:10px"; el.appendChild(rowEl);
+  const num = document.createElement("input"); num.type = "number"; num.placeholder = "1234"; rowEl.appendChild(num);
+  const rec = document.createElement("button"); rec.className = "mini primary"; rec.style.flex = "0 0 80px"; rec.textContent = "記録"; rowEl.appendChild(rec);
+  const msg = document.createElement("div"); msg.className = "okmsg"; el.appendChild(msg);
+  const statsEl = document.createElement("div"); el.appendChild(statsEl);
+  const goalEl = document.createElement("div"); el.appendChild(goalEl);
+  const chartEl = document.createElement("div"); el.appendChild(chartEl);
+  const aiEl = document.createElement("div"); el.appendChild(aiEl);
+  const histEl = document.createElement("div"); el.appendChild(histEl);
+
+  let records = [], goals = {};
+  const key = (m) => S.sns + ":" + m;
+  const fmtJP = (d) => parseInt(d.slice(5,7)) + "/" + parseInt(d.slice(8,10));
+
+  (async () => {
+    records = await kvGet("followers", []);
+    goals = await kvGet("goals", {});
+    drawAll();
+  })();
+
+  rec.onclick = async () => {
+    const n = parseInt(num.value); if (isNaN(n)) return;
+    const today = new Date().toISOString().slice(0, 10);
+    records = records.filter((r) => !(r.date === today && r.platform === key(metric.value)));
+    records.push({ date: today, platform: key(metric.value), count: n });
+    records.sort((a,b)=>a.date.localeCompare(b.date));
+    await kvSet("followers", records);
+    num.value = ""; msg.textContent = fmtJP(today) + " の" + metric.value + "を " + n.toLocaleString() + " で記録した";
+    setTimeout(()=>msg.textContent="",2500);
+    drawAll();
+  };
+
+  function fSeries() { return records.filter((r)=>r.platform===key("フォロワー")).sort((a,b)=>a.date.localeCompare(b.date)); }
+
+  function drawAll() { drawStats(); drawGoal(); drawChart(); drawAI(); drawHist(); }
+
+  function calcStats() {
+    const fs = fSeries(); if (!fs.length) return null;
+    const last = fs[fs.length-1];
+    const prev = fs.length>1 ? fs[fs.length-2] : null;
+    const since = (days) => {
+      const cutoff = new Date(Date.now()-days*86400000).toISOString().slice(0,10);
+      const base = fs.filter((r)=>r.date<=cutoff).pop() || fs[0];
+      if (base.date === last.date) return null;
+      const dd = Math.max(1, Math.round((new Date(last.date)-new Date(base.date))/86400000));
+      return { diff: last.count-base.count, perDay: (last.count-base.count)/dd };
+    };
+    return { last, prevDiff: prev ? last.count-prev.count : null, w: since(7), m: since(30) };
+  }
+  const sign = (n) => (n>=0?"+":"")+Math.round(n).toLocaleString();
+  const dc = (n) => n>=0 ? "var(--ok)" : "var(--bad)";
+
+  function drawStats() {
+    const st = calcStats(); statsEl.innerHTML = "";
+    if (!st) return;
+    const w = document.createElement("div"); w.style.cssText = "display:flex;gap:8px;margin-top:18px"; statsEl.appendChild(w);
+    [["NOW", st.last.count.toLocaleString(), st.prevDiff!==null?"前回 "+sign(st.prevDiff):"", st.prevDiff!==null?dc(st.prevDiff):""],
+     ["7 DAYS", st.w?sign(st.w.diff):"—", st.w?(st.w.perDay>=0?"+":"")+st.w.perDay.toFixed(1)+"/日":"記録待ち", st.w?dc(st.w.diff):""],
+     ["30 DAYS", st.m?sign(st.m.diff):"—", st.m?(st.m.perDay>=0?"+":"")+st.m.perDay.toFixed(1)+"/日":"記録待ち", st.m?dc(st.m.diff):""]
+    ].forEach(([l,v,s,c]) => {
+      const d = document.createElement("div"); d.className = "stat";
+      d.innerHTML = '<div class="l">'+l+'</div><div class="v">'+esc(v)+'</div>'+(s?'<div class="s" style="color:'+(c||"var(--muted)")+'">'+esc(s)+"</div>":"");
+      w.appendChild(d);
+    });
+  }
+
+  function drawGoal() {
+    goalEl.innerHTML = "";
+    fld(goalEl, "目標フォロワー数");
+    const goal = goals[S.sns];
+    const st = calcStats();
+    if (goal) {
+      let fc = null;
+      if (st && st.w && st.w.perDay > 0) {
+        const remain = goal - st.last.count;
+        if (remain <= 0) fc = { done: true };
+        else { const days = Math.ceil(remain/st.w.perDay); const d = new Date(Date.now()+days*86400000);
+          fc = { days, date: (d.getMonth()+1)+"/"+d.getDate(), remain }; }
+      }
+      const d = document.createElement("div"); d.className = "row"; d.style.borderLeft = "3px solid var(--ok)";
+      d.innerHTML = '<b style="color:var(--ok);font-family:var(--mono)">' + goal.toLocaleString() + "</b> " +
+        (fc ? (fc.done ? "— 達成済み🎉" : "まで残り <b>"+fc.remain.toLocaleString()+"</b>。今のペースなら <b style='color:var(--accent2)'>約"+fc.days+"日後("+fc.date+")</b> に到達")
+            : "— 7日分くらい記録が貯まると予測が出る") +
+        ' <button class="mini" style="float:right;flex:none;padding:4px 8px;font-size:11px">変更</button>';
+      d.querySelector("button").onclick = async () => { delete goals[S.sns]; await kvSet("goals", goals); drawGoal(); drawChart(); };
+      goalEl.appendChild(d);
+    } else {
+      const w = document.createElement("div"); w.style.cssText = "display:flex;gap:10px"; goalEl.appendChild(w);
+      const gi = document.createElement("input"); gi.type = "number"; gi.placeholder = "例: 1000"; w.appendChild(gi);
+      const gb = document.createElement("button"); gb.className = "mini cyan"; gb.style.flex = "0 0 80px"; gb.textContent = "設定"; w.appendChild(gb);
+      gb.onclick = async () => { const n = parseInt(gi.value); if (!n) return; goals[S.sns] = n; await kvSet("goals", goals); drawGoal(); drawChart(); };
+    }
+  }
+
+  function drawChart() {
+    chartEl.innerHTML = "";
+    const pts = fSeries(); if (pts.length < 2) return;
+    const W=340,H=190,PL=46,PR=12,PT=14,PB=26;
+    const goal = goals[S.sns];
+    const mn = Math.min(...pts.map((r)=>r.count)), mx = Math.max(...pts.map((r)=>r.count));
+    const pad = Math.max(1, Math.round((mx-mn)*.1));
+    const lo = mn-pad, hi = mx+pad, sp = hi-lo||1;
+    const x = (i) => PL + (i/(pts.length-1))*(W-PL-PR);
+    const y = (c) => PT + (1-(c-lo)/sp)*(H-PT-PB);
+    const fmtV = (v) => v>=10000 ? (v/10000).toFixed(1)+"万" : v.toLocaleString();
+    let svg = '<div class="fld" style="font-size:10px;font-weight:800;letter-spacing:.2em;color:var(--accent2);font-family:var(--mono);margin:16px 0 8px">FOLLOWER GRAPH</div>' +
+      '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;background:var(--surface2);border-radius:12px;border:1px solid var(--border)">';
+    [lo, lo+sp/2, hi].map(Math.round).forEach((v) => {
+      svg += '<line x1="'+PL+'" x2="'+(W-PR)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#1D2A47" stroke-dasharray="3 4"/>' +
+        '<text x="'+(PL-6)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="#7E8BA8" font-family="Menlo">'+fmtV(v)+"</text>";
+    });
+    if (goal && goal>=lo && goal<=hi) {
+      svg += '<line x1="'+PL+'" x2="'+(W-PR)+'" y1="'+y(goal)+'" y2="'+y(goal)+'" stroke="#3DFFA8" stroke-width="1.5" stroke-dasharray="5 4"/>' +
+        '<text x="'+(W-PR)+'" y="'+(y(goal)-4)+'" text-anchor="end" font-size="9.5" fill="#3DFFA8" font-weight="700">目標 '+goal.toLocaleString()+"</text>";
+    }
+    const line = pts.map((r,i)=>(i?"L":"M")+x(i)+","+y(r.count)).join(" ");
+    svg += '<path d="'+line+' L'+x(pts.length-1)+','+(H-PB)+' L'+PL+','+(H-PB)+' Z" fill="rgba(255,46,126,.1)"/>' +
+      '<path d="'+line+'" fill="none" stroke="#FF2E7E" stroke-width="2.5" stroke-linejoin="round"/>';
+    const step = Math.max(1, Math.ceil(pts.length/5));
+    pts.forEach((r,i) => {
+      svg += '<circle cx="'+x(i)+'" cy="'+y(r.count)+'" r="3.5" fill="#04060C" stroke="#FF2E7E" stroke-width="2"/>';
+      if (i%step===0 || i===pts.length-1)
+        svg += '<text x="'+x(i)+'" y="'+(H-8)+'" text-anchor="middle" font-size="9.5" fill="#7E8BA8" font-family="Menlo">'+fmtJP(r.date)+"</text>";
+    });
+    chartEl.innerHTML = svg + "</svg>";
+  }
+
+  function drawAI() {
+    aiEl.innerHTML = "";
+    const fs = fSeries(); if (fs.length < 3) return;
+    const b = document.createElement("button"); b.className = "btn btn-ghost"; b.textContent = "AIに推移を分析させる"; aiEl.appendChild(b);
+    const out = outArea(aiEl);
+    b.onclick = () => runAI(b, out, () =>
+      `${S.sns}アカウント(金沢・片町のシーシャバー)のフォロワー推移:\n${fs.map((r)=>r.date+": "+r.count).join("\n")}\n目標: ${goals[S.sns]||"未設定"}\n\nこのデータから日本語で簡潔に:\n■伸びの評価(加速中/横ばい/鈍化+理由)\n■原因の仮説2つ\n■今週の打ち手3つ(${S.sns}の機能を使った具体策)\n前置き不要。`);
+  }
+
+  function drawHist() {
+    histEl.innerHTML = "";
+    const sr = records.filter((r)=>r.platform.startsWith(S.sns+":"));
+    if (!sr.length) { histEl.innerHTML = '<div class="muted" style="text-align:center;margin-top:20px">まだ記録なし。今日の数字から始める。</div>'; return; }
+    fld(histEl, "記録履歴(最新10件)");
+    sr.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10).forEach((r) => {
+      const d = document.createElement("div");
+      d.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:9px 4px;border-bottom:1px solid var(--border);font-size:13.5px";
+      d.innerHTML = '<span class="muted" style="width:48px;font-family:var(--mono)">'+fmtJP(r.date)+"</span>" +
+        '<span class="muted" style="flex:1">'+esc(r.platform.split(":")[1])+"</span>" +
+        '<b style="margin-right:12px;font-family:var(--mono)">'+r.count.toLocaleString()+"</b>" +
+        '<button style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer">×</button>';
+      d.querySelector("button").onclick = async () => {
+        records = records.filter((x)=>!(x.date===r.date&&x.platform===r.platform));
+        await kvSet("followers", records); drawAll();
+      };
+      histEl.appendChild(d);
+    });
+  }
+};
+
+/* ---- 10 週報 ---- */
+BUILDERS.report = (el) => {
+  head(el, "週次AIレポート",
+    "推移記録のフォロワーデータ(直近1週間)を自動で読み込み、今週の投稿と突き合わせて週報を作る。",
+    ["今週投稿した内容を貼る(数字も分かれば)","「週報を作る」を押す","総評・因果の仮説・来週のアクション3つが出る"]);
+  const linkEl = document.createElement("div"); linkEl.className = "row"; linkEl.style.fontFamily = "var(--mono)"; linkEl.style.fontSize = "12.5px"; el.appendChild(linkEl);
+  let fdata = [];
+  (async () => {
+    const recs = await kvGet("followers", []);
+    const cutoff = new Date(Date.now()-8*86400000).toISOString().slice(0,10);
+    fdata = recs.filter((r)=>r.platform===S.sns+":フォロワー" && r.date>=cutoff).sort((a,b)=>a.date.localeCompare(b.date));
+    linkEl.style.color = fdata.length ? "var(--ok)" : "var(--muted)";
+    linkEl.textContent = fdata.length ? "DATA LINKED ✓ 直近のフォロワー記録 "+fdata.length+"件を自動で使う" : "フォロワー記録なし — 「推移記録」で貯めると精度UP";
+  })();
+  fld(el, "今週投稿した内容(いいね数等も分かれば)");
+  const posts = ta(el, 8, "月: 新フレーバー告知(いいね12)\n水: 豆知識スレッド(いいね85・インプ1.2万)");
+  const b = runBtn(el, "週報を作る");
+  const out = outArea(el);
+  b.onclick = () => runAI(b, out, () =>
+    `金沢・片町のシーシャバーの${S.sns}アカウントの週次レポートを作れ。\n\nフォロワー推移(直近):\n${fdata.length?fdata.map((r)=>r.date+": "+r.count).join("\n"):"記録なし"}\n\n今週の投稿:\n${posts.value||"未入力(一般論で構成せよ)"}\n\n出力(日本語・前置き不要):\n■今週の総評(2行以内)\n■数字の動きと投稿の因果仮説\n■見えてきた勝ちパターン\n■来週のアクション3つ(曜日と投稿の型まで具体的に)`);
+};
+
+/* ---- 11 文体学習 ---- */
+BUILDERS.style = (el) => {
+  head(el, "文体学習(ゴーストライター化)",
+    "自分の過去投稿を食わせると口調プロファイルを保存。MODEを「自分の文体」にすると全機能の生成が自分の口調になる。",
+    ["自分の投稿を5〜10本貼る(多いほど精度UP)","「文体を学習する」を押す","MODEを「自分の文体」に切り替えて使う"]);
+  const body = document.createElement("div"); el.appendChild(body);
+  function draw() {
+    body.innerHTML = "";
+    if (S.profile) {
+      const d = document.createElement("div"); d.className = "row"; d.style.borderColor = "rgba(61,255,168,.35)";
+      d.innerHTML = '<div style="font-size:10px;font-weight:800;letter-spacing:.2em;color:var(--ok);font-family:var(--mono);margin-bottom:8px">PROFILE LOADED ✓</div><pre style="white-space:pre-wrap;margin:0;font-family:inherit;font-size:13.5px;line-height:1.7"></pre>';
+      d.querySelector("pre").textContent = S.profile;
+      body.appendChild(d);
+      const del = document.createElement("button"); del.className = "btn btn-ghost"; del.textContent = "削除して再学習する";
+      del.onclick = async () => { S.profile = ""; await kvSet("style_profile", ""); renderTop(); draw(); };
+      body.appendChild(del);
+    } else {
+      fld(body, "自分の過去投稿(5〜10本・「---」区切り推奨)");
+      const posts = ta(body, 10, "自分の投稿1\n---\n自分の投稿2");
+      const b = runBtn(body, "文体を学習する");
+      const out = outArea(body);
+      b.onclick = async () => {
+        if (!posts.value.trim()) return;
+        b.disabled = true; b.textContent = "学習中…";
+        try {
+          const t = await callAI(`以下は同一人物が書いたSNS投稿。この人の文体を完全に再現するためのプロファイルを作れ。\n\n${posts.value}\n\n出力(日本語・箇条書き・前置き不要):\n・一人称と読者への呼びかけ方\n・語尾の癖(です/ます・関西弁・言い切り等)\n・テンションと感情の出し方\n・絵文字/記号の使い方と頻度\n・改行と文の長さの癖\n・よく使う言い回し(実例5つ)\n・絶対に書かなそうな表現(NG例3つ)`);
+          S.profile = t; await kvSet("style_profile", t); renderTop(); draw();
+        } catch (e) { out.err(e.message); b.disabled = false; b.textContent = "文体を学習する"; }
+      };
+    }
+  }
+  draw();
+};
+
+/* ---- 12 予約管理 ---- */
+BUILDERS.schedule = (el) => {
+  head(el, "予約管理", "予約中の投稿の確認・編集・削除と履歴。新規予約はカレンダーの「予約に送る」か、ここから手動で。",
+    ["アカウント・日時・本文で予約","時間が来たらGASが自動投稿","エラーは理由付きで履歴に出る"]);
+  fld(el, "アカウント");
+  const acct = document.createElement("select"); el.appendChild(acct);
+  S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
+  fld(el, "投稿日時");
+  const when = document.createElement("input"); when.type = "datetime-local"; el.appendChild(when);
+  fld(el, "本文");
+  const text = ta(el, 5, "投稿する文面");
+  const cnt = document.createElement("div"); cnt.className = "count"; cnt.textContent = "0字"; el.appendChild(cnt);
+  text.addEventListener("input", () => { cnt.textContent = text.value.length + "字"; cnt.classList.toggle("over", text.value.length > 140); });
+  const save = runBtn(el, "予約する");
+  const cancel = document.createElement("button"); cancel.className = "btn btn-ghost hidden"; cancel.textContent = "編集をやめる"; el.appendChild(cancel);
+  const out = outArea(el);
+  const pendEl = document.createElement("div"); el.appendChild(pendEl);
+  const histEl = document.createElement("div"); el.appendChild(histEl);
+  let editingId = null;
+
+  function resetForm() { editingId = null; text.value = ""; when.value = ""; cnt.textContent = "0字"; save.textContent = "予約する"; cancel.classList.add("hidden"); }
+  cancel.onclick = resetForm;
+
+  save.onclick = async () => {
+    out.err("");
+    if (!acct.value || !when.value || !text.value.trim()) { out.err("全部入れて。"); return; }
+    save.disabled = true;
+    const rec = { screen_name: acct.value, scheduled_at: new Date(when.value).toISOString(), text: text.value.trim() };
+    const { error } = editingId
+      ? await sb.from("scheduled_posts").update(rec).eq("id", editingId)
+      : await sb.from("scheduled_posts").insert(rec);
+    save.disabled = false;
+    if (error) { out.err("保存エラー: " + error.message); return; }
+    resetForm(); load();
+  };
+
+  const fmtD = (iso) => { const d = new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+
+  async function load() {
+    const { data, error } = await sb.from("scheduled_posts").select("*").order("scheduled_at");
+    if (error) { out.err(error.message); return; }
+    const pending = data.filter((p)=>p.status==="pending");
+    const done = data.filter((p)=>p.status!=="pending").sort((a,b)=>(b.posted_at||b.scheduled_at).localeCompare(a.posted_at||a.scheduled_at)).slice(0,20);
+    pendEl.innerHTML = ""; fld(pendEl, "予約中");
+    if (!pending.length) pendEl.innerHTML += '<div class="muted">予約なし</div>';
+    pending.forEach((p) => {
+      const d = document.createElement("div"); d.className = "row";
+      d.innerHTML = '<div class="meta"><span class="pill time">'+fmtD(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span></div><pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
+        '<div class="acts"><button class="mini" data-a="e">編集</button><button class="mini" data-a="d">削除</button></div>';
+      d.querySelector("pre").textContent = p.text;
+      d.querySelector('[data-a="d"]').onclick = async () => { if (!confirm("削除する?")) return; await sb.from("scheduled_posts").delete().eq("id", p.id); load(); };
+      d.querySelector('[data-a="e"]').onclick = () => {
+        editingId = p.id; acct.value = p.screen_name; text.value = p.text;
+        const dt = new Date(p.scheduled_at); dt.setMinutes(dt.getMinutes()-dt.getTimezoneOffset());
+        when.value = dt.toISOString().slice(0,16); cnt.textContent = p.text.length+"字";
+        save.textContent = "更新する"; cancel.classList.remove("hidden"); window.scrollTo({top:0,behavior:"smooth"});
+      };
+      pendEl.appendChild(d);
+    });
+    histEl.innerHTML = ""; fld(histEl, "履歴(直近20件)");
+    if (!done.length) histEl.innerHTML += '<div class="muted">履歴なし</div>';
+    done.forEach((p) => {
+      const d = document.createElement("div"); d.className = "row";
+      d.innerHTML = '<div class="meta"><span class="pill time">'+fmtD(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+'</span><span class="pill st-'+p.status+'">'+(p.status==="posted"?"投稿済":"エラー")+"</span></div><pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>"+(p.error_msg?'<div class="err">'+esc(p.error_msg)+"</div>":"");
+      d.querySelector("pre").textContent = p.text;
+      histEl.appendChild(d);
+    });
+  }
+  load();
+};
+
+/* ---- 13 クライアント ---- */
+BUILDERS.clients = (el) => {
+  head(el, "クライアント管理", "連携済みアカウントの一覧。新規追加は認証リンクを相手に送って「許可」を押してもらうだけ。キーの受け渡し不要。",
+    ["「認証リンクをコピー」を押す","LINE等でクライアントに送る","相手が許可したら一覧に自動で出る(更新ボタン)"]);
+  const listEl = document.createElement("div"); el.appendChild(listEl);
+  async function draw() {
+    await loadClients();
+    listEl.innerHTML = "";
+    if (!S.clients.length) listEl.innerHTML = '<div class="muted">まだ登録なし。</div>';
+    S.clients.forEach((c) => {
+      const d = document.createElement("div"); d.className = "row";
+      d.innerHTML = '<div class="meta"><span class="pill acct">@'+esc(c.screen_name)+'</span><span class="pill st-'+c.status+'">'+(c.status==="active"?"連携中":"連携解除")+'</span></div><span class="muted">登録: '+new Date(c.created_at).toLocaleDateString("ja-JP")+"</span>";
+      listEl.appendChild(d);
+    });
+  }
+  draw();
+  const cp = document.createElement("button"); cp.className = "btn btn-ghost"; cp.textContent = "認証リンクをコピー(新規クライアント用)"; el.appendChild(cp);
+  const ok = document.createElement("div"); ok.className = "okmsg"; el.appendChild(ok);
+  cp.onclick = () => { navigator.clipboard.writeText(GAS_URL); ok.textContent = "コピーした。LINE等で送って。"; setTimeout(()=>ok.textContent="",2500); };
+  const rf = document.createElement("button"); rf.className = "btn btn-ghost"; rf.textContent = "一覧を更新"; el.appendChild(rf);
+  rf.onclick = draw;
+};
+</script>
+</body>
+</html>
