@@ -175,6 +175,7 @@ function defaultCfg() {
   return {
     useBiz: false, bizName: "", bizArea: "", bizType: "",
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
+    url: "", urlFreq: 20,
   };
 }
 
@@ -249,6 +250,13 @@ function sc() {
     (CFG.hook >= 70 ? "1行目で強烈に引き込み、続きを読まずにいられない出だしにする。"
      : CFG.hook >= 40 ? "1行目はそこそこ引きを作りつつ自然に。"
      : "1行目は誇張せず落ち着いた入りにする。");
+
+  /* 入れたいURL */
+  if (CFG.url.trim()) {
+    out += "\n\n【URL挿入】次のURLを投稿末尾に置く: " + CFG.url.trim() +
+      "。全投稿の約" + CFG.urlFreq + "%程度の頻度で入れ、毎回は入れない(告知・誘導したい投稿に絞る)。" +
+      "Xでは140字にURL分を含めて収める。";
+  }
 
   return out;
 }
@@ -532,6 +540,15 @@ BUILDERS.settings = (el) => {
   /* フック */
   sliderField(el, "冒頭フックの強さ", "hook", save);
 
+  /* 入れたいURL */
+  fld(el, "入れたいURL(任意)");
+  const uin = document.createElement("input"); uin.placeholder = "例: https://lin.ee/xxxx (LINE公式など)"; uin.value = CFG.url || "";
+  uin.oninput = () => { CFG.url = uin.value; save(); }; el.appendChild(uin);
+  const uhint = document.createElement("p"); uhint.className = "desc"; uhint.style.margin = "6px 0 0";
+  uhint.textContent = "予約サイト・LINE公式・プロフィールなどへの誘導URL。下の頻度で投稿末尾に挿入される。";
+  el.appendChild(uhint);
+  sliderField(el, "URLを入れる頻度", "urlFreq", save);
+
   const done = runBtn(el, "保存して全機能に反映");
   const okm = document.createElement("div"); okm.className = "okmsg"; el.appendChild(okm);
   done.onclick = async () => { await save(); okm.textContent = "保存した。全AI機能に反映される。"; setTimeout(()=>okm.textContent="",2500); };
@@ -810,27 +827,73 @@ BUILDERS.calendar = (el) => {
     }
     plan.forEach((p, i) => {
       const div = document.createElement("div"); div.className = "row";
-      const meta = '<div class="meta"><span class="pill time">' + esc(p.d) + "(" + esc(p.w||"") + ")</span>" +
-        (p.h ? '<span class="pill time">⏰ ' + esc(p.h) + "</span>" : "") +
+      const meta = document.createElement("div"); meta.className = "meta";
+      meta.innerHTML = '<span class="pill time">' + esc(p.d) + "(" + esc(p.w||"") + ")</span>" +
         (p.g ? '<span class="pill genre">' + esc(p.g) + "</span>" : "") +
-        '<span class="pill type">' + esc(p.y||"") + "</span></div>" +
-        '<div style="font-weight:700;margin-bottom:6px">' + esc(p.t||"") + "</div>";
-      div.innerHTML = meta;
+        '<span class="pill type">' + esc(p.y||"") + "</span>";
+      div.appendChild(meta);
+
+      /* 時刻編集(送る前にカーソルで) */
+      const timeRow = document.createElement("div");
+      timeRow.style.cssText = "display:flex;align-items:center;gap:8px;margin:6px 0";
+      const clock = document.createElement("span"); clock.textContent = "⏰"; timeRow.appendChild(clock);
+      const tIn = document.createElement("input"); tIn.type = "time"; tIn.value = (p.h||"21:00");
+      tIn.style.cssText = "flex:0 0 auto;width:auto;padding:6px 10px;font-family:var(--mono)";
+      tIn.onchange = () => { p.h = tIn.value; };
+      timeRow.appendChild(tIn);
+      div.appendChild(timeRow);
+
+      const theme = document.createElement("div"); theme.style.cssText = "font-weight:700;margin-bottom:6px"; theme.textContent = p.t||"";
+      div.appendChild(theme);
+
       const body = document.createElement("div"); div.appendChild(body);
       listEl.appendChild(div);
-      if (p.x) drawText(body, p, p.x);
-      else {
-        const b = document.createElement("button"); b.className = "mini cyan"; b.style.width = "100%"; b.textContent = "この日の投稿文を作る";
-        body.appendChild(b);
-        b.onclick = async () => {
-          b.disabled = true; b.textContent = "生成中…";
-          try {
-            const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${sc()}`);
-            body.innerHTML = ""; drawText(body, p, text.trim());
-          } catch (e) { b.disabled = false; b.textContent = "この日の投稿文を作る"; out.err(e.message); }
-        };
-      }
+
+      const renderBody = () => {
+        body.innerHTML = "";
+        if (p._text) { drawText(body, p, p._text); }
+        else {
+          const row = document.createElement("div"); row.className = "acts";
+          const b = document.createElement("button"); b.className = "mini cyan"; b.textContent = "投稿文を作る";
+          b.onclick = async () => { b.disabled = true; b.textContent = "生成中…"; await genOne(p); renderBody(); };
+          row.appendChild(b);
+          body.appendChild(row);
+        }
+      };
+
+      /* この日専用ツール: シャッフル(再生成) / 無料予想 */
+      const tools = document.createElement("div"); tools.className = "acts"; tools.style.marginTop = "8px";
+      const shuf = document.createElement("button"); shuf.className = "mini"; shuf.textContent = "🔀 シャッフル(作り直し)";
+      shuf.onclick = async () => { shuf.disabled = true; shuf.textContent = "再生成中…"; await genOne(p, true); shuf.disabled = false; shuf.textContent = "🔀 シャッフル(作り直し)"; renderBody(); };
+      tools.appendChild(shuf);
+      const yosou = document.createElement("button"); yosou.className = "mini cyan"; yosou.textContent = "🚤 無料予想";
+      yosou.onclick = async () => { yosou.disabled = true; yosou.textContent = "予想生成中…"; await genYosou(p); yosou.disabled = false; yosou.textContent = "🚤 無料予想"; renderBody(); };
+      tools.appendChild(yosou);
+      div.appendChild(tools);
+
+      renderBody();
     });
+  }
+
+  /* 通常の1投稿生成(shuffle=trueで毎回違う角度に) */
+  async function genOne(p, shuffle) {
+    try {
+      const variant = shuffle ? "\n※前回と違う切り口・フック・語り口で、新鮮な別パターンにすること。" : "";
+      const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${variant}${sc()}`);
+      p._text = text.trim();
+    } catch (e) { out.err(e.message); }
+  }
+
+  /* 無料予想生成(Web検索で当日レース+5点予想) */
+  async function genYosou(p) {
+    try {
+      const text = await callAI(
+        `今日(${p.d})の競艇(ボートレース)について、Web検索で当日開催の会場と注目レースを1つ調べ、その1レースの無料予想ポストを作れ。\n\n出力形式(これに厳密に従う・前置き禁止):\n1行目: 「明日の無料予想を1レース公開」または当日なら「本日の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【住之江12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\nルール:\n- 買い目は艇番1〜6の3連単フォーメーション風に5点\n- 検索で会場・締切時刻が取れたら反映、取れなければ開催中の主要会場で\n- 最後に小さく「※予想は参考まで。投資は自己責任で」を1行入れる\n- 140字に収まらなくてOK(スレッドや長文可)\n${sc()}`,
+        true /* useSearch */
+      );
+      p._text = text.trim();
+      p.t = p.t || "無料予想";
+    } catch (e) { out.err(e.message); }
   }
 
   function drawText(body, p, text) {
@@ -848,14 +911,14 @@ BUILDERS.calendar = (el) => {
         if (!acct.value) { out.err("クライアント未登録。先に認証リンクから登録して。"); return; }
         sd.disabled = true;
         const { error } = await sb.from("scheduled_posts").insert({
-          screen_name: acct.value, text: text, scheduled_at: planDate(p).toISOString(), status: "draft",
+          screen_name: acct.value, text: p._text, scheduled_at: planDate(p).toISOString(), status: "draft",
         });
         if (error) { out.err("送信エラー: " + error.message); sd.disabled = false; return; }
         sd.textContent = "送った✓";
       };
       acts.appendChild(sd);
       const a = document.createElement("a"); a.className = "mini"; a.textContent = "Xで投稿→";
-      a.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(text); a.target = "_blank";
+      a.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(p._text); a.target = "_blank";
       acts.appendChild(a);
     }
   }
@@ -1125,11 +1188,14 @@ BUILDERS.schedule = (el) => {
     resetForm(); load();
   };
 
-  const fmtD = (iso) => { const d = new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+  function hhmm(iso) { const d = new Date(iso); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
+  function fmtD(iso) { const d = new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+hhmm(iso); }
 
   function postRow(p, actions) {
     const d = document.createElement("div"); d.className = "row";
-    d.innerHTML = '<div class="meta"><span class="pill time">'+fmtD(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span></div><pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
+    d.innerHTML = '<div class="meta"><span class="pill time">'+hhmm(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span>" +
+      (p.media_url?'<span class="pill genre">🖼 画像</span>':"") + "</div>" +
+      "<pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
       '<div class="acts">' + actions.map((a,i)=>'<button class="mini '+(a.primary?'primary':'')+'" data-i="'+i+'">'+a.label+'</button>').join("") + '</div>';
     d.querySelector("pre").textContent = p.text;
     actions.forEach((a,i)=>{ d.querySelector('[data-i="'+i+'"]').onclick = a.fn; });
@@ -1146,10 +1212,32 @@ BUILDERS.schedule = (el) => {
   async function load() {
     const { data, error } = await sb.from("scheduled_posts").select("*").order("scheduled_at");
     if (error) { out.err(error.message); return; }
-    const drafts = data.filter((p)=>p.status==="draft");
-    const pending = data.filter((p)=>p.status==="pending");
+    const byTime = (a,b) => a.scheduled_at.localeCompare(b.scheduled_at);
+    const drafts = data.filter((p)=>p.status==="draft").sort(byTime);
+    const pending = data.filter((p)=>p.status==="pending").sort(byTime);
     const done = data.filter((p)=>p.status!=="pending"&&p.status!=="draft").sort((a,b)=>(b.posted_at||b.scheduled_at).localeCompare(a.posted_at||a.scheduled_at)).slice(0,20);
     pendEl.innerHTML = "";
+
+    /* 日付区切りヘッダーを挟みながらリスト描画 */
+    const WD = ["日","月","火","水","木","金","土"];
+    function dayLabel(iso) {
+      const d = new Date(iso);
+      return (d.getMonth()+1) + "/" + d.getDate() + "(" + WD[d.getDay()] + ")";
+    }
+    function renderList(host, items, makeActions) {
+      let lastDay = "";
+      items.forEach((p) => {
+        const dl = dayLabel(p.scheduled_at);
+        if (dl !== lastDay) {
+          lastDay = dl;
+          const hd = document.createElement("div");
+          hd.style.cssText = "font-family:var(--mono);font-weight:800;font-size:12px;color:var(--accent);letter-spacing:.1em;margin:14px 0 4px;padding-bottom:4px;border-bottom:1px solid var(--border)";
+          hd.textContent = "📅 " + dl;
+          host.appendChild(hd);
+        }
+        host.appendChild(postRow(p, makeActions(p)));
+      });
+    }
 
     /* 承認待ち */
     fld(pendEl, "承認待ち(" + drafts.length + "件) — GOで予約確定");
@@ -1169,24 +1257,20 @@ BUILDERS.schedule = (el) => {
       };
       bulkRow.appendChild(goAll); bulkRow.appendChild(delAll);
       pendEl.appendChild(bulkRow);
-      drafts.forEach((p) => {
-        pendEl.appendChild(postRow(p, [
-          { label: "GO", primary: true, fn: async () => { await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id); load(); } },
-          { label: "編集", fn: () => editPost(p) },
-          { label: "キャンセル", fn: async () => { await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
-        ]));
-      });
+      renderList(pendEl, drafts, (p) => [
+        { label: "GO", primary: true, fn: async () => { await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id); load(); } },
+        { label: "編集", fn: () => editPost(p) },
+        { label: "キャンセル", fn: async () => { await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
+      ]);
     }
 
     /* 予約確定 */
     fld(pendEl, "予約確定(" + pending.length + "件) — 時間が来たら自動投稿");
     if (!pending.length) pendEl.innerHTML += '<div class="muted">予約なし</div>';
-    pending.forEach((p) => {
-      pendEl.appendChild(postRow(p, [
-        { label: "編集", fn: () => editPost(p) },
-        { label: "予約キャンセル", fn: async () => { if (!confirm("この予約をキャンセルする?")) return; await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
-      ]));
-    });
+    renderList(pendEl, pending, (p) => [
+      { label: "編集", fn: () => editPost(p) },
+      { label: "予約キャンセル", fn: async () => { if (!confirm("この予約をキャンセルする?")) return; await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
+    ]);
     histEl.innerHTML = ""; fld(histEl, "履歴(直近20件)");
     if (!done.length) histEl.innerHTML += '<div class="muted">履歴なし</div>';
     done.forEach((p) => {
