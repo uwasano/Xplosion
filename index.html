@@ -83,6 +83,21 @@
   .snsbtn.on{background:linear-gradient(92deg,var(--accent),var(--violet));color:#fff;box-shadow:0 0 12px rgba(255,46,126,.45)}
   .modes{display:flex;align-items:center;gap:10px;margin-top:8px}
   .modes .lbl{font-size:9.5px;letter-spacing:.2em;color:var(--muted);font-family:var(--mono);flex-shrink:0}
+  .buzz-mode{position:relative;overflow:visible}
+  .buzz-on{
+    border-color:#FF6A00!important;
+    color:#fff!important;
+    background:linear-gradient(180deg,#FF2E7E,#FF6A00,#FFD000)!important;
+    background-size:100% 200%!important;
+    animation:buzzFlame .7s ease-in-out infinite alternate, buzzShift 1.2s linear infinite;
+    box-shadow:0 0 16px rgba(255,106,0,.7), 0 0 32px rgba(255,46,126,.5)!important;
+    text-shadow:0 0 6px rgba(255,255,255,.6);
+  }
+  @keyframes buzzFlame{
+    from{box-shadow:0 0 12px rgba(255,106,0,.6), 0 0 24px rgba(255,46,126,.4); transform:translateY(0) scale(1)}
+    to{box-shadow:0 0 22px rgba(255,160,0,.9), 0 0 44px rgba(255,46,126,.6); transform:translateY(-1px) scale(1.04)}
+  }
+  @keyframes buzzShift{ from{background-position:0 0} to{background-position:0 -200%} }
   .row{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px;font-size:13.5px;line-height:1.7}
   .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
   .pill{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 9px;border:1px solid}
@@ -232,7 +247,14 @@ function sc() {
   } else if (S.mode === "自分の文体" && S.profile) {
     out += "\n\n【文体指示】以下の文体プロファイルに完全に従い、本人が書いたとしか思えない文章にせよ:\n" + S.profile;
   } else if (S.mode === "バズ特化") {
-    out += "\n\n【文体指示】書き手の個性より拡散力を最優先。スクロールを止める1行目・具体的な数字・感情の起伏・続きを読ませる構成で、バズに全振りした文章にせよ。";
+    out += "\n\n【バズ最優先指示】拡散・保存・引用されることを最優先に、次の型を徹底せよ:\n" +
+      "・1行目は必ず「問いかけ / 逆張り(常識否定) / 具体的な数字 / 続きが気になる欠落」のどれかで作り、スクロールを止める\n" +
+      "・2行目以降は『共感 → 裏切り(意外な事実) → 気づき』の流れで展開し、最後まで読ませる\n" +
+      "・具体的な数字・固有名詞・体験談を入れてリアリティを出す\n" +
+      "・読者が『わかる』『保存したい』『誰かに言いたい』と感じる一言を必ず入れる\n" +
+      "・締めは言い切り or 問いかけでリプ・引用を誘発する\n" +
+      "・各文は短く、改行を多めにしてテンポよく\n" +
+      "・ただし誇大広告・断定的な効能・射幸心を過度に煽る表現は避け、品は保つ";
   }
 
   /* トーン */
@@ -346,10 +368,16 @@ function renderTop() {
   });
   $("modes").innerHTML = '<span class="lbl">MODE</span>';
   const wrap = document.createElement("div"); wrap.className = "chips";
+  const MODE_ICON = { "標準": "📝", "自分の文体": "🖋️", "バズ特化": "🔥" };
   ["標準","自分の文体","バズ特化"].forEach((m) => {
     const c = document.createElement("button");
-    c.className = "chip" + (S.mode === m ? " on cyan" : "");
-    c.textContent = m;
+    const on = S.mode === m;
+    c.className = "chip" + (on ? " on cyan" : "");
+    c.innerHTML = (MODE_ICON[m]||"") + " " + m;
+    if (m === "バズ特化") {
+      c.classList.add("buzz-mode");
+      if (on) c.classList.add("buzz-on");
+    }
     c.onclick = () => { S.mode = m; renderTop(); };
     wrap.appendChild(c);
   });
