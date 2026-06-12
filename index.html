@@ -492,6 +492,23 @@ async function runAI(btn, out, promptFn, useSearch) {
 /* ============ 汎用AIタブ(02-08) ============ */
 function aiTab(el, cfg) {
   head(el, cfg.title, cfg.desc, cfg.steps);
+
+  /* 対象アカウント選択(そのアカウントの設定で生成) */
+  let acctVal = S.activeAccount;
+  const actives = S.clients.filter((c)=>c.status==="active");
+  if (actives.length) {
+    fld(el, "対象アカウント");
+    const asel = document.createElement("select");
+    const od = document.createElement("option"); od.value = "_default_"; od.textContent = "共通設定(既定)"; asel.appendChild(od);
+    actives.forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; asel.appendChild(o); });
+    asel.value = S.activeAccount;
+    asel.onchange = () => { acctVal = asel.value; };
+    el.appendChild(asel);
+    const note = document.createElement("p"); note.className = "desc"; note.style.margin = "6px 0 0";
+    note.textContent = "選んだアカウントの業種・性格・文体に合わせて分析・生成する。";
+    el.appendChild(note);
+  }
+
   const refs = {};
   cfg.fields.forEach((f) => {
     fld(el, f.label);
@@ -502,11 +519,12 @@ function aiTab(el, cfg) {
   });
   const btn = runBtn(el, cfg.btn);
   const out = outArea(el);
-  btn.onclick = () => {
+  btn.onclick = async () => {
     const v = {};
     for (const k in refs) v[k] = refs[k].value !== undefined ? refs[k].value : (refs[k].values || refs[k].value);
     cfg.fields.forEach((f) => { if (f.type === "ta" || f.type === "in") v[f.key] = refs[f.key].value; });
     if (!cfg.validate(v)) { out.err("入力が足りん。"); return; }
+    await loadCfgFor(acctVal || "_default_"); // 選んだアカウントの設定を適用
     runAI(btn, out, () => cfg.prompt(v), cfg.useSearch);
   };
 }
@@ -777,9 +795,10 @@ BUILDERS.buzz = (el) => aiTab(el, {
   btn: "構造を抽出する",
   validate: (v) => v.post.trim(),
   prompt: (v) => {
+    const bizFor = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() + "向け" : "この事業向け";
     const tail = S.sns === "X"
-      ? "■バズ要因トップ3(Xアルゴ観点:リプ誘発・引用されやすさ・滞在時間も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレでシーシャバー向けに書いた例文1本(140字以内)"
-      : "■バズ要因トップ3(IGアルゴ観点:保存・シェア・冒頭1行でのスワイプ阻止も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレでシーシャバー向けのキャプション例1本(ハッシュタグ5〜10個付き)";
+      ? "■バズ要因トップ3(Xアルゴ観点:リプ誘発・引用されやすさ・滞在時間も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレで" + bizFor + "に書いた例文1本(140字以内)"
+      : "■バズ要因トップ3(IGアルゴ観点:保存・シェア・冒頭1行でのスワイプ阻止も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレで" + bizFor + "のキャプション例1本(ハッシュタグ5〜10個付き)";
     return `以下の${S.sns}の投稿がバズった理由を構造分解せよ。\n\n${v.post}\n\n出力形式(日本語・前置き不要):\n■構造分解(フック/共感/展開/オチ/CTA に分けて解説)\n${tail}${sc()}`;
   },
 });
