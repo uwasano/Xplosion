@@ -176,6 +176,7 @@ function defaultCfg() {
     useBiz: false, bizName: "", bizArea: "", bizType: "",
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
+    useHours: false, openTime: "19:00", closeTime: "02:00",
   };
 }
 
@@ -201,12 +202,18 @@ async function saveCfg() {
 
 /* 店舗情報の文を作る(オフor未入力なら空) */
 function bizClause() {
-  if (!CFG.useBiz) return "";
+  let extra = "";
+  if (CFG.useHours) {
+    extra = "営業時間は" + CFG.openTime + "〜" + CFG.closeTime + "。これと矛盾する時間を本文に書かない。";
+  }
+  if (!CFG.useBiz) return extra ? "\n\n【店舗情報】" + extra : "";
   const parts = [];
   if (CFG.bizArea) parts.push(CFG.bizArea);
   if (CFG.bizType) parts.push(CFG.bizType);
   if (CFG.bizName) parts.push("「" + CFG.bizName + "」");
-  return parts.length ? "対象の事業: " + parts.join("・") + "。" : "";
+  let s = parts.length ? "対象の事業: " + parts.join("・") + "。" : "";
+  if (extra) s += extra;
+  return s;
 }
 
 /* 文体・絵文字・ワード・フックの指示をまとめて返す */
@@ -537,6 +544,41 @@ BUILDERS.settings = (el) => {
   }
   drawBizToggle(); drawBizBox();
 
+  /* 営業時間(任意) */
+  fld(el, "営業時間をAIに教える(任意)");
+  const hrNote = document.createElement("p"); hrNote.className = "desc"; hrNote.style.margin = "0 0 8px";
+  hrNote.textContent = "「使う」にすると、ここで選んだ営業時間に矛盾する時間を本文に書かなくなる。間違った営業時間が入るのを防げる。";
+  el.appendChild(hrNote);
+  const hrToggle = document.createElement("div"); hrToggle.className = "chips"; el.appendChild(hrToggle);
+  const hrBox = document.createElement("div"); el.appendChild(hrBox);
+  function drawHrToggle() {
+    hrToggle.innerHTML = "";
+    ["使う","使わない"].forEach((o) => {
+      const on = (o === "使う") === CFG.useHours;
+      const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = o;
+      b.onclick = () => { CFG.useHours = (o === "使う"); save(); drawHrToggle(); drawHrBox(); };
+      hrToggle.appendChild(b);
+    });
+  }
+  function drawHrBox() {
+    hrBox.innerHTML = "";
+    if (!CFG.useHours) return;
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;align-items:center;gap:10px;margin-top:10px";
+    const o = document.createElement("input"); o.type = "time"; o.value = CFG.openTime;
+    o.style.cssText = "flex:0 0 auto;width:auto;padding:8px 10px;font-family:var(--mono)";
+    o.onchange = () => { CFG.openTime = o.value; save(); };
+    const tilde = document.createElement("span"); tilde.textContent = "〜"; tilde.style.color = "var(--muted)";
+    const c = document.createElement("input"); c.type = "time"; c.value = CFG.closeTime;
+    c.style.cssText = "flex:0 0 auto;width:auto;padding:8px 10px;font-family:var(--mono)";
+    c.onchange = () => { CFG.closeTime = c.value; save(); };
+    row.appendChild(o); row.appendChild(tilde); row.appendChild(c); hrBox.appendChild(row);
+    const hint = document.createElement("p"); hint.className = "desc"; hint.style.margin = "6px 0 0";
+    hint.textContent = "深夜営業で翌朝までなら、閉店を 02:00 など翌日時刻で選べばOK。";
+    hrBox.appendChild(hint);
+  }
+  drawHrToggle(); drawHrBox();
+
   /* 性格 */
   fld(el, "性格・キャラ");
   const toneState = chipsSingle(el, ["丁寧","カジュアル","専門的","フランク","強め"], CFG.tone);
@@ -808,7 +850,7 @@ BUILDERS.calendar = (el) => {
   gbtn.onclick = () => { const g = gin.value.trim(); if (!g || S.genres.includes(g)) return; S.genres.push(g); selected.push(g); gin.value = ""; kvSet("genres", S.genres); drawGenres(); };
 
   fld(el, "期間");
-  const span = chipsSingle(el, ["週間","月間"], "週間");
+  const span = chipsSingle(el, ["週間","15日","月間"], "週間");
   fld(el, "予約送信先アカウント(Xのみ)");
   const acct = document.createElement("select"); el.appendChild(acct);
   S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
@@ -823,6 +865,56 @@ BUILDERS.calendar = (el) => {
 
   const gen = runBtn(el, "カレンダーを生成する");
   const out = outArea(el);
+
+  /* 特定日に1本だけ追加(空いた日の穴埋め用) */
+  const addFld = document.createElement("div");
+  addFld.style.cssText = "margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px";
+  addFld.innerHTML = '<div style="font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin-bottom:10px">▸ 特定の日に1本だけ追加</div>';
+  const addDay = document.createElement("input"); addDay.type = "datetime-local";
+  addDay.style.marginBottom = "8px"; addFld.appendChild(addDay);
+  const addTheme = document.createElement("input"); addTheme.placeholder = "テーマ(任意・例: 週末営業の告知)";
+  addTheme.style.marginBottom = "8px"; addFld.appendChild(addTheme);
+  const addBtn = document.createElement("button"); addBtn.className = "mini cyan"; addBtn.style.width = "100%"; addBtn.textContent = "この日の投稿を1本作る";
+  addFld.appendChild(addBtn);
+  const addOut = document.createElement("div"); addFld.appendChild(addOut);
+  el.appendChild(addFld);
+
+  addBtn.onclick = async () => {
+    if (!addDay.value) { return; }
+    addBtn.disabled = true; addBtn.textContent = "生成中…";
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    const dt = new Date(addDay.value);
+    const WD = ["日","月","火","水","木","金","土"];
+    const p = {
+      d: (dt.getMonth()+1) + "/" + dt.getDate(), w: WD[dt.getDay()],
+      h: String(dt.getHours()).padStart(2,"0") + ":" + String(dt.getMinutes()).padStart(2,"0"),
+      g: selected[0] || "", t: addTheme.value || "おまかせ", y: "単発",
+    };
+    try {
+      await genOne(p);
+      addOut.innerHTML = "";
+      const box = document.createElement("div");
+      box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px";
+      box.textContent = p._text; addOut.appendChild(box);
+      const acts = document.createElement("div"); acts.className = "acts"; addOut.appendChild(acts);
+      const re = document.createElement("button"); re.className = "mini"; re.textContent = "🔀 作り直し";
+      re.onclick = async () => { re.disabled = true; await genOne(p, true); box.textContent = p._text; re.disabled = false; };
+      acts.appendChild(re);
+      const send = document.createElement("button"); send.className = "mini primary"; send.textContent = "予約管理に送る";
+      send.onclick = async () => {
+        if (!acct.value) { addOut.innerHTML += '<div class="err">クライアント未登録</div>'; return; }
+        send.disabled = true;
+        const { error } = await sb.from("scheduled_posts").insert({
+          screen_name: acct.value, text: p._text, scheduled_at: dt.toISOString(), status: "draft",
+        });
+        if (error) { send.disabled = false; addOut.innerHTML += '<div class="err">'+error.message+'</div>'; return; }
+        send.textContent = "送った✓";
+      };
+      acts.appendChild(send);
+    } catch (e) { addOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    addBtn.disabled = false; addBtn.textContent = "この日の投稿を1本作る";
+  };
+
   const listEl = document.createElement("div"); el.appendChild(listEl);
   let lastPlan = null;
 
@@ -840,7 +932,7 @@ BUILDERS.calendar = (el) => {
     /* 送信先アカウント専用の生成設定を適用(なければ共通) */
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
     const today = new Date();
-    const days = span.value === "週間" ? 7 : 30;
+    const days = span.value === "週間" ? 7 : span.value === "15日" ? 15 : 30;
     const fmt = S.sns === "X" ? "140字以内" : "キャプション形式・ハッシュタグ5個";
     const timeRule = S.sns === "X"
       ? "Xの伸びやすい時間帯(通勤7-8時/昼12時/夜21-23時/深夜0-1時)を踏まえ、内容と客層に合う時間。夜営業の店の告知は夜〜深夜が強い"
@@ -858,9 +950,21 @@ BUILDERS.calendar = (el) => {
         if (!p.g) return true;
         return selected.some((g) => p.g === g || p.g.includes(g) || g.includes(p.g));
       });
+      /* 週間は完成文(x)をそのまま反映 */
+      filtered.forEach((p) => { if (p.x) p._text = p.x; });
       const dropped = parsed.length - filtered.length;
       renderPlan(filtered);
       if (dropped > 0) out.err("選択外ジャンルの投稿を" + dropped + "件除外した。再生成すると枠が埋まる。");
+
+      /* 週間以外(15日・月間)は枠だけ来てるので、続けて全日分の本文を自動生成 */
+      if (span.value !== "週間") {
+        gen.textContent = "本文を生成中… 0/" + filtered.length;
+        for (let i = 0; i < filtered.length; i++) {
+          await genOne(filtered[i]);
+          gen.textContent = "本文を生成中… " + (i+1) + "/" + filtered.length;
+          renderPlan(filtered);
+        }
+      }
     } catch (e) { out.err("生成に失敗。もう一度押して。(" + e.message.slice(0, 80) + ")"); }
     gen.disabled = false; gen.textContent = "カレンダーを生成する";
   };
@@ -922,7 +1026,7 @@ BUILDERS.calendar = (el) => {
         if (p._text) { drawText(body, p, p._text); }
         else {
           const hint = document.createElement("div"); hint.className = "muted"; hint.style.fontSize = "12.5px";
-          hint.textContent = "↓ シャッフルで投稿文を作る";
+          hint.textContent = "(本文は生成中…/シャッフルで作り直せる)";
           body.appendChild(hint);
         }
       };
