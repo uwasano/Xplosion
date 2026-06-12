@@ -175,7 +175,7 @@ function defaultCfg() {
   return {
     useBiz: false, bizName: "", bizArea: "", bizType: "",
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
-    url: "", urlFreq: 20, ngWords: "",
+    url: "", urlFreq: 20, ngWords: "", origProfile: "",
   };
 }
 
@@ -215,10 +215,14 @@ function sc() {
   const biz = bizClause();
   if (biz) out += "\n\n" + biz;
 
-  if (S.mode === "自分の文体" && S.profile)
+  /* オリジナル文体(このアカウント専用に学習済みなら最優先) */
+  if (CFG.origProfile && CFG.origProfile.trim()) {
+    out += "\n\n【文体指示・最優先】以下はこのアカウントの本人の文体プロファイル。これに完全に従い、本人が書いたとしか思えない文章にせよ:\n" + CFG.origProfile;
+  } else if (S.mode === "自分の文体" && S.profile) {
     out += "\n\n【文体指示】以下の文体プロファイルに完全に従い、本人が書いたとしか思えない文章にせよ:\n" + S.profile;
-  else if (S.mode === "バズ特化")
+  } else if (S.mode === "バズ特化") {
     out += "\n\n【文体指示】書き手の個性より拡散力を最優先。スクロールを止める1行目・具体的な数字・感情の起伏・続きを読ませる構成で、バズに全振りした文章にせよ。";
+  }
 
   /* トーン */
   const toneMap = {
@@ -562,6 +566,43 @@ BUILDERS.settings = (el) => {
   nghint.textContent = "ここに入れた語はAIが投稿で使わなくなる。NGな表現・薬機法/景表法的にマズい言葉・競合店名などに。";
   el.appendChild(nghint);
 
+  /* オリジナル文体 */
+  fld(el, "オリジナル文体(本人の文を3〜5本)");
+  const origNote = document.createElement("p"); origNote.className = "desc"; origNote.style.margin = "0 0 8px";
+  origNote.textContent = "本人(or クライアント)の過去投稿を3〜5本入れて「学習」を押すと、その人の口調・性格を覚えて、このアカウントの投稿が本人が書いたような文章になる。";
+  el.appendChild(origNote);
+
+  const origBox = document.createElement("div"); el.appendChild(origBox);
+  function drawOrig() {
+    origBox.innerHTML = "";
+    if (CFG.origProfile && CFG.origProfile.trim()) {
+      const d = document.createElement("div"); d.className = "row"; d.style.borderColor = "rgba(61,255,168,.35)";
+      d.innerHTML = '<div style="font-size:10px;font-weight:800;letter-spacing:.2em;color:var(--ok);font-family:var(--mono);margin-bottom:8px">文体 学習済み ✓</div><pre style="white-space:pre-wrap;margin:0;font-family:inherit;font-size:13px;line-height:1.7"></pre>';
+      d.querySelector("pre").textContent = CFG.origProfile;
+      origBox.appendChild(d);
+      const del = document.createElement("button"); del.className = "mini"; del.textContent = "削除して学習し直す";
+      del.style.marginTop = "8px";
+      del.onclick = async () => { CFG.origProfile = ""; await save(); drawOrig(); };
+      origBox.appendChild(del);
+    } else {
+      const ta2 = document.createElement("textarea"); ta2.rows = 8;
+      ta2.placeholder = "本人の投稿1\n---\n本人の投稿2\n---\n本人の投稿3"; origBox.appendChild(ta2);
+      const learn = document.createElement("button"); learn.className = "mini cyan"; learn.textContent = "この文体を学習する";
+      learn.style.marginTop = "8px"; learn.style.width = "100%";
+      const lerr = document.createElement("div"); lerr.className = "err";
+      learn.onclick = async () => {
+        if (!ta2.value.trim()) { lerr.textContent = "本人の文を入れて。"; return; }
+        learn.disabled = true; learn.textContent = "学習中…"; lerr.textContent = "";
+        try {
+          const prof = await callAI(`以下は同一人物が書いたSNS投稿。この人の文体・性格を完全に再現するためのプロファイルを作れ。\n\n${ta2.value}\n\n出力(日本語・箇条書き・前置き不要):\n・一人称と読者への呼びかけ方\n・語尾の癖(です/ます・関西弁・言い切り等)\n・性格とテンション(明るい/淡々/熱い等)と感情の出し方\n・絵文字/記号の使い方と頻度\n・改行と文の長さの癖\n・よく使う言い回し(実例5つ)\n・絶対に書かなそうな表現(NG例3つ)`);
+          CFG.origProfile = prof.trim(); await save(); drawOrig();
+        } catch (e) { lerr.textContent = e.message; learn.disabled = false; learn.textContent = "この文体を学習する"; }
+      };
+      origBox.appendChild(learn); origBox.appendChild(lerr);
+    }
+  }
+  drawOrig();
+
   const done = runBtn(el, "保存して全機能に反映");
   const okm = document.createElement("div"); okm.className = "okmsg"; el.appendChild(okm);
   done.onclick = async () => { await save(); okm.textContent = "保存した。全AI機能に反映される。"; setTimeout(()=>okm.textContent="",2500); };
@@ -762,8 +803,10 @@ BUILDERS.calendar = (el) => {
   const acct = document.createElement("select"); el.appendChild(acct);
   S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
   if (!acct.options.length) { const o=document.createElement("option"); o.textContent="(クライアント未登録)"; o.value=""; acct.appendChild(o); }
+  acct.value = S.activeAccount;
+  acct.onchange = async () => { await loadCfgFor(acct.value || "_default_"); if (lastPlan) renderPlan(lastPlan); };
   const acctHint = document.createElement("p"); acctHint.className = "desc"; acctHint.style.margin = "6px 0 0";
-  acctHint.textContent = "選んだアカウントの「生成設定」(性格・絵文字など)で文章が作られる。";
+  acctHint.textContent = "選んだアカウントの「生成設定」(性格・絵文字・無料予想の有無など)で文章が作られる。";
   el.appendChild(acctHint);
   fld(el, "店・事業の予定やネタ(任意)");
   const events = ta(el, 4, "例:\n6/20 DJイベント\n新フレーバー入荷\n新作ゲームのデモ完成間近");
@@ -771,6 +814,7 @@ BUILDERS.calendar = (el) => {
   const gen = runBtn(el, "カレンダーを生成する");
   const out = outArea(el);
   const listEl = document.createElement("div"); el.appendChild(listEl);
+  let lastPlan = null;
 
   function parseJSONArr(text) {
     let t = text.replace(/```json|```/g, "").trim();
@@ -821,6 +865,7 @@ BUILDERS.calendar = (el) => {
   }
 
   function renderPlan(plan) {
+    lastPlan = plan;
     listEl.innerHTML = "";
     if (S.sns === "X") {
       const bulk = document.createElement("button");
@@ -872,17 +917,23 @@ BUILDERS.calendar = (el) => {
         }
       };
 
+      /* p.h / p.t が変わった時に時刻欄・テーマ表示を同期 */
+      const syncMeta = () => {
+        tIn.value = p.h || "21:00";
+        theme.textContent = p.t || "";
+      };
+
       /* この日専用ツール: シャッフル(生成/作り直し) / 無料予想(競艇のみ) */
       const tools = document.createElement("div"); tools.className = "acts"; tools.style.marginTop = "8px";
       const shuf = document.createElement("button"); shuf.className = "mini cyan";
       shuf.textContent = p._text ? "🔀 シャッフル(作り直し)" : "✍ 投稿文を作る";
-      shuf.onclick = async () => { shuf.disabled = true; shuf.textContent = "生成中…"; await genOne(p, !!p._text); shuf.disabled = false; shuf.textContent = "🔀 シャッフル(作り直し)"; renderBody(); };
+      shuf.onclick = async () => { shuf.disabled = true; shuf.textContent = "生成中…"; await genOne(p, !!p._text); shuf.disabled = false; shuf.textContent = "🔀 シャッフル(作り直し)"; syncMeta(); renderBody(); };
       tools.appendChild(shuf);
-      /* 業種に「競艇」「ボート」が含まれる時だけ無料予想ボタンを出す */
-      const bizText = ((CFG.bizType||"") + (CFG.words||"") + S.genres.join(""));
-      if (/競艇|ボート|レース/.test(bizText)) {
+      /* 生成設定の「業種」に競艇/ボートが入ってる時だけ無料予想ボタンを出す */
+      const bizText = (CFG.bizType || "");
+      if (/競艇|ボートレース|ボート/.test(bizText)) {
         const yosou = document.createElement("button"); yosou.className = "mini"; yosou.textContent = "🚤 無料予想";
-        yosou.onclick = async () => { yosou.disabled = true; yosou.textContent = "予想生成中…"; await genYosou(p); yosou.disabled = false; yosou.textContent = "🚤 無料予想"; renderBody(); };
+        yosou.onclick = async () => { yosou.disabled = true; yosou.textContent = "予想生成中…"; await genYosou(p); yosou.disabled = false; yosou.textContent = "🚤 無料予想"; syncMeta(); renderBody(); };
         tools.appendChild(yosou);
       }
       div.appendChild(tools);
@@ -903,12 +954,31 @@ BUILDERS.calendar = (el) => {
   /* 無料予想生成(Web検索で当日レース+5点予想) */
   async function genYosou(p) {
     try {
-      const text = await callAI(
-        `今日(${p.d})の競艇(ボートレース)について、Web検索で当日開催の会場と注目レースを1つ調べ、その1レースの無料予想ポストを作れ。\n\n出力形式(これに厳密に従う・前置き禁止):\n1行目: 「明日の無料予想を1レース公開」または当日なら「本日の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【住之江12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\nルール:\n- 買い目は艇番1〜6の3連単フォーメーション風に5点\n- 検索で会場・締切時刻が取れたら反映、取れなければ開催中の主要会場で\n- 最後に小さく「※予想は参考まで。投資は自己責任で」を1行入れる\n- 140字に収まらなくてOK(スレッドや長文可)\n${sc()}`,
+      const raw = await callAI(
+        `今日(${p.d})の競艇(ボートレース)について、Web検索で当日開催の会場と注目レースを1つ調べ、その1レースの無料予想を作れ。\n\n必ず次のJSON形式のみで出力(マークダウン・前置き禁止):\n{"deadline":"HH:MM","post":"投稿本文"}\n\n- "deadline": 予想したレースの締切(発走)時刻を24時間表記で。検索で取れなければ妥当な時刻を推定\n- "post": 下記フォーマットの投稿本文(改行は\\nで表現)\n\n本文フォーマット:\n1行目「本日の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【住之江12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n最後に「※予想は参考まで。投資は自己責任で」\n\nルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。${sc()}`,
         true /* useSearch */
       );
-      p._text = text.trim();
-      p.t = p.t || "無料予想";
+      let parsed;
+      try {
+        let t = raw.replace(/```json|```/g, "").trim();
+        t = t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1);
+        parsed = JSON.parse(t);
+      } catch (e) { parsed = null; }
+
+      if (parsed && parsed.post) {
+        p._text = parsed.post.trim();
+        /* 締切時刻の10分前を投稿時刻に自動セット */
+        if (parsed.deadline && /^\d{1,2}:\d{2}$/.test(parsed.deadline)) {
+          const [hh, mm] = parsed.deadline.split(":").map(Number);
+          let total = hh * 60 + mm - 10; // 10分前
+          if (total < 0) total = hh * 60 + mm;
+          p.h = String(Math.floor(total/60)).padStart(2,"0") + ":" + String(total%60).padStart(2,"0");
+          p._deadline = parsed.deadline;
+        }
+      } else {
+        p._text = raw.trim(); // JSON失敗時はそのまま本文に
+      }
+      p.t = "無料予想" + (p._deadline ? "(締切" + p._deadline + ")" : "");
     } catch (e) { out.err(e.message); }
   }
 
