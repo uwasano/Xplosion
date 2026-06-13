@@ -1040,6 +1040,15 @@ BUILDERS.calendar = (el) => {
           p.d = (t.getMonth()+1) + "/" + t.getDate(); p.w = WD[t.getDay()];
         }
         yosouOut.innerHTML = "";
+        /* GASでレース取得に失敗した場合はエラーコードを出して終了 */
+        if (p._raceErr) {
+          const ebox = document.createElement("div");
+          ebox.style.cssText = "font-size:13px;line-height:1.7;white-space:pre-wrap;background:rgba(255,77,109,.08);border:1px solid var(--bad);border-radius:10px;padding:10px 12px;margin-top:10px;color:var(--bad)";
+          ebox.textContent = "⚠ " + p._raceErr + "\n\n(GASを最新コードで再デプロイしたか確認。それでも出る場合はこのコードを伝えて)";
+          yosouOut.appendChild(ebox);
+          btn.disabled = false; btn.textContent = orig;
+          return;
+        }
         const box = document.createElement("div");
         box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px";
         box.textContent = p._text; yosouOut.appendChild(box);
@@ -1047,7 +1056,7 @@ BUILDERS.calendar = (el) => {
         const setInfo = () => {
           if (p._postToday) info.textContent = "明日のレース予想を今夜 " + (p.h||"21:00") + " に告知投稿(締切" + (p._deadline||"要確認") + ")。";
           else if (p._deadline) info.textContent = "投稿時刻は締切" + p._deadline + "の30分前(" + (p.h||"?") + ")に自動設定。";
-          else info.textContent = "⚠ 締切時刻を検索で確認できなかった。下の欄に正しい締切を入れて(30分前に自動設定)。";
+          else info.textContent = "⚠ 締切時刻が取れなかった。下の欄に正しい締切を入れて(30分前に自動設定)。";
         };
         setInfo();
         if (!p._deadlineUnknown && !p._postToday) info.style.color = "var(--muted)";
@@ -1294,66 +1303,67 @@ BUILDERS.calendar = (el) => {
     } catch (e) { out.err(e.message); }
   }
 
-  /* 無料予想生成(Web検索で当日レース+5点予想) */
+  /* 無料予想生成: GASで実レース取得→Claudeで予想本文化 */
   async function genYosou(p, whenLabel) {
-    /* whenLabel: "本日" or "明日"。デフォルトは本日 */
     const label = whenLabel || "本日";
     const dateWord = label === "明日" ? "明日" : "本日";
     try {
+      const { data: sess } = await sb.auth.getSession();
+      if (!sess.session) throw new Error("ログインが切れた。リロードして。");
       const yyyymmdd = (() => {
         const base = new Date();
         if (label === "明日") base.setDate(base.getDate() + 1);
         return "" + base.getFullYear() + String(base.getMonth()+1).padStart(2,"0") + String(base.getDate()).padStart(2,"0");
       })();
-      const raw = await callAI(
-        `${dateWord}(${p.d})のボートレースの無料予想を1レース分作る。締切時刻は必ずBOATRACE公式サイトの実データを使う。\n\n` +
-        `【公式サイトの使い方】\n` +
-        `・会場コード(jcd): 桐生01 戸田02 江戸川03 平和島04 多摩川05 浜名湖06 蒲郡07 常滑08 津09 三国10 びわこ11 住之江12 尼崎13 鳴門14 丸亀15 児島16 宮島17 徳山18 下関19 若松20 芦屋21 福岡22 唐津23 大村24\n` +
-        `・${dateWord}のレース一覧URL: https://www.boatrace.jp/owpc/pc/race/raceindex?jcd=（会場コード2桁）&hd=${yyyymmdd}\n` +
-        `・各レースの出走表URL: https://www.boatrace.jp/owpc/pc/race/racelist?rno=（レース番号）&jcd=（会場コード2桁）&hd=${yyyymmdd}\n\n` +
-        `【手順・厳守】\n` +
-        `1. まず${dateWord}開催中の会場を1つ選ぶ。\n` +
-        `2. その会場・そのレース番号の出走表URL(上の形式)をWeb検索/閲覧し、ページに記載の「締切予定時刻」を正確に読み取る。\n` +
-        `3. 締切時刻は必ず公式ページに記載の実際の値を使う。推測・概算・捏造は禁止。常滑なら常滑の、選んだレース番号の正しい締切予定時刻を使うこと。\n` +
-        `4. どうしても正確な締切時刻が取れない場合のみ、deadlineを空文字 "" にする(嘘の時刻は入れない)。\n\n` +
-        `必ず次のJSON形式のみで出力(マークダウン・前置き禁止):\n{"venue":"会場名","race":"12R","deadline":"HH:MM","deadline_source":"読み取った公式URL","post":"投稿本文"}\n\n` +
-        `- "deadline": 公式ページで確認した締切予定時刻(24時間表記)。確認できなければ ""\n` +
-        `- "post": 下記フォーマットの投稿本文(改行は\\nで表現)\n\n` +
-        `本文フォーマット:\n1行目「${dateWord}の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【常滑12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\nルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。会場名とR番号は本文と venue/race で一致させる。注意書きや免責文(自己責任・参考まで等)は入れない。${sc()}`,
-        true /* useSearch */
-      );
-      let parsed;
-      try {
-        let t = raw.replace(/```json|```/g, "").trim();
-        t = t.slice(t.indexOf("{"), t.lastIndexOf("}") + 1);
-        parsed = JSON.parse(t);
-      } catch (e) { parsed = null; }
 
-      if (parsed && parsed.post) {
-        p._text = parsed.post.trim();
-        p._venue = (parsed.venue || "") + (parsed.race ? parsed.race : "");
-        p._deadlineUnknown = !(parsed.deadline && /^\d{1,2}:\d{2}$/.test(parsed.deadline));
-        if (label === "明日") {
-          /* 明日の予想は前夜(今日の21時)に告知として出す */
-          p.h = "21:00";
-          p._deadline = parsed.deadline || "";
-          p._postToday = true; // 投稿日は今日
-        } else if (!p._deadlineUnknown) {
-          /* 今日の予想は締切30分前 */
-          const [hh, mm] = parsed.deadline.split(":").map(Number);
-          let total = hh * 60 + mm - 30;
-          if (total < 0) total = hh * 60 + mm;
-          p.h = String(Math.floor(total/60)).padStart(2,"0") + ":" + String(total%60).padStart(2,"0");
-          p._deadline = parsed.deadline;
-        } else {
-          /* 締切が取れなかった: 時刻は手入力してもらう */
-          p._deadline = "";
-        }
-      } else {
-        p._text = raw.trim();
+      /* STEP A: GASで締切が近い実レースを取得 */
+      const gasRes = await fetch(GAS_URL, {
+        method: "POST", headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({
+          auth: sess.session.access_token, action: "pickBoatRace",
+          hd: yyyymmdd,
+          /* 今日=今から25〜120分後に締切が来るレース / 明日=朝〜昼の早いレース(時間窓を広く) */
+          minMinutes: label === "明日" ? -100000 : 25,
+          maxMinutes: label === "明日" ? 100000 : 120,
+        }),
+      });
+      const race = await gasRes.json();
+      if (race.error) {
+        /* GAS側のステップ別エラーをそのまま見せる */
+        p._text = "";
+        p._deadline = "";
+        p._deadlineUnknown = true;
+        p._raceErr = "レース取得失敗: " + race.error + (race.code?" (code:"+race.code+")":"") + (race.detail?" / "+race.detail:"") + (race.checked!==undefined?" / 確認"+race.checked+"件":"");
+        p.t = label + "の無料予想(取得失敗)";
+        return;
       }
-      p.t = label + "の無料予想" + (p._deadline ? "(締切" + p._deadline + ")" : "(締切要確認)");
-    } catch (e) { out.err(e.message); }
+
+      /* STEP B: 取得した実データでClaudeに予想本文を作らせる */
+      const prompt =
+        `次は${race.venue}${race.rno}R(締切${race.deadline})の実際の出走表・直前情報。これを根拠に無料予想の投稿本文を作れ。\n\n` +
+        `【出走表】\n${(race.racelistText||"").slice(0,3500)}\n\n【直前情報】\n${(race.beforeText||"").slice(0,2500)}\n\n` +
+        `出力は投稿本文のみ(JSON不要・前置き不要)。フォーマット:\n` +
+        `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
+        `ルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。実データを踏まえた現実的な買い目に。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`;
+      const text = await callAI(prompt, false);
+
+      p._text = text.trim();
+      p._venue = race.venue + race.rno + "R";
+      p._deadline = race.deadline || "";
+      p._deadlineUnknown = !(race.deadline && /^\d{1,2}:\d{2}$/.test(race.deadline));
+      p._raceErr = "";
+
+      if (label === "明日") {
+        /* 明日の予想は前夜(今日の21時)に告知 */
+        p.h = "21:00"; p._postToday = true;
+      } else if (!p._deadlineUnknown) {
+        /* 今日の予想は締切30分前 */
+        const [hh, mm] = race.deadline.split(":").map(Number);
+        let total = hh * 60 + mm - 30; if (total < 0) total = hh * 60 + mm;
+        p.h = String(Math.floor(total/60)).padStart(2,"0") + ":" + String(total%60).padStart(2,"0");
+      }
+      p.t = label + "の無料予想" + (p._deadline ? "(締切" + p._deadline + ")" : "");
+    } catch (e) { p._raceErr = String(e.message||e); out.err(e.message); }
   }
 
   function drawText(body, p, text) {
