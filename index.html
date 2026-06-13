@@ -454,6 +454,7 @@ const TABS = [
   { id:"multi", num:"05", label:"形式展開" },
   { id:"trend", num:"06", label:"トレンド" },
   { id:"reply", num:"07", label:"リプ生成" },
+  { id:"outreach", num:"07+", label:"🎯営業リプ" },
   { id:"remake", num:"08", label:"リメイク" },
   { id:"followers", num:"09", label:"推移記録" },
   { id:"report", num:"10", label:"週報" },
@@ -530,6 +531,7 @@ function runBtn(el, label) {
 function outArea(el) {
   const e = document.createElement("div"); el.appendChild(e);
   return {
+    box: e,
     err(m) { e.innerHTML = m ? '<div class="err">⚠ ' + esc(m) + "</div>" : ""; },
     show(text) {
       e.innerHTML = '<div class="out"><button class="copybtn">コピー</button><pre></pre></div>';
@@ -917,7 +919,7 @@ BUILDERS.trend = (el) => aiTab(el, {
   },
 });
 
-/* ---- 07 リプ生成 ---- */
+/* ---- 07 リプ生成(来たリプに返信) ---- */
 BUILDERS.reply = (el) => aiTab(el, {
   title: "返信コメントの一括生成",
   desc: `届いた${S.sns==="X"?"リプ":"コメント"}をまとめて貼ると、1件ずつ返信文を作る。ネガも燃えない返し方で。`,
@@ -935,6 +937,192 @@ BUILDERS.reply = (el) => aiTab(el, {
     return `${S.sns}の投稿に届いた以下のコメント・リプそれぞれに、「${v.tone}」なトーンで返信案を作れ。\n\n${v.comments}\n\nルール:\n- 各コメントを引用→その下に返信案\n- 短く自然に(50字前後)\n${extra}\n- 来店につながる一言は自然に混ぜられる場合のみ\n前置き不要。日本語。${sc()}`;
   },
 });
+
+/* ---- 07+ 営業リプ(大手に絡んで新規フォロワー獲得) ---- */
+BUILDERS.outreach = (el) => {
+  head(el, "🎯 営業リプ", "伸びてる投稿のURLを貼る→刺さるリプを生成→コピーして飛んで送信。リプ欄で目立って新規フォロワーを取る。", [
+    "Xで競艇・地域の伸びてる投稿を見つける",
+    "その投稿URLを貼る→リプ生成",
+    "コピー→アカに飛ぶ→リプ送信&フォロー",
+  ]);
+
+  /* 対象アカウント選択 */
+  let acctVal = S.activeAccount;
+  const actives = S.clients.filter((c)=>c.status==="active");
+  if (actives.length) {
+    fld(el, "自分のどのアカウントで営業する?");
+    const asel = document.createElement("select");
+    const od = document.createElement("option"); od.value="_default_"; od.textContent="共通設定(既定)"; asel.appendChild(od);
+    actives.forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; asel.appendChild(o); });
+    asel.value = S.activeAccount;
+    asel.onchange = () => { acctVal = asel.value; loadCfgSync(acctVal); };
+    el.appendChild(asel);
+  }
+
+  fld(el, "絡む投稿のURL");
+  const urlIn = inp(el, "https://x.com/ユーザー名/status/12345...");
+  fld(el, "投稿の本文(任意・貼るとより刺さるリプに)");
+  const bodyIn = ta(el, 4, "その投稿の本文をコピペ(空でもOK)");
+  fld(el, "トーン");
+  const toneRef = chipsSingle(el, ["フレンドリー","ノリ重視","専門家っぽく","お店の公式"], "フレンドリー");
+  /* ターゲット情報の表示エリア */
+  const targetBox = document.createElement("div");
+  targetBox.style.cssText = "margin:10px 0;display:none";
+  el.appendChild(targetBox);
+
+  /* 履歴警告エリア */
+  const warnBox = document.createElement("div");
+  warnBox.style.cssText = "margin:8px 0";
+  el.appendChild(warnBox);
+
+  /* URLからユーザー名を抜く */
+  function extractUser(url) {
+    const m = (url||"").match(/(?:x\.com|twitter\.com)\/([A-Za-z0-9_]+)/);
+    return m ? m[1] : "";
+  }
+
+  /* 入力URLが変わったらターゲット情報と履歴警告を更新 */
+  async function refreshTarget() {
+    const user = extractUser(urlIn.value);
+    if (!user) { targetBox.style.display="none"; warnBox.innerHTML=""; return; }
+    /* ターゲットのプロフィール&投稿リンクボタン */
+    targetBox.style.display = "block";
+    targetBox.innerHTML = "";
+    const lbl = document.createElement("p"); lbl.className="desc"; lbl.style.margin="0 0 6px";
+    lbl.textContent = "ターゲット: @" + user; targetBox.appendChild(lbl);
+    const row = document.createElement("div"); row.style.cssText="display:flex;gap:8px;flex-wrap:wrap";
+    const profBtn = document.createElement("a");
+    profBtn.href = "https://x.com/" + user; profBtn.target = "_blank";
+    profBtn.className = "btn"; profBtn.style.cssText="margin:0;text-decoration:none;flex:1;text-align:center;min-width:120px";
+    profBtn.textContent = "👤 @"+user+"に飛ぶ";
+    row.appendChild(profBtn);
+    if (/\/status\/\d+/.test(urlIn.value)) {
+      const twBtn = document.createElement("a");
+      twBtn.href = urlIn.value; twBtn.target = "_blank";
+      twBtn.className = "btn"; twBtn.style.cssText="margin:0;text-decoration:none;flex:1;text-align:center;min-width:120px";
+      twBtn.textContent = "💬 この投稿に飛ぶ";
+      row.appendChild(twBtn);
+    }
+    targetBox.appendChild(row);
+
+    /* 履歴チェック: この相手に最近絡んだか */
+    try {
+      const { data } = await sb.from("outreach_log")
+        .select("created_at,status")
+        .eq("account", acctVal).eq("target", user)
+        .order("created_at", { ascending:false }).limit(1);
+      warnBox.innerHTML = "";
+      if (data && data.length) {
+        const days = Math.floor((Date.now() - new Date(data[0].created_at).getTime()) / 86400000);
+        if (days <= 7) {
+          warnBox.innerHTML = '<div style="background:rgba(255,77,109,.12);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;font-size:13px;color:var(--bad)">🔴 最近絡んだばかり('+days+'日前)。連投は控えめに。</div>';
+        } else if (days <= 30) {
+          warnBox.innerHTML = '<div style="background:rgba(255,193,7,.12);border:1px solid #ffc107;border-radius:8px;padding:8px 10px;font-size:13px;color:#ffc107">🟡 前に絡んだことあり('+days+'日前)。絡んでOKやけど一応。</div>';
+        }
+      }
+    } catch(e) { /* テーブル未作成でも動く */ }
+  }
+  urlIn.oninput = refreshTarget;
+
+  const btn = runBtn(el, "🎯 刺さるリプを生成");
+  const out = outArea(el);
+
+  btn.onclick = async () => {
+    const url = urlIn.value.trim();
+    const user = extractUser(url);
+    if (!user) { out.err("投稿のURLを貼って(x.com/ユーザー名/status/... の形)"); return; }
+    await loadCfgFor(acctVal);
+    btn.disabled = true; const orig = btn.textContent; btn.textContent = "生成中…";
+    try {
+      const body = bodyIn.value.trim();
+      const tone = toneRef.value;
+      const prompt =
+        `${S.sns}で、フォロワーの多い他人の投稿に「営業リプ」を送り、リプ欄を見た人に興味を持たせて自分(@${user!==acctVal?acctVal:"自分"})のアカウントをフォローしてもらう狙いのリプ案を作る。\n\n` +
+        (body ? `絡む投稿の本文:\n${body}\n\n` : `絡む相手: @${user} の投稿(本文は不明なので、competition/地域系の一般的な内容と想定)\n\n`) +
+        `トーンは「${tone}」。リプ案を3つ作る。\n` +
+        `営業リプの鉄則:\n` +
+        `- 媚びない・宣伝くさくない。まず相手の投稿に共感や付加価値(豆知識・気の利いた一言)を返す\n` +
+        `- 専門性や個性がさりげなく伝わる(競艇なら予想の鋭さ、店なら地域愛やユーモア)\n` +
+        `- リプ欄の他人が「このアカ気になる」と思う絶妙な存在感。露骨な「フォローして」「予想見て」は禁止\n` +
+        `- 短く自然に(40〜60字)。絵文字は1個まで。敵を作らない\n` +
+        `出力は【案1】【案2】【案3】の見出しを付けて各案を改行で区切る。前置き不要。日本語。${sc()}`;
+      const text = await callAI(prompt, false);
+
+      /* 案ごとに分割してコピーボタン付きで表示 */
+      out.clear();
+      const cases = text.split(/【案\s*\d+】/).map(s=>s.trim()).filter(Boolean);
+      const list = cases.length ? cases : [text.trim()];
+      list.forEach((c, i) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:8px 0";
+        const t = document.createElement("div");
+        t.style.cssText = "font-size:13.5px;line-height:1.6;white-space:pre-wrap;margin-bottom:8px";
+        t.textContent = c;
+        card.appendChild(t);
+        const cp = document.createElement("button");
+        cp.className = "btn"; cp.style.cssText = "margin:0;padding:6px 12px;font-size:13px";
+        cp.textContent = "📋 案"+(i+1)+"をコピー";
+        cp.onclick = () => {
+          navigator.clipboard.writeText(c);
+          cp.textContent = "✓ コピーした!"; setTimeout(()=>cp.textContent="📋 案"+(i+1)+"をコピー", 1500);
+        };
+        card.appendChild(cp);
+        out.box.appendChild(card);
+      });
+
+      /* 営業記録ボタン(送信したら押す→履歴に記録) */
+      const recRow = document.createElement("div");
+      recRow.style.cssText = "margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center";
+      const recBtn = document.createElement("button");
+      recBtn.className = "btn"; recBtn.style.cssText = "margin:0;background:linear-gradient(135deg,#10b981,#059669)";
+      recBtn.textContent = "✅ 営業した！と記録";
+      recBtn.onclick = async () => {
+        try {
+          await sb.from("outreach_log").insert({ account: acctVal, target: user, tweet_url: url, status: "replied" });
+          recBtn.textContent = "✓ 記録した"; recBtn.disabled = true;
+          refreshTarget();
+        } catch(e) { out.err("記録に失敗(outreach_logテーブル未作成かも): " + e.message); }
+      };
+      recRow.appendChild(recBtn);
+      const hint = document.createElement("span"); hint.className="desc"; hint.textContent = "送ったら押す→次から「絡んだ」と分かる";
+      recRow.appendChild(hint);
+      out.box.appendChild(recRow);
+    } catch (e) { out.err(e.message); }
+    finally { btn.disabled = false; btn.textContent = orig; }
+  };
+
+  /* 営業履歴の一覧表示 */
+  fld(el, "最近の営業履歴");
+  const histBox = document.createElement("div");
+  el.appendChild(histBox);
+  (async () => {
+    try {
+      const { data } = await sb.from("outreach_log")
+        .select("target,status,created_at,tweet_url")
+        .eq("account", acctVal)
+        .order("created_at", { ascending:false }).limit(20);
+      if (!data || !data.length) { histBox.innerHTML = '<p class="desc" style="margin:0">まだ営業履歴なし。絡んだら「記録」を押すとここに出る。</p>'; return; }
+      histBox.innerHTML = "";
+      data.forEach((r) => {
+        const days = Math.floor((Date.now() - new Date(r.created_at).getTime()) / 86400000);
+        const color = days<=7 ? "var(--bad)" : (days<=30 ? "#ffc107" : "var(--muted)");
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px";
+        const left = document.createElement("a");
+        left.href = "https://x.com/" + r.target; left.target="_blank";
+        left.style.cssText = "color:var(--fg);text-decoration:none;font-weight:600";
+        left.textContent = "@" + r.target;
+        const right = document.createElement("span");
+        right.style.color = color;
+        right.textContent = days===0 ? "今日" : days+"日前";
+        row.appendChild(left); row.appendChild(right);
+        histBox.appendChild(row);
+      });
+    } catch(e) {
+      histBox.innerHTML = '<p class="desc" style="margin:0;color:var(--bad)">履歴の読み込み失敗。Supabaseでv5のSQL(outreach_log)を実行して。</p>';
+    }
+  })();
+};
 
 /* ---- 08 リメイク ---- */
 BUILDERS.remake = (el) => aiTab(el, {
@@ -1386,7 +1574,7 @@ BUILDERS.calendar = (el) => {
         `【出走表】\n${(race.racelistText||"").slice(0,3500)}\n\n【直前情報】\n${(race.beforeText||"").slice(0,2500)}\n` +
         formationText + `\n\n` +
         `出力は投稿本文のみ(JSON不要・前置き不要)。フォーマット:\n` +
-        `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n` +
+        `1行目は必ず「${dateWord}の無料予想を1レース公開」と書く(出走表に別の日付や「〇日目」表記があっても無視し、必ず「${dateWord}」とする)。\n空行\n【${race.venue}${race.rno}R】\n` +
         (buyLines
           ? buyLines.join("\n") + "\n"
           : "X-X-X\nX-X-X\nX-X-X\nX-X-X\nX-X-X\nX-X-X\n🎯大穴：X-X-X\n") +
