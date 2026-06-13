@@ -329,14 +329,47 @@ async function kvSet(key, value) {
 async function callAI(prompt, useSearch) {
   const { data } = await sb.auth.getSession();
   if (!data.session) throw new Error("ログインが切れた。リロードして。");
-  const res = await fetch(GAS_URL, {
-    method: "POST",
-    headers: { "Content-Type": "text/plain" },
-    body: JSON.stringify({ auth: data.session.access_token, prompt, useSearch: !!useSearch }),
-  });
-  const j = await res.json();
-  if (j.error) throw new Error(j.error);
-  return j.text;
+  const doFetch = async (p) => {
+    const res = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ auth: data.session.access_token, prompt: p, useSearch: !!useSearch }),
+    });
+    const j = await res.json();
+    if (j.error) throw new Error(j.error);
+    return j.text;
+  };
+
+  let text = await doFetch(prompt);
+
+  /* 業種外題材の混入チェック。検索系(無料予想など)は対象外 */
+  if (!useSearch && CFG.bizType && CFG.bizType.trim()) {
+    const banned = bannedTopicsFor(CFG.bizType.trim());
+    const hit = banned.find((w) => text.includes(w));
+    if (hit) {
+      /* 1回だけ、禁止題材を明示して作り直し */
+      const retryPrompt = prompt +
+        "\n\n【厳重注意・再生成】前回の生成は「" + hit + "」など『" + CFG.bizType.trim() +
+        "』と無関係な題材を含んでいた。今回は絶対にそれらの題材・単語を一切使わず、『" +
+        CFG.bizType.trim() + "』だけの内容で書き直せ。";
+      const retry = await doFetch(retryPrompt);
+      if (!banned.find((w) => retry.includes(w))) text = retry;
+      else text = retry; // 2回目もダメなら諦めて返す(無限ループ防止)
+    }
+  }
+  return text;
+}
+
+/* 業種ごとの「混ざってはいけない題材ワード」 */
+function bannedTopicsFor(bizType) {
+  const b = bizType;
+  const isBoat = /競艇|ボート|レース|公営競技|舟券/.test(b);
+  const LISTS = {
+    boat: ["万舟","舟券","競艇","ボートレース","回収率","本命","穴狙い","3連単","レース","出走","選手","モーター","予想"],
+  };
+  /* 競艇系アカウントなら競艇ワードは許可、それ以外の業種では競艇ワードを禁止 */
+  if (isBoat) return [];
+  return LISTS.boat;
 }
 
 /* ============ ログイン ============ */
@@ -353,7 +386,6 @@ async function enter() {
   $("loginCard").classList.add("hidden");
   $("app").classList.remove("hidden");
   S.profile = await kvGet("style_profile", "");
-  S.genres = await kvGet("genres", S.genres);
   const legacy = await kvGet("gen_config", null);
   if (legacy) { CFG_CACHE["_default_"] = Object.assign(defaultCfg(), legacy); }
   await loadCfgFor("_default_");
@@ -815,11 +847,13 @@ BUILDERS.buzz = (el) => aiTab(el, {
   prompt: (v) => {
     const biz = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
     const tail = S.sns === "X"
-      ? "■バズ要因トップ3(Xアルゴ観点:リプ誘発・引用されやすさ・滞在時間も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレで例文1本(140字以内)"
-      : "■バズ要因トップ3(IGアルゴ観点:保存・シェア・冒頭1行でのスワイプ阻止も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレでキャプション例1本(ハッシュタグ5〜10個付き)";
-    return `以下の${S.sns}の投稿がバズった理由を構造分解せよ。\n\n${v.post}\n\n` +
-      `【最重要】例文と再現テンプレは必ず「${biz}」の話題だけで書くこと。貼られた投稿の題材(競艇・他業種など)は構造・型の参考にするだけで、題材そのものは例文に持ち込まない。${biz}と無関係な題材を例文に混ぜることは固く禁止する。\n\n` +
-      `出力形式(日本語・前置き不要):\n■構造分解(フック/共感/展開/オチ/CTA に分けて解説)\n${tail}${sc()}`;
+      ? "■再現テンプレ(穴埋め式・【 】で可変部分・題材に依存しない汎用形)\n■例文1本(140字以内)"
+      : "■再現テンプレ(穴埋め式・【 】で可変部分・題材に依存しない汎用形)\n■キャプション例1本(ハッシュタグ5〜10個付き)";
+    return `次の手順で${S.sns}投稿を分析せよ。\n\n` +
+      `【ステップ1】以下のバズ投稿を読み、その「バズった構造・型」だけを抽出する。題材(何について書かれているか)は完全に無視し、フックの作り方・展開の型・感情の動かし方・締め方といった"骨組み"だけを取り出す。\n\n対象投稿:\n${v.post}\n\n` +
+      `【ステップ2】抽出した骨組みを使い、題材を「${biz}」に完全に置き換えて再構成する。元投稿の題材(競艇・他業種・無関係な商材など)の単語や話題は一切使わない。${biz}の世界の言葉だけで書く。\n\n` +
+      `出力(日本語・前置き不要):\n■構造分解(フック/共感/展開/オチ/CTA に分けて、題材を伴わず型として解説)\n■バズ要因トップ3\n${tail}\n\n` +
+      `【厳守】例文・テンプレに「${biz}」以外の題材を1単語でも混ぜたら失格。${sc()}`;
   },
 });
 
@@ -920,30 +954,8 @@ BUILDERS.score = (el) => aiTab(el, {
 /* ---- 01 カレンダー ---- */
 BUILDERS.calendar = (el) => {
   head(el, "投稿カレンダー自動生成",
-    "事業ジャンルを配分した投稿計画+バズりやすい推奨時間付き。完成文はそのまま予約に送れる。",
-    ["ジャンルを選ぶ(追加・×で削除可)","週間/月間と予定を入れて生成","「予約管理に送る」(一括可)→予約管理タブでGOを出すと自動投稿が確定"]);
-
-  fld(el, "事業ジャンル(複数選択)");
-  const gwrap = document.createElement("div"); gwrap.className = "chips"; el.appendChild(gwrap);
-  let selected = S.genres.slice(0, 1);
-  function drawGenres() {
-    gwrap.innerHTML = "";
-    S.genres.forEach((g) => {
-      const c = document.createElement("button");
-      c.className = "chip" + (selected.includes(g) ? " on" : "");
-      c.textContent = g + " ";
-      const x = document.createElement("span"); x.textContent = "×"; x.style.opacity = ".6"; x.style.marginLeft = "6px";
-      x.onclick = (ev) => { ev.stopPropagation(); S.genres = S.genres.filter((y)=>y!==g); selected = selected.filter((y)=>y!==g); kvSet("genres", S.genres); drawGenres(); };
-      c.appendChild(x);
-      c.onclick = () => { selected = selected.includes(g) ? selected.filter((y)=>y!==g) : [...selected, g]; drawGenres(); };
-      gwrap.appendChild(c);
-    });
-  }
-  drawGenres();
-  const addRow = document.createElement("div"); addRow.style.cssText = "display:flex;gap:8px;margin-top:10px"; el.appendChild(addRow);
-  const gin = document.createElement("input"); gin.placeholder = "ジャンルを追加(例: 経営の学び)"; addRow.appendChild(gin);
-  const gbtn = document.createElement("button"); gbtn.className = "mini cyan"; gbtn.style.flex = "0 0 70px"; gbtn.textContent = "追加"; addRow.appendChild(gbtn);
-  gbtn.onclick = () => { const g = gin.value.trim(); if (!g || S.genres.includes(g)) return; S.genres.push(g); selected.push(g); gin.value = ""; kvSet("genres", S.genres); drawGenres(); };
+    "選んだアカウントの業種・性格に沿った投稿計画+バズりやすい推奨時間付き。完成文はそのまま予約に送れる。",
+    ["送信先アカウントと期間を選ぶ","入れたいネタがあれば書く(任意)","生成→「予約管理に送る」→GOで自動投稿確定"]);
 
   fld(el, "期間");
   const span = chipsSingle(el, ["週間","15日","月間"], "週間");
@@ -984,7 +996,7 @@ BUILDERS.calendar = (el) => {
     const p = {
       d: (dt.getMonth()+1) + "/" + dt.getDate(), w: WD[dt.getDay()],
       h: String(dt.getHours()).padStart(2,"0") + ":" + String(dt.getMinutes()).padStart(2,"0"),
-      g: selected[0] || "", t: addTheme.value || "おまかせ", y: "単発",
+      g: "", t: addTheme.value || "おまかせ", y: "単発",
     };
     try {
       await genOne(p);
@@ -1022,7 +1034,6 @@ BUILDERS.calendar = (el) => {
   }
 
   gen.onclick = async () => {
-    if (!selected.length) { out.err("ジャンルを1つ以上選んで。"); return; }
     out.clear(); out.err(""); listEl.innerHTML = "";
     gen.disabled = true; gen.textContent = "生成中…";
     /* 送信先アカウント専用の生成設定を適用(なければ共通) */
@@ -1037,22 +1048,16 @@ BUILDERS.calendar = (el) => {
       const text = await callAI(
         `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。` +
         (CFG.closedDays && CFG.closedDays.length ? `\n\n【定休日】${CFG.closedDays.join("・")}曜は定休日。その曜日には来店を促す営業告知を入れず、休業のお知らせや「明日から営業」等の定休日に合った内容にする。` : "") +
-        `\n\n【最重要・厳守】各投稿の"g"(ジャンル)は、必ず次のリストの文字列のどれかと完全一致させること。リスト外のジャンルは絶対に作らない。リストにない話題・派生ジャンル・関連トピックを足すことも禁止:\n${selected.map((g)=>"・「"+g+"」").join("\n")}\n\n上のジャンルだけをバランス良く配分し、店舗系は週末に厚く。\n\n予定・ネタ:\n${events.value||"特になし"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
+        `\n\n話題は事業内容(業種・店舗情報)に沿って自然に散らす。告知・豆知識・体験談・共感ネタなどをバランス良く配分し、店舗系の告知は週末に厚く。\n\n入れたいネタ・予定:\n${events.value||"特になし(業種に合うおまかせで)"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
         (span.value === "週間"
-          ? `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ","y":"投稿の型","x":"完成した投稿文(${fmt})"}] 7要素。${sc()}`
-          : `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"ジャンル名","h":"21:00","t":"テーマ(15字以内)","y":"型(6字以内)"}] ${days}要素。完成文は不要。`)
+          ? `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"話題カテゴリ","h":"21:00","t":"テーマ","y":"投稿の型","x":"完成した投稿文(${fmt})"}] 7要素。${sc()}`
+          : `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"話題カテゴリ","h":"21:00","t":"テーマ(15字以内)","y":"型(6字以内)"}] ${days}要素。完成文は不要。`)
       );
       const parsed = parseJSONArr(text);
-      /* AIが選択外ジャンルを混ぜてきたら除外。gが選択肢に部分一致するものだけ残す */
-      const filtered = parsed.filter((p) => {
-        if (!p.g) return true;
-        return selected.some((g) => p.g === g || p.g.includes(g) || g.includes(p.g));
-      });
+      const filtered = parsed;
       /* 週間は完成文(x)をそのまま反映 */
       filtered.forEach((p) => { if (p.x) p._text = p.x; });
-      const dropped = parsed.length - filtered.length;
       renderPlan(filtered);
-      if (dropped > 0) out.err("選択外ジャンルの投稿を" + dropped + "件除外した。再生成すると枠が埋まる。");
 
       /* 週間以外(15日・月間)は枠だけ来てるので、続けて全日分の本文を自動生成 */
       if (span.value !== "週間") {
