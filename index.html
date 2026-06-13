@@ -986,12 +986,13 @@ BUILDERS.gapcheck = (el) => {
     const from = new Date(days[0].ds + "T00:00:00").toISOString();
     const to = new Date(days[6].ds + "T23:59:59").toISOString();
 
-    /* 全アカの予約・下書きを一括取得 */
+    /* 全アカの予約・下書き・投稿済みを一括取得
+       (postedも「その日は書いた」とカウント。予約管理の表示では消えてても判定には使う) */
     let rows = [];
     try {
       const { data } = await sb.from("scheduled_posts")
-        .select("screen_name,scheduled_at,status")
-        .in("status", ["pending","draft"])
+        .select("screen_name,scheduled_at,status,posted_at")
+        .in("status", ["pending","draft","posted"])
         .gte("scheduled_at", from).lte("scheduled_at", to);
       rows = data || [];
     } catch(e) {
@@ -999,12 +1000,15 @@ BUILDERS.gapcheck = (el) => {
       return;
     }
 
-    /* アカ×日付で「埋まってるか」を集計 */
+    /* アカ×日付で「埋まってるか」を集計。postedは実投稿日(posted_at)も見る */
     const taken = {}; // screen_name -> {ds:true}
+    const dayKey = (dt) => dt.getFullYear() + "-" + String(dt.getMonth()+1).padStart(2,"0") + "-" + String(dt.getDate()).padStart(2,"0");
     rows.forEach((r) => {
-      const d = new Date(r.scheduled_at);
-      const ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
-      (taken[r.screen_name] = taken[r.screen_name] || {})[ds] = true;
+      (taken[r.screen_name] = taken[r.screen_name] || {});
+      taken[r.screen_name][dayKey(new Date(r.scheduled_at))] = true;
+      if (r.status === "posted" && r.posted_at) {
+        taken[r.screen_name][dayKey(new Date(r.posted_at))] = true;
+      }
     });
 
     /* 空きがあるアカだけ抽出 */
@@ -1047,13 +1051,12 @@ BUILDERS.gapcheck = (el) => {
     });
   }
 
-  /* 指定アカ・指定日の投稿を1本生成して下書き(draft)で予約管理へ */
+  /* 指定アカ・指定日の投稿を1本生成して、その場で見せる(確認後に予約管理へ) */
   async function genOneDay(account, gap, btn) {
     const o = btn.textContent;
     btn.disabled = true; btn.textContent = "生成中…";
     try {
       await loadCfgFor(account);
-      /* 競艇アカかどうかで内容を変える */
       const isBoat = /競艇|ボートレース|ボート/.test(CFG.bizType || "");
       const prompt =
         `${S.sns}の投稿を1本作る。日付: ${gap.ds}(${gap.label}曜)。\n` +
@@ -1063,26 +1066,77 @@ BUILDERS.gapcheck = (el) => {
         `出力フォーマット(厳守):\n時刻: HH:MM\n本文:\n(投稿本文)\n\n前置き不要。日本語。${sc()}`;
       const text = await callAI(prompt, false);
       if (!text || !text.trim()) throw new Error("AIが空を返した。もう一回試して。");
-      /* 時刻と本文を分離 */
       let h = "12:00", bodyTxt = text.trim();
       const mt = text.match(/時刻[:：]\s*(\d{1,2}:\d{2})/);
       if (mt) h = mt[1];
       const mb = text.match(/本文[:：]\s*([\s\S]+)/);
       if (mb) bodyTxt = mb[1].trim();
-      /* draftとして予約管理に送る */
-      const { error: insErr } = await sb.from("scheduled_posts").insert({
-        screen_name: account,
-        text: bodyTxt,
-        scheduled_at: new Date(gap.ds + "T" + h + ":00").toISOString(),
-        status: "draft",
-      });
-      if (insErr) throw new Error("予約管理への保存に失敗: " + insErr.message);
-      btn.textContent = "✓ " + gap.md + " 作成→予約管理へ";
-      btn.style.background = "linear-gradient(135deg,#10b981,#059669)";
+      btn.disabled = false; btn.textContent = o;
+      /* その場に本文を表示して、確認してから送る */
+      showDraftPreview(account, gap, bodyTxt, h, btn);
     } catch (e) {
       alert("生成失敗: " + (e.message || e));
       btn.disabled = false; btn.textContent = o;
     }
+  }
+
+  /* 生成した本文をその場に出して、予約管理へ送る/作り直すを選ばせる */
+  function showDraftPreview(account, gap, bodyTxt, h, srcBtn) {
+    /* 既存のプレビューがあれば消す */
+    const existing = document.getElementById("gapPreview");
+    if (existing) existing.remove();
+    const card = document.createElement("div");
+    card.id = "gapPreview";
+    card.style.cssText = "background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:14px;margin:12px 0;box-shadow:0 0 20px rgba(255,45,149,.15)";
+    const ttl = document.createElement("div");
+    ttl.style.cssText = "font-weight:700;font-size:14px;margin-bottom:8px";
+    ttl.innerHTML = '<span style="color:var(--accent)">@'+esc(account)+'</span> '+gap.md+'('+gap.label+') の投稿案';
+    card.appendChild(ttl);
+    /* 時刻 */
+    const tRow = document.createElement("div");
+    tRow.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px";
+    const tLbl = document.createElement("span"); tLbl.textContent = "⏰ 投稿時刻"; tLbl.style.fontSize = "13px";
+    const tIn = document.createElement("input"); tIn.type = "time"; tIn.value = h;
+    tIn.style.cssText = "padding:6px 10px;font-family:var(--mono);width:auto";
+    tRow.appendChild(tLbl); tRow.appendChild(tIn);
+    card.appendChild(tRow);
+    /* 本文(編集可) */
+    const body = document.createElement("textarea");
+    body.rows = 7; body.value = bodyTxt;
+    body.style.cssText = "width:100%;font-size:13.5px;line-height:1.6";
+    card.appendChild(body);
+    const cnt = document.createElement("p"); cnt.className = "desc"; cnt.style.margin = "4px 0 8px";
+    const updCnt = () => { cnt.textContent = body.value.length + "字" + (S.sns==="X" && body.value.length>140 ? " ⚠140字超" : ""); };
+    body.oninput = updCnt; updCnt();
+    /* ボタン: 送る / 作り直す */
+    const acts = document.createElement("div");
+    acts.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+    const sendBtn = document.createElement("button");
+    sendBtn.className = "btn"; sendBtn.style.cssText = "margin:0;flex:1;min-width:140px;background:linear-gradient(135deg,#10b981,#059669)";
+    sendBtn.textContent = "✅ 予約管理へ送る";
+    sendBtn.onclick = async () => {
+      sendBtn.disabled = true; sendBtn.textContent = "送信中…";
+      try {
+        const { error } = await sb.from("scheduled_posts").insert({
+          screen_name: account,
+          text: body.value.trim(),
+          scheduled_at: new Date(gap.ds + "T" + (tIn.value||"12:00") + ":00").toISOString(),
+          status: "draft",
+        });
+        if (error) throw new Error(error.message);
+        card.innerHTML = '<div style="text-align:center;color:#10b981;font-weight:700;padding:8px">✓ '+gap.md+' を予約管理に送った!</div>';
+        if (srcBtn) { srcBtn.textContent = "✓ "+gap.md+" 作成済"; srcBtn.style.background = "linear-gradient(135deg,#10b981,#059669)"; srcBtn.disabled = true; }
+      } catch (e) { sendBtn.disabled = false; sendBtn.textContent = "✅ 予約管理へ送る"; alert("送信失敗: " + e.message); }
+    };
+    const reBtn = document.createElement("button");
+    reBtn.className = "btn"; reBtn.style.cssText = "margin:0;flex:1;min-width:140px";
+    reBtn.textContent = "🔀 作り直す";
+    reBtn.onclick = () => { card.remove(); genOneDay(account, gap, srcBtn); };
+    acts.appendChild(sendBtn); acts.appendChild(reBtn);
+    card.appendChild(acts);
+    /* 結果エリアの先頭に差し込む */
+    result.insertBefore(card, result.firstChild);
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   reBtn.onclick = run;
