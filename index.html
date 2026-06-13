@@ -455,6 +455,7 @@ const TABS = [
   { id:"trend", num:"06", label:"トレンド" },
   { id:"reply", num:"07", label:"リプ生成" },
   { id:"outreach", num:"07+", label:"🎯営業リプ" },
+  { id:"gapcheck", num:"📭", label:"書き漏れ" },
   { id:"remake", num:"08", label:"リメイク" },
   { id:"followers", num:"09", label:"推移記録" },
   { id:"report", num:"10", label:"週報" },
@@ -938,6 +939,121 @@ BUILDERS.reply = (el) => aiTab(el, {
   },
 });
 
+/* ---- 📭 書き漏れチェック(全アカ横断で空き日を検出・古いdraft自動掃除) ---- */
+BUILDERS.gapcheck = (el) => {
+  head(el, "📭 書き漏れチェック", "全アカウントを横断して、今週7日間で投稿が入ってない日を検出。空きがあるアカだけ出す。古い下書き(7日以上前)は自動で掃除。", [
+    "アプリを開くと自動でチェック",
+    "空きアカ・空き日が出たら埋める",
+    "古い下書きは勝手に消える",
+  ]);
+
+  const status = document.createElement("p");
+  status.className = "desc"; status.textContent = "チェック中…";
+  el.appendChild(status);
+
+  const result = document.createElement("div");
+  el.appendChild(result);
+
+  const reBtn = runBtn(el, "🔄 もう一度チェック");
+
+  async function cleanOldDrafts() {
+    /* 7日以上前のdraftを削除 */
+    try {
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 7);
+      await sb.from("scheduled_posts")
+        .delete()
+        .eq("status", "draft")
+        .lt("scheduled_at", cutoff.toISOString());
+    } catch(e) { /* 失敗しても致命的でない */ }
+  }
+
+  async function run() {
+    status.textContent = "チェック中…";
+    result.innerHTML = "";
+    await cleanOldDrafts();
+
+    const actives = S.clients.filter((c)=>c.status==="active");
+    if (!actives.length) { status.textContent = "連携中のアカウントがない。"; return; }
+
+    /* 今日から7日間の日付 */
+    const wd = ["日","月","火","水","木","金","土"];
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(); d.setDate(d.getDate() + i);
+      const ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+      days.push({ ds, label: wd[d.getDay()], md: (d.getMonth()+1) + "/" + d.getDate() });
+    }
+    const from = new Date(days[0].ds + "T00:00:00").toISOString();
+    const to = new Date(days[6].ds + "T23:59:59").toISOString();
+
+    /* 全アカの予約・下書きを一括取得 */
+    let rows = [];
+    try {
+      const { data } = await sb.from("scheduled_posts")
+        .select("screen_name,scheduled_at,status")
+        .in("status", ["pending","draft"])
+        .gte("scheduled_at", from).lte("scheduled_at", to);
+      rows = data || [];
+    } catch(e) {
+      status.textContent = "投稿データの取得に失敗した。";
+      return;
+    }
+
+    /* アカ×日付で「埋まってるか」を集計 */
+    const taken = {}; // screen_name -> {ds:true}
+    rows.forEach((r) => {
+      const d = new Date(r.scheduled_at);
+      const ds = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+      (taken[r.screen_name] = taken[r.screen_name] || {})[ds] = true;
+    });
+
+    /* 空きがあるアカだけ抽出 */
+    const flagged = [];
+    actives.forEach((c) => {
+      const gaps = days.filter((d) => !(taken[c.screen_name] && taken[c.screen_name][d.ds]));
+      if (gaps.length) flagged.push({ acc: c.screen_name, gaps });
+    });
+
+    status.textContent = "";
+    if (!flagged.length) {
+      result.innerHTML = '<div style="background:rgba(16,185,129,.1);border:1px solid #10b981;border-radius:12px;padding:16px;text-align:center;font-weight:700;color:#10b981">✅ 全アカウント、今週7日間ぜんぶ投稿が入ってる！書き漏れなし。</div>';
+      return;
+    }
+
+    const intro = document.createElement("p");
+    intro.className = "desc"; intro.style.margin = "0 0 10px";
+    intro.textContent = flagged.length + "アカウントに書き漏れあり。埋まってるアカは省略。";
+    result.appendChild(intro);
+
+    flagged.forEach((f) => {
+      const card = document.createElement("div");
+      card.style.cssText = "background:var(--card);border:1px solid var(--bad);border-radius:12px;padding:12px 14px;margin:8px 0";
+      const name = document.createElement("div");
+      name.style.cssText = "font-weight:700;font-size:14px;margin-bottom:6px";
+      name.innerHTML = '<span style="color:var(--accent)">@'+esc(f.acc)+'</span> <span style="color:var(--bad);font-size:12px">'+f.gaps.length+'日 空き</span>';
+      card.appendChild(name);
+      const dlist = document.createElement("div");
+      dlist.style.cssText = "font-size:13px;color:var(--muted);margin-bottom:8px";
+      dlist.textContent = "空き: " + f.gaps.map(g=>g.md+"("+g.label+")").join("、");
+      card.appendChild(dlist);
+      /* このアカのカレンダーへ誘導 */
+      const goBtn = document.createElement("button");
+      goBtn.className = "btn"; goBtn.style.cssText = "margin:0;padding:8px 14px;font-size:13px";
+      goBtn.textContent = "📅 @"+f.acc+"のカレンダーで埋める";
+      goBtn.onclick = async () => {
+        S.activeAccount = f.acc;
+        loadCfgSync(f.acc);
+        S.tab = "calendar"; renderNav(); showTab("calendar");
+      };
+      card.appendChild(goBtn);
+      result.appendChild(card);
+    });
+  }
+
+  reBtn.onclick = run;
+  run();
+};
+
 /* ---- 07+ 営業リプ(大手に絡んで新規フォロワー獲得) ---- */
 BUILDERS.outreach = (el) => {
   head(el, "🎯 営業リプ", "伸びてる投稿のURLを貼る→刺さるリプを生成→コピーして飛んで送信。リプ欄で目立って新規フォロワーを取る。", [
@@ -964,7 +1080,11 @@ BUILDERS.outreach = (el) => {
   fld(el, "投稿の本文(任意・貼るとより刺さるリプに)");
   const bodyIn = ta(el, 4, "その投稿の本文をコピペ(空でもOK)");
   fld(el, "トーン");
-  const toneRef = chipsSingle(el, ["フレンドリー","ノリ重視","専門家っぽく","お店の公式"], "フレンドリー");
+  const toneRef = chipsSingle(el, ["丁寧(敬語)","フレンドリー","ノリ重視","専門家っぽく"], "丁寧(敬語)");
+  fld(el, "作るもの");
+  const kindRef = chipsSingle(el, ["リプ(返信で絡む)","引用RT(拡散狙い)","DM誘導(LINEへ)"], "リプ(返信で絡む)");
+  fld(el, "誘導先LINE(DM誘導の時だけ使う・任意)");
+  const lineIn = inp(el, "https://lin.ee/xxxx など");
   /* ターゲット情報の表示エリア */
   const targetBox = document.createElement("div");
   targetBox.style.cssText = "margin:10px 0;display:none";
@@ -1024,28 +1144,75 @@ BUILDERS.outreach = (el) => {
   }
   urlIn.oninput = refreshTarget;
 
-  const btn = runBtn(el, "🎯 刺さるリプを生成");
+  const btn = runBtn(el, "🎯 生成する");
   const out = outArea(el);
+  /* 選択に応じてボタン文言を更新(chipsSingleにonChangeが無いので軽く監視) */
+  let lastKind = kindRef.value;
+  const updateBtnLabel = () => {
+    const k = kindRef.value;
+    btn.textContent = k.indexOf("引用RT")>=0 ? "🎯 引用RT文を生成" : (k.indexOf("DM誘導")>=0 ? "🎯 DM誘導文を生成" : "🎯 刺さるリプを生成");
+  };
+  updateBtnLabel();
+  setInterval(() => { if (kindRef.value !== lastKind) { lastKind = kindRef.value; if (!btn.disabled) updateBtnLabel(); } }, 400);
 
   btn.onclick = async () => {
     const url = urlIn.value.trim();
     const user = extractUser(url);
-    if (!user) { out.err("投稿のURLを貼って(x.com/ユーザー名/status/... の形)"); return; }
+    const kindNow = kindRef.value;
+    if (!user && kindNow.indexOf("DM誘導") < 0) { out.err("投稿のURLを貼って(x.com/ユーザー名/status/... の形)。DM誘導だけはURL無しでもOK。"); return; }
     await loadCfgFor(acctVal);
     btn.disabled = true; const orig = btn.textContent; btn.textContent = "生成中…";
     try {
       const body = bodyIn.value.trim();
       const tone = toneRef.value;
-      const prompt =
-        `${S.sns}で、フォロワーの多い他人の投稿に「営業リプ」を送り、リプ欄を見た人に興味を持たせて自分(@${user!==acctVal?acctVal:"自分"})のアカウントをフォローしてもらう狙いのリプ案を作る。\n\n` +
-        (body ? `絡む投稿の本文:\n${body}\n\n` : `絡む相手: @${user} の投稿(本文は不明なので、competition/地域系の一般的な内容と想定)\n\n`) +
-        `トーンは「${tone}」。リプ案を3つ作る。\n` +
-        `営業リプの鉄則:\n` +
-        `- 媚びない・宣伝くさくない。まず相手の投稿に共感や付加価値(豆知識・気の利いた一言)を返す\n` +
-        `- 専門性や個性がさりげなく伝わる(競艇なら予想の鋭さ、店なら地域愛やユーモア)\n` +
-        `- リプ欄の他人が「このアカ気になる」と思う絶妙な存在感。露骨な「フォローして」「予想見て」は禁止\n` +
-        `- 短く自然に(40〜60字)。絵文字は1個まで。敵を作らない\n` +
-        `出力は【案1】【案2】【案3】の見出しを付けて各案を改行で区切る。前置き不要。日本語。${sc()}`;
+      const kind = kindRef.value;
+      const lineUrl = lineIn.value.trim();
+      const toneRule = tone.indexOf("敬語") >= 0
+        ? "必ず敬語(です・ます調)で、礼儀正しく書く。タメ口や馴れ馴れしい表現は使わない。"
+        : (tone === "ノリ重視" ? "砕けた口語でテンポよく。" : (tone === "専門家っぽく" ? "落ち着いた専門家の語り口で。" : "親しみやすい自然な口調で。"));
+      const ctx = body
+        ? `絡む投稿の本文:\n${body}\n\n`
+        : `絡む相手: @${user} の投稿(本文は不明なので、競艇/地域系の一般的な内容と想定)\n\n`;
+
+      let prompt;
+      if (kind.indexOf("引用RT") >= 0) {
+        /* 引用リポスト: 自分のフォロワーにも見える。拡散狙い */
+        prompt =
+          `${S.sns}で、フォロワーの多い他人の投稿を「引用リポスト(引用RT)」して、自分のフォロワーにも見せつつ元投稿の人にも気づいてもらい、新規フォロワーを狙う引用文を作る。\n\n` +
+          ctx +
+          `トーンは「${tone}」。${toneRule} 引用文を3案作る。\n` +
+          `引用RTの鉄則:\n` +
+          `- 元投稿に乗っかりつつ、自分の視点・専門性で付加価値を足す(競艇なら独自の見解、店なら地域目線)\n` +
+          `- 自分のフォロワーにも「お、なるほど」と思わせる中身。単なる感想で終わらせない\n` +
+          `- 元投稿者を立てる(けなさない・上から目線にしない)\n` +
+          `- 100〜120字程度。ハッシュタグは付けすぎない(0〜2個)\n` +
+          `出力は【案1】【案2】【案3】の見出しを付けて改行で区切る。前置き不要。日本語。${sc()}`;
+      } else if (kind.indexOf("DM誘導") >= 0) {
+        /* DM誘導: リプで反応くれた人をLINEへ。収益導線 */
+        prompt =
+          `競艇予想アカウントの運用で、リプやフォローで反応してくれた見込みの人に送る「DMメッセージ」を作る。狙いは、無料予想に興味を持ってくれた人を公式LINE(無料予想や限定情報を配信)へ自然に誘導すること。\n\n` +
+          ctx +
+          `トーンは「${tone}」。${toneRule} DM文を3案作る。\n` +
+          (lineUrl ? `誘導先LINE: ${lineUrl}(各案の最後に自然に載せる)\n` : `※LINE URLは「(LINEはこちら→)」のように差し込み位置だけ示す\n`) +
+          `DM誘導の鉄則:\n` +
+          `- いきなり営業しない。まず反応へのお礼や軽い一言から入る\n` +
+          `- 押し売り禁止。「無料で予想配信してる」「よかったら覗いてみて」くらいの軽さ\n` +
+          `- 怪しい・スパムっぽい定型文にしない。一人ひとりに送ってる感を出す\n` +
+          `- 3〜4行程度。絵文字は1〜2個まで\n` +
+          `出力は【案1】【案2】【案3】の見出しを付けて改行で区切る。前置き不要。日本語。${sc()}`;
+      } else {
+        /* 通常のリプ */
+        prompt =
+          `${S.sns}で、フォロワーの多い他人の投稿に「営業リプ」を送り、リプ欄を見た人に興味を持たせて自分(@${user!==acctVal?acctVal:"自分"})のアカウントをフォローしてもらう狙いのリプ案を作る。\n\n` +
+          ctx +
+          `トーンは「${tone}」。${toneRule} リプ案を3つ作る。\n` +
+          `営業リプの鉄則:\n` +
+          `- 媚びない・宣伝くさくない。まず相手の投稿に共感や付加価値(豆知識・気の利いた一言)を返す\n` +
+          `- 専門性や個性がさりげなく伝わる(競艇なら予想の鋭さ、店なら地域愛やユーモア)\n` +
+          `- リプ欄の他人が「このアカ気になる」と思う絶妙な存在感。露骨な「フォローして」「予想見て」は禁止\n` +
+          `- 短く自然に(40〜60字)。絵文字は1個まで。敵を作らない\n` +
+          `出力は【案1】【案2】【案3】の見出しを付けて各案を改行で区切る。前置き不要。日本語。${sc()}`;
+      }
       const text = await callAI(prompt, false);
 
       /* 案ごとに分割してコピーボタン付きで表示 */
@@ -1071,22 +1238,24 @@ BUILDERS.outreach = (el) => {
       });
 
       /* 営業記録ボタン(送信したら押す→履歴に記録) */
-      const recRow = document.createElement("div");
-      recRow.style.cssText = "margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center";
-      const recBtn = document.createElement("button");
-      recBtn.className = "btn"; recBtn.style.cssText = "margin:0;background:linear-gradient(135deg,#10b981,#059669)";
-      recBtn.textContent = "✅ 営業した！と記録";
-      recBtn.onclick = async () => {
-        try {
-          await sb.from("outreach_log").insert({ account: acctVal, target: user, tweet_url: url, status: "replied" });
-          recBtn.textContent = "✓ 記録した"; recBtn.disabled = true;
-          refreshTarget();
-        } catch(e) { out.err("記録に失敗(outreach_logテーブル未作成かも): " + e.message); }
-      };
-      recRow.appendChild(recBtn);
-      const hint = document.createElement("span"); hint.className="desc"; hint.textContent = "送ったら押す→次から「絡んだ」と分かる";
-      recRow.appendChild(hint);
-      out.box.appendChild(recRow);
+      if (user) {
+        const recRow = document.createElement("div");
+        recRow.style.cssText = "margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center";
+        const recBtn = document.createElement("button");
+        recBtn.className = "btn"; recBtn.style.cssText = "margin:0;background:linear-gradient(135deg,#10b981,#059669)";
+        recBtn.textContent = "✅ 営業した！と記録";
+        recBtn.onclick = async () => {
+          try {
+            await sb.from("outreach_log").insert({ account: acctVal, target: user, tweet_url: url, status: "replied" });
+            recBtn.textContent = "✓ 記録した"; recBtn.disabled = true;
+            refreshTarget();
+          } catch(e) { out.err("記録に失敗(outreach_logテーブル未作成かも): " + e.message); }
+        };
+        recRow.appendChild(recBtn);
+        const hint = document.createElement("span"); hint.className="desc"; hint.textContent = "送ったら押す→次から「絡んだ」と分かる";
+        recRow.appendChild(hint);
+        out.box.appendChild(recRow);
+      }
     } catch (e) { out.err(e.message); }
     finally { btn.disabled = false; btn.textContent = orig; }
   };
