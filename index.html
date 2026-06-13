@@ -1054,8 +1054,8 @@ BUILDERS.calendar = (el) => {
         const info = document.createElement("p"); info.className = "desc"; info.style.margin = "6px 0 0";
         const setInfo = () => {
           if (p._postToday) info.textContent = "明日のレース予想を今夜 " + (p.h||"21:00") + " に告知投稿(締切" + (p._deadline||"要確認") + ")。";
-          else if (p._deadline) info.textContent = "投稿時刻は締切" + p._deadline + "の30分前(" + (p.h||"?") + ")に自動設定。";
-          else info.textContent = "⚠ 締切時刻が取れなかった。下の欄に正しい締切を入れて(30分前に自動設定)。";
+          else if (p._deadline) info.textContent = "投稿時刻は締切" + p._deadline + "の15分前(" + (p.h||"?") + ")に自動設定。";
+          else info.textContent = "⚠ 締切時刻が取れなかった。下の欄に正しい締切を入れて(15分前に自動設定)。";
         };
         setInfo();
         if (!p._deadlineUnknown && !p._postToday) info.style.color = "var(--muted)";
@@ -1072,7 +1072,7 @@ BUILDERS.calendar = (el) => {
           p._deadline = dlIn.value; p._deadlineUnknown = false;
           if (!p._postToday) {
             const [hh, mm] = dlIn.value.split(":").map(Number);
-            let total = hh*60+mm-30; if (total<0) total = hh*60+mm;
+            let total = hh*60+mm-15; if (total<0) total = hh*60+mm;
             p.h = String(Math.floor(total/60)).padStart(2,"0")+":"+String(total%60).padStart(2,"0");
           }
           info.style.color = "var(--muted)"; setInfo();
@@ -1357,8 +1357,8 @@ BUILDERS.calendar = (el) => {
         `次は${race.venue}${race.rno}R(締切${race.deadline})の実際の出走表・直前情報。これを根拠に無料予想の投稿本文を作れ。\n\n` +
         `【出走表】\n${(race.racelistText||"").slice(0,3500)}\n\n【直前情報】\n${(race.beforeText||"").slice(0,2500)}\n\n` +
         `出力は投稿本文のみ(JSON不要・前置き不要)。フォーマット:\n` +
-        `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
-        `ルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。実データを踏まえた現実的な買い目に。展開予想の切り口や表現も毎回新鮮にし、ありきたりな定型文の繰り返しを避ける。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`;
+        `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n本命：X-X-X\n対抗：X-X-X\n単穴：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
+        `ルール: 買い目は艇番1〜6の3連単フォーメーション風に6点(本命・対抗・単穴・穴狙い・抑え・大穴の6本)。実データを踏まえた現実的な買い目に。展開予想の切り口や表現も毎回新鮮にし、ありきたりな定型文の繰り返しを避ける。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`;
       const text = await callAI(prompt, false);
 
       p._text = text.trim();
@@ -1371,9 +1371,9 @@ BUILDERS.calendar = (el) => {
         /* 明日の予想は前夜(今日の21時)に告知 */
         p.h = "21:00"; p._postToday = true;
       } else if (!p._deadlineUnknown) {
-        /* 今日の予想は締切30分前 */
+        /* 今日の予想は締切15分前 */
         const [hh, mm] = race.deadline.split(":").map(Number);
-        let total = hh * 60 + mm - 30; if (total < 0) total = hh * 60 + mm;
+        let total = hh * 60 + mm - 15; if (total < 0) total = hh * 60 + mm;
         p.h = String(Math.floor(total/60)).padStart(2,"0") + ":" + String(total%60).padStart(2,"0");
       }
       p.t = label + "の無料予想" + (p._deadline ? "(締切" + p._deadline + ")" : "");
