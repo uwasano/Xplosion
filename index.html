@@ -1000,8 +1000,7 @@ BUILDERS.calendar = (el) => {
   yosouFld.style.display = "none"; // 既定は非表示。判定で出す
   const btnRow = document.createElement("div"); btnRow.className = "acts"; yosouFld.appendChild(btnRow);
   const todayBtn = document.createElement("button"); todayBtn.className = "btn"; todayBtn.style.margin = "0"; todayBtn.textContent = "🚤 今日の無料予想";
-  const tmrBtn = document.createElement("button"); tmrBtn.className = "btn"; tmrBtn.style.margin = "0"; tmrBtn.textContent = "🚤 明日の無料予想";
-  btnRow.appendChild(todayBtn); btnRow.appendChild(tmrBtn);
+  btnRow.appendChild(todayBtn);
   const yosouOut = document.createElement("div"); yosouFld.appendChild(yosouOut);
   el.appendChild(yosouFld);
 
@@ -1101,7 +1100,6 @@ BUILDERS.calendar = (el) => {
       btn.disabled = false; btn.textContent = orig;
     };
     todayBtn.onclick = () => runYosou(todayBtn, "本日");
-    tmrBtn.onclick = () => runYosou(tmrBtn, "明日");
   }
 
   /* 特定日に1本だけ追加(空いた日の穴埋め用) */
@@ -1316,20 +1314,28 @@ BUILDERS.calendar = (el) => {
         return "" + base.getFullYear() + String(base.getMonth()+1).padStart(2,"0") + String(base.getDate()).padStart(2,"0");
       })();
 
-      /* STEP A: GASで締切が近い実レースを取得 */
-      const gasRes = await fetch(GAS_URL, {
-        method: "POST", headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({
-          auth: sess.session.access_token, action: "pickBoatRace",
-          hd: yyyymmdd,
-          /* 今日=今から25〜120分後に締切が来るレース / 明日=朝〜昼の早いレース(時間窓を広く) */
-          minMinutes: label === "明日" ? -100000 : 25,
-          maxMinutes: label === "明日" ? 100000 : 120,
-        }),
-      });
-      const race = await gasRes.json();
+      /* STEP A: GASで締切が近い実レースを取得(Load failed対策で2回までリトライ) */
+      const callPick = async () => {
+        const r = await fetch(GAS_URL, {
+          method: "POST", headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({
+            auth: sess.session.access_token, action: "pickBoatRace",
+            hd: yyyymmdd,
+            minMinutes: label === "明日" ? -100000 : 25,
+            maxMinutes: label === "明日" ? 100000 : 120,
+            exclude: (window._recentRaces || []), // 直近で使ったレースを除外
+          }),
+        });
+        return r.json();
+      };
+      let race;
+      try { race = await callPick(); }
+      catch (e1) {
+        await new Promise(r => setTimeout(r, 1500));
+        try { race = await callPick(); }
+        catch (e2) { p._text=""; p._deadline=""; p._deadlineUnknown=true; p._raceErr="通信失敗(Load failed)。電波を確認してもう一度押して。"; p.t=label+"の無料予想(通信失敗)"; return; }
+      }
       if (race.error) {
-        /* GAS側のステップ別エラーをそのまま見せる */
         p._text = "";
         p._deadline = "";
         p._deadlineUnknown = true;
@@ -1337,6 +1343,10 @@ BUILDERS.calendar = (el) => {
         p.t = label + "の無料予想(取得失敗)";
         return;
       }
+      /* 使ったレースを記録(次回除外。直近5件まで保持) */
+      window._recentRaces = window._recentRaces || [];
+      window._recentRaces.push(race.jcd + "-" + race.rno);
+      if (window._recentRaces.length > 5) window._recentRaces.shift();
 
       /* STEP B: 取得した実データでClaudeに予想本文を作らせる */
       const prompt =
@@ -1344,7 +1354,7 @@ BUILDERS.calendar = (el) => {
         `【出走表】\n${(race.racelistText||"").slice(0,3500)}\n\n【直前情報】\n${(race.beforeText||"").slice(0,2500)}\n\n` +
         `出力は投稿本文のみ(JSON不要・前置き不要)。フォーマット:\n` +
         `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
-        `ルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。実データを踏まえた現実的な買い目に。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`;
+        `ルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。実データを踏まえた現実的な買い目に。展開予想の切り口や表現も毎回新鮮にし、ありきたりな定型文の繰り返しを避ける。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`;
       const text = await callAI(prompt, false);
 
       p._text = text.trim();
