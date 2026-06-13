@@ -972,8 +972,8 @@ BUILDERS.gapcheck = (el) => {
     result.innerHTML = "";
     await cleanOldDrafts();
 
-    const actives = S.clients.filter((c)=>c.status==="active");
-    if (!actives.length) { status.textContent = "連携中のアカウントがない。"; return; }
+    const actives = S.clients.filter((c)=>c.status==="active" && c.screen_name !== "_test_" && !/^_test/.test(c.screen_name));
+    if (!actives.length) { status.textContent = "連携中のアカウントがない(テスト用は除外)。"; return; }
 
     /* 今日から7日間の日付 */
     const wd = ["日","月","火","水","木","金","土"];
@@ -1029,25 +1029,60 @@ BUILDERS.gapcheck = (el) => {
       const card = document.createElement("div");
       card.style.cssText = "background:var(--card);border:1px solid var(--bad);border-radius:12px;padding:12px 14px;margin:8px 0";
       const name = document.createElement("div");
-      name.style.cssText = "font-weight:700;font-size:14px;margin-bottom:6px";
+      name.style.cssText = "font-weight:700;font-size:14px;margin-bottom:8px";
       name.innerHTML = '<span style="color:var(--accent)">@'+esc(f.acc)+'</span> <span style="color:var(--bad);font-size:12px">'+f.gaps.length+'日 空き</span>';
       card.appendChild(name);
-      const dlist = document.createElement("div");
-      dlist.style.cssText = "font-size:13px;color:var(--muted);margin-bottom:8px";
-      dlist.textContent = "空き: " + f.gaps.map(g=>g.md+"("+g.label+")").join("、");
-      card.appendChild(dlist);
-      /* このアカのカレンダーへ誘導 */
-      const goBtn = document.createElement("button");
-      goBtn.className = "btn"; goBtn.style.cssText = "margin:0;padding:8px 14px;font-size:13px";
-      goBtn.textContent = "📅 @"+f.acc+"のカレンダーで埋める";
-      goBtn.onclick = async () => {
-        S.activeAccount = f.acc;
-        loadCfgSync(f.acc);
-        S.tab = "calendar"; renderNav(); showTab("calendar");
-      };
-      card.appendChild(goBtn);
+      /* 空き日ごとに「この日を生成」ボタン */
+      const btnWrap = document.createElement("div");
+      btnWrap.style.cssText = "display:flex;flex-wrap:wrap;gap:6px";
+      f.gaps.forEach((g) => {
+        const b = document.createElement("button");
+        b.className = "btn"; b.style.cssText = "margin:0;padding:8px 12px;font-size:13px";
+        b.textContent = "✏️ " + g.md + "(" + g.label + ")";
+        b.onclick = () => genOneDay(f.acc, g, b);
+        btnWrap.appendChild(b);
+      });
+      card.appendChild(btnWrap);
       result.appendChild(card);
     });
+  }
+
+  /* 指定アカ・指定日の投稿を1本生成して下書き(draft)で予約管理へ */
+  async function genOneDay(account, gap, btn) {
+    const o = btn.textContent;
+    btn.disabled = true; btn.textContent = "生成中…";
+    try {
+      await loadCfgFor(account);
+      /* 競艇アカかどうかで内容を変える */
+      const isBoat = /競艇|ボートレース|ボート/.test(CFG.bizType || "");
+      const prompt =
+        `${S.sns}の投稿を1本作る。日付: ${gap.ds}(${gap.label}曜)。\n` +
+        `このアカウントの業種・性格・文体設定に沿って、その日にふさわしい投稿を1本。\n` +
+        `バズりやすい推奨投稿時刻(HH:MM)も決める。\n` +
+        (isBoat ? "競艇アカだが、無料予想は別ボタンで出すので、ここでは予想以外の通常投稿(コラム・小ネタ・煽り・日常)にする。\n" : "") +
+        `出力フォーマット(厳守):\n時刻: HH:MM\n本文:\n(投稿本文)\n\n前置き不要。日本語。${sc()}`;
+      const text = await callAI(prompt, false);
+      if (!text || !text.trim()) throw new Error("AIが空を返した。もう一回試して。");
+      /* 時刻と本文を分離 */
+      let h = "12:00", bodyTxt = text.trim();
+      const mt = text.match(/時刻[:：]\s*(\d{1,2}:\d{2})/);
+      if (mt) h = mt[1];
+      const mb = text.match(/本文[:：]\s*([\s\S]+)/);
+      if (mb) bodyTxt = mb[1].trim();
+      /* draftとして予約管理に送る */
+      const { error: insErr } = await sb.from("scheduled_posts").insert({
+        screen_name: account,
+        text: bodyTxt,
+        scheduled_at: new Date(gap.ds + "T" + h + ":00").toISOString(),
+        status: "draft",
+      });
+      if (insErr) throw new Error("予約管理への保存に失敗: " + insErr.message);
+      btn.textContent = "✓ " + gap.md + " 作成→予約管理へ";
+      btn.style.background = "linear-gradient(135deg,#10b981,#059669)";
+    } catch (e) {
+      alert("生成失敗: " + (e.message || e));
+      btn.disabled = false; btn.textContent = o;
+    }
   }
 
   reBtn.onclick = run;
