@@ -1324,8 +1324,8 @@ BUILDERS.calendar = (el) => {
             body: JSON.stringify({
               auth: sess.session.access_token, action: "pickBoatRace",
               hd: yyyymmdd,
-              minMinutes: label === "明日" ? -100000 : 25,
-              maxMinutes: label === "明日" ? 100000 : 120,
+              minMinutes: label === "明日" ? -100000 : 15,
+              maxMinutes: label === "明日" ? 100000 : 20,
               exclude: (window._recentRaces || []),
             }),
           });
