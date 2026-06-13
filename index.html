@@ -1353,21 +1353,32 @@ BUILDERS.calendar = (el) => {
       if (window._recentRaces.length > 5) window._recentRaces.shift();
 
       /* STEP B: 取得した実データでClaudeに予想本文を作らせる */
-      /* 3連単オッズの人気順トップ6を取得→順番をシャッフルしてラベル付きで並べる */
+      /* 3連単: 人気トップ6をシャッフル + 大穴(100倍あたり)1点 = 計7点 */
       let formationText = "";
       let buyLines = null;
-      const tri = race.trifecta || [];
-      const LABELS = ["本命","対抗","単穴","穴狙い","抑え","大穴"];
+      const tri = race.trifecta || []; // [{combo,odds}] オッズ昇順
       if (tri.length >= 6) {
-        const shuffled = tri.slice(0, 6);
-        for (let i = shuffled.length - 1; i > 0; i--) {
+        /* 人気トップ6を取り出してシャッフル */
+        const top6 = tri.slice(0, 6).map(c => c.combo);
+        for (let i = top6.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+          [top6[i], top6[j]] = [top6[j], top6[i]];
         }
-        buyLines = shuffled.map((pt,i)=>LABELS[i]+"："+pt);
-        formationText = "\n\n【買い目・この6行をこのまま使う】\n" +
+        /* 大穴: オッズ80〜150倍あたりの候補からランダムで1点。無ければ最も高オッズ寄りから */
+        const ana = tri.filter(c => c.odds >= 80 && c.odds <= 150);
+        let anaPick;
+        if (ana.length) anaPick = ana[Math.floor(Math.random() * ana.length)];
+        else {
+          /* 帯に無ければ100倍に最も近い1点 */
+          anaPick = tri.reduce((best, c) =>
+            Math.abs(c.odds - 100) < Math.abs(best.odds - 100) ? c : best, tri[tri.length-1]);
+        }
+        const lines = top6.slice();
+        lines.push("🎯大穴：" + anaPick.combo + "（" + anaPick.odds + "倍）");
+        buyLines = lines;
+        formationText = "\n\n【買い目・この7行をこのまま使う】\n" +
           buyLines.join("\n") +
-          "\n※3連単オッズ人気順トップ6を並べ替えてラベルを付けたもの。番号も順番もラベルもこのまま本文に書き、勝手に変えない。";
+          "\n※上6点=3連単オッズ人気トップ6を並べ替えたもの。最後の1点=100倍前後の大穴。番号・順番・大穴表記すべてこのまま本文に書き、勝手に変えない。";
       }
 
       const prompt =
@@ -1378,11 +1389,11 @@ BUILDERS.calendar = (el) => {
         `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n` +
         (buyLines
           ? buyLines.join("\n") + "\n"
-          : "本命：X-X-X\n対抗：X-X-X\n単穴：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n") +
+          : "X-X-X\nX-X-X\nX-X-X\nX-X-X\nX-X-X\nX-X-X\n🎯大穴：X-X-X\n") +
         `空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
         (buyLines
-          ? `ルール: 買い目は上記【買い目】の6行を、ラベル・番号・順番すべてそのまま本文に書く。展開予想の表現は毎回新鮮に。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`
-          : `ルール: 買い目は艇番1〜6の3連単6点にラベル(本命・対抗・単穴・穴狙い・抑え・大穴)を付けて縦に並べる。実データを踏まえた現実的な買い目に。表現は毎回新鮮に。注意書き・免責文は入れない。${sc()}`);
+          ? `ルール: 買い目は上記【買い目】の7行を、番号・順番・大穴表記すべてそのまま本文に書く。展開予想の表現は毎回新鮮に。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`
+          : `ルール: 買い目は3連単6点(人気どころ)+大穴1点の計7点を縦に並べる。最後の大穴は100倍前後の高オッズ。表現は毎回新鮮に。注意書き・免責文は入れない。${sc()}`);
       const text = await callAI(prompt, false);
 
       p._text = text.trim();
