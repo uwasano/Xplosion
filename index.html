@@ -191,6 +191,7 @@ function defaultCfg() {
     useBiz: false, bizName: "", bizArea: "", bizType: "",
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
+    gender: "不問",
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
   };
@@ -241,6 +242,11 @@ function sc() {
   const biz = bizClause();
   if (biz) out += "\n\n" + biz;
 
+  /* 業種が設定されていれば、その業種から外れた題材の混入を禁止 */
+  if (CFG.bizType && CFG.bizType.trim()) {
+    out += "\n\n【題材の固定】この投稿は必ず「" + CFG.bizType.trim() + "」に関する内容にする。他業種・別ジャンルの題材(例: 設定外のギャンブル・スポーツ・無関係な商材など)を本文に混ぜてはならない。";
+  }
+
   /* オリジナル文体(このアカウント専用に学習済みなら最優先) */
   if (CFG.origProfile && CFG.origProfile.trim()) {
     out += "\n\n【文体指示・最優先】以下はこのアカウントの本人の文体プロファイル。これに完全に従い、本人が書いたとしか思えない文章にせよ:\n" + CFG.origProfile;
@@ -255,6 +261,13 @@ function sc() {
       "・締めは言い切り or 問いかけでリプ・引用を誘発する\n" +
       "・各文は短く、改行を多めにしてテンポよく\n" +
       "・ただし誇大広告・断定的な効能・射幸心を過度に煽る表現は避け、品は保つ";
+  }
+
+  /* 書き手の性別 */
+  if (CFG.gender === "男性") {
+    out += "\n\n【書き手の性別】書き手は男性。一人称・語尾・言い回しを男性らしく自然にする(不自然なオネエ口調などにはしない)。";
+  } else if (CFG.gender === "女性") {
+    out += "\n\n【書き手の性別】書き手は女性。一人称・語尾・言い回しを女性らしく自然にする。";
   }
 
   /* トーン */
@@ -654,6 +667,11 @@ BUILDERS.settings = (el) => {
   }
   drawDays();
 
+  /* 性別 */
+  fld(el, "書き手の性別");
+  const genWrap = el.appendChild(document.createElement("div"));
+  chipsSingleInto(genWrap, ["男性","女性","不問"], CFG.gender, (v) => { CFG.gender = v; save(); });
+
   /* 性格 */
   fld(el, "性格・キャラ");
   const toneState = chipsSingle(el, ["丁寧","カジュアル","専門的","フランク","強め"], CFG.tone);
@@ -795,11 +813,13 @@ BUILDERS.buzz = (el) => aiTab(el, {
   btn: "構造を抽出する",
   validate: (v) => v.post.trim(),
   prompt: (v) => {
-    const bizFor = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() + "向け" : "この事業向け";
+    const biz = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
     const tail = S.sns === "X"
-      ? "■バズ要因トップ3(Xアルゴ観点:リプ誘発・引用されやすさ・滞在時間も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレで" + bizFor + "に書いた例文1本(140字以内)"
-      : "■バズ要因トップ3(IGアルゴ観点:保存・シェア・冒頭1行でのスワイプ阻止も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレで" + bizFor + "のキャプション例1本(ハッシュタグ5〜10個付き)";
-    return `以下の${S.sns}の投稿がバズった理由を構造分解せよ。\n\n${v.post}\n\n出力形式(日本語・前置き不要):\n■構造分解(フック/共感/展開/オチ/CTA に分けて解説)\n${tail}${sc()}`;
+      ? "■バズ要因トップ3(Xアルゴ観点:リプ誘発・引用されやすさ・滞在時間も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレで例文1本(140字以内)"
+      : "■バズ要因トップ3(IGアルゴ観点:保存・シェア・冒頭1行でのスワイプ阻止も考慮)\n■再現テンプレ(穴埋め式。【 】で可変部分)\n■このテンプレでキャプション例1本(ハッシュタグ5〜10個付き)";
+    return `以下の${S.sns}の投稿がバズった理由を構造分解せよ。\n\n${v.post}\n\n` +
+      `【最重要】例文と再現テンプレは必ず「${biz}」の話題だけで書くこと。貼られた投稿の題材(競艇・他業種など)は構造・型の参考にするだけで、題材そのものは例文に持ち込まない。${biz}と無関係な題材を例文に混ぜることは固く禁止する。\n\n` +
+      `出力形式(日本語・前置き不要):\n■構造分解(フック/共感/展開/オチ/CTA に分けて解説)\n${tail}${sc()}`;
   },
 });
 
