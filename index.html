@@ -1582,19 +1582,25 @@ BUILDERS.calendar = (el) => {
     try {
       await genOne(p);
       addOut.innerHTML = "";
-      const box = document.createElement("div");
-      box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px";
-      box.textContent = p._text; addOut.appendChild(box);
+      /* 編集できる本文エリア */
+      const box = document.createElement("textarea");
+      box.rows = 8; box.value = p._text;
+      box.style.cssText = "width:100%;font-size:13.5px;line-height:1.7;margin-top:10px";
+      addOut.appendChild(box);
+      const cnt = document.createElement("p"); cnt.className = "desc"; cnt.style.margin = "4px 0 6px";
+      const updCnt = () => { cnt.textContent = box.value.length + "字" + (S.sns==="X" && box.value.length>140 ? " ⚠140字超" : ""); };
+      box.oninput = updCnt; updCnt();
+      addOut.appendChild(cnt);
       const acts = document.createElement("div"); acts.className = "acts"; addOut.appendChild(acts);
       const re = document.createElement("button"); re.className = "mini"; re.textContent = "🔀 作り直し";
-      re.onclick = async () => { re.disabled = true; await genOne(p, true); box.textContent = p._text; re.disabled = false; };
+      re.onclick = async () => { re.disabled = true; re.textContent = "生成中…"; await genOne(p, true); box.value = p._text; updCnt(); re.disabled = false; re.textContent = "🔀 作り直し"; };
       acts.appendChild(re);
       const send = document.createElement("button"); send.className = "mini primary"; send.textContent = "予約管理に送る";
       send.onclick = async () => {
         if (!acct.value) { addOut.innerHTML += '<div class="err">クライアント未登録</div>'; return; }
         send.disabled = true;
         const { error } = await sb.from("scheduled_posts").insert({
-          screen_name: acct.value, text: p._text, scheduled_at: dt.toISOString(), status: "draft",
+          screen_name: acct.value, text: box.value.trim(), scheduled_at: dt.toISOString(), status: "draft",
         });
         if (error) { send.disabled = false; addOut.innerHTML += '<div class="err">'+error.message+'</div>'; return; }
         send.textContent = "送った✓";
@@ -1870,12 +1876,15 @@ BUILDERS.calendar = (el) => {
 
   function drawText(body, p, text) {
     p._text = text;
-    const box = document.createElement("div");
-    box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px";
-    box.textContent = text; body.appendChild(box);
+    const box = document.createElement("textarea");
+    box.rows = 6;
+    box.style.cssText = "width:100%;font-size:13.5px;line-height:1.7";
+    box.value = text; body.appendChild(box);
+    /* 編集したらp._textに反映(送信・コピーに使う) */
+    box.oninput = () => { p._text = box.value; };
     const acts = document.createElement("div"); acts.className = "acts"; body.appendChild(acts);
     const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "コピー";
-    cp.onclick = () => { navigator.clipboard.writeText(text); cp.textContent = "コピー済"; setTimeout(()=>cp.textContent="コピー",1500); };
+    cp.onclick = () => { navigator.clipboard.writeText(p._text); cp.textContent = "コピー済"; setTimeout(()=>cp.textContent="コピー",1500); };
     acts.appendChild(cp);
     if (S.sns === "X") {
       const sd = document.createElement("button"); sd.className = "mini primary"; sd.textContent = "予約管理に送る";
@@ -1891,6 +1900,7 @@ BUILDERS.calendar = (el) => {
       acts.appendChild(sd);
       const a = document.createElement("a"); a.className = "mini"; a.textContent = "Xで投稿→";
       a.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(p._text); a.target = "_blank";
+      a.onclick = () => { a.href = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(p._text); };
       acts.appendChild(a);
     }
   }
