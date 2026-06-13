@@ -1353,12 +1353,36 @@ BUILDERS.calendar = (el) => {
       if (window._recentRaces.length > 5) window._recentRaces.shift();
 
       /* STEP B: 取得した実データでClaudeに予想本文を作らせる */
+      /* 3連単オッズの人気順トップ6を取得→順番をシャッフルしてラベル付きで並べる */
+      let formationText = "";
+      let buyLines = null;
+      const tri = race.trifecta || [];
+      const LABELS = ["本命","対抗","単穴","穴狙い","抑え","大穴"];
+      if (tri.length >= 6) {
+        const shuffled = tri.slice(0, 6);
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        buyLines = shuffled.map((pt,i)=>LABELS[i]+"："+pt);
+        formationText = "\n\n【買い目・この6行をこのまま使う】\n" +
+          buyLines.join("\n") +
+          "\n※3連単オッズ人気順トップ6を並べ替えてラベルを付けたもの。番号も順番もラベルもこのまま本文に書き、勝手に変えない。";
+      }
+
       const prompt =
         `次は${race.venue}${race.rno}R(締切${race.deadline})の実際の出走表・直前情報。これを根拠に無料予想の投稿本文を作れ。\n\n` +
-        `【出走表】\n${(race.racelistText||"").slice(0,3500)}\n\n【直前情報】\n${(race.beforeText||"").slice(0,2500)}\n\n` +
+        `【出走表】\n${(race.racelistText||"").slice(0,3500)}\n\n【直前情報】\n${(race.beforeText||"").slice(0,2500)}\n` +
+        formationText + `\n\n` +
         `出力は投稿本文のみ(JSON不要・前置き不要)。フォーマット:\n` +
-        `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n本命：X-X-X\n対抗：X-X-X\n単穴：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
-        `ルール: 買い目は艇番1〜6の3連単フォーメーション風に6点(本命・対抗・単穴・穴狙い・抑え・大穴の6本)。実データを踏まえた現実的な買い目に。展開予想の切り口や表現も毎回新鮮にし、ありきたりな定型文の繰り返しを避ける。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`;
+        `1行目「${dateWord}の無料予想を1レース公開」\n空行\n【${race.venue}${race.rno}R】\n` +
+        (buyLines
+          ? buyLines.join("\n") + "\n"
+          : "本命：X-X-X\n対抗：X-X-X\n単穴：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n") +
+        `空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
+        (buyLines
+          ? `ルール: 買い目は上記【買い目】の6行を、ラベル・番号・順番すべてそのまま本文に書く。展開予想の表現は毎回新鮮に。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`
+          : `ルール: 買い目は艇番1〜6の3連単6点にラベル(本命・対抗・単穴・穴狙い・抑え・大穴)を付けて縦に並べる。実データを踏まえた現実的な買い目に。表現は毎回新鮮に。注意書き・免責文は入れない。${sc()}`);
       const text = await callAI(prompt, false);
 
       p._text = text.trim();
