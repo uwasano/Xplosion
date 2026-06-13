@@ -974,6 +974,67 @@ BUILDERS.calendar = (el) => {
   const gen = runBtn(el, "カレンダーを生成する");
   const out = outArea(el);
 
+  /* 今日/明日の無料予想を一発生成(業種が競艇/ボートの時だけ) */
+  if (/競艇|ボートレース|ボート/.test(CFG.bizType || "")) {
+    const yosouFld = document.createElement("div");
+    yosouFld.style.cssText = "margin-top:12px";
+    const btnRow = document.createElement("div"); btnRow.className = "acts"; yosouFld.appendChild(btnRow);
+    const todayBtn = document.createElement("button"); todayBtn.className = "btn"; todayBtn.style.margin = "0"; todayBtn.textContent = "🚤 今日の無料予想";
+    const tmrBtn = document.createElement("button"); tmrBtn.className = "btn"; tmrBtn.style.margin = "0"; tmrBtn.textContent = "🚤 明日の無料予想";
+    btnRow.appendChild(todayBtn); btnRow.appendChild(tmrBtn);
+    const yosouOut = document.createElement("div"); yosouFld.appendChild(yosouOut);
+    el.appendChild(yosouFld);
+
+    const runYosou = async (btn, label) => {
+      btn.disabled = true; const orig = btn.textContent; btn.textContent = "生成中…(検索)";
+      if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+      const base = new Date();
+      if (label === "明日") base.setDate(base.getDate() + 1);
+      const WD = ["日","月","火","水","木","金","土"];
+      const p = {
+        d: (base.getMonth()+1) + "/" + base.getDate(), w: WD[base.getDay()],
+        h: "11:00", g: "", t: label + "の無料予想", y: "予想",
+      };
+      try {
+        await genYosou(p, label);
+        /* 明日の予想は今日の夜に告知投稿する(投稿日を今日に) */
+        if (p._postToday) {
+          const t = new Date();
+          const WD = ["日","月","火","水","木","金","土"];
+          p.d = (t.getMonth()+1) + "/" + t.getDate(); p.w = WD[t.getDay()];
+        }
+        yosouOut.innerHTML = "";
+        const box = document.createElement("div");
+        box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px";
+        box.textContent = p._text; yosouOut.appendChild(box);
+        const info = document.createElement("p"); info.className = "desc"; info.style.margin = "6px 0 0";
+        info.textContent = p._postToday
+          ? "明日のレース予想を今夜 " + (p.h||"21:00") + " に告知投稿(締切" + (p._deadline||"?") + ")。"
+          : "投稿時刻は締切" + (p._deadline||"?") + "の30分前(" + (p.h||"?") + ")に自動設定。";
+        yosouOut.appendChild(info);
+        const acts = document.createElement("div"); acts.className = "acts"; yosouOut.appendChild(acts);
+        const re = document.createElement("button"); re.className = "mini"; re.textContent = "🔀 作り直し";
+        re.onclick = async () => { re.disabled = true; await genYosou(p, label); if (p._postToday) { const t=new Date(); const WD=["日","月","火","水","木","金","土"]; p.d=(t.getMonth()+1)+"/"+t.getDate(); p.w=WD[t.getDay()]; } box.textContent = p._text; info.textContent = p._postToday ? "明日のレース予想を今夜 " + (p.h||"21:00") + " に告知投稿(締切" + (p._deadline||"?") + ")。" : "投稿時刻は締切" + (p._deadline||"?") + "の30分前(" + (p.h||"?") + ")。"; re.disabled = false; };
+        acts.appendChild(re);
+        const send = document.createElement("button"); send.className = "mini primary"; send.textContent = "予約管理に送る";
+        send.onclick = async () => {
+          if (!acct.value) { yosouOut.innerHTML += '<div class="err">クライアント未登録</div>'; return; }
+          send.disabled = true;
+          const dt = planDate(p);
+          const { error } = await sb.from("scheduled_posts").insert({
+            screen_name: acct.value, text: p._text, scheduled_at: dt.toISOString(), status: "draft",
+          });
+          if (error) { send.disabled = false; yosouOut.innerHTML += '<div class="err">'+error.message+'</div>'; return; }
+          send.textContent = "送った✓";
+        };
+        acts.appendChild(send);
+      } catch (e) { yosouOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+      btn.disabled = false; btn.textContent = orig;
+    };
+    todayBtn.onclick = () => runYosou(todayBtn, "本日");
+    tmrBtn.onclick = () => runYosou(tmrBtn, "明日");
+  }
+
   /* 特定日に1本だけ追加(空いた日の穴埋め用) */
   const addFld = document.createElement("div");
   addFld.style.cssText = "margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px";
@@ -1055,6 +1116,11 @@ BUILDERS.calendar = (el) => {
       );
       const parsed = parseJSONArr(text);
       const filtered = parsed;
+      /* 時刻(h)が空の日を補完。曜日や順番で散らす */
+      const defaultTimes = S.sns === "X" ? ["21:00","22:00","12:00","20:00","23:00","19:00","21:30"] : ["20:00","21:00","12:00","19:00"];
+      filtered.forEach((p, i) => {
+        if (!p.h || !/^\d{1,2}:\d{2}$/.test(p.h)) { p.h = defaultTimes[i % defaultTimes.length]; }
+      });
       /* 週間は完成文(x)をそのまま反映 */
       filtered.forEach((p) => { if (p.x) p._text = p.x; });
       renderPlan(filtered);
@@ -1169,10 +1235,13 @@ BUILDERS.calendar = (el) => {
   }
 
   /* 無料予想生成(Web検索で当日レース+5点予想) */
-  async function genYosou(p) {
+  async function genYosou(p, whenLabel) {
+    /* whenLabel: "本日" or "明日"。デフォルトは本日 */
+    const label = whenLabel || "本日";
+    const dateWord = label === "明日" ? "明日" : "本日";
     try {
       const raw = await callAI(
-        `今日(${p.d})の競艇(ボートレース)について、Web検索で当日開催の会場と注目レースを1つ調べ、その1レースの無料予想を作れ。\n\n必ず次のJSON形式のみで出力(マークダウン・前置き禁止):\n{"deadline":"HH:MM","post":"投稿本文"}\n\n- "deadline": 予想したレースの締切(発走)時刻を24時間表記で。検索で取れなければ妥当な時刻を推定\n- "post": 下記フォーマットの投稿本文(改行は\\nで表現)\n\n本文フォーマット:\n1行目「本日の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【住之江12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n最後に「※予想は参考まで。投資は自己責任で」\n\nルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。${sc()}`,
+        `${dateWord}(${p.d})の競艇(ボートレース)について、Web検索で${dateWord}開催の会場と注目レースを1つ調べ、その1レースの無料予想を作れ。\n\n必ず次のJSON形式のみで出力(マークダウン・前置き禁止):\n{"deadline":"HH:MM","post":"投稿本文"}\n\n- "deadline": 予想したレースの締切(発走)時刻を24時間表記で。検索で取れなければ妥当な時刻を推定\n- "post": 下記フォーマットの投稿本文(改行は\\nで表現)\n\n本文フォーマット:\n1行目「${dateWord}の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【住之江12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n最後に「※予想は参考まで。投資は自己責任で」\n\nルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。${sc()}`,
         true /* useSearch */
       );
       let parsed;
@@ -1184,18 +1253,23 @@ BUILDERS.calendar = (el) => {
 
       if (parsed && parsed.post) {
         p._text = parsed.post.trim();
-        /* 締切時刻の10分前を投稿時刻に自動セット */
-        if (parsed.deadline && /^\d{1,2}:\d{2}$/.test(parsed.deadline)) {
+        if (label === "明日") {
+          /* 明日の予想は前夜(今日の21時)に告知として出す */
+          p.h = "21:00";
+          p._deadline = parsed.deadline || "";
+          p._postToday = true; // 投稿日は今日
+        } else if (parsed.deadline && /^\d{1,2}:\d{2}$/.test(parsed.deadline)) {
+          /* 今日の予想は締切30分前 */
           const [hh, mm] = parsed.deadline.split(":").map(Number);
-          let total = hh * 60 + mm - 10; // 10分前
+          let total = hh * 60 + mm - 30;
           if (total < 0) total = hh * 60 + mm;
           p.h = String(Math.floor(total/60)).padStart(2,"0") + ":" + String(total%60).padStart(2,"0");
           p._deadline = parsed.deadline;
         }
       } else {
-        p._text = raw.trim(); // JSON失敗時はそのまま本文に
+        p._text = raw.trim();
       }
-      p.t = "無料予想" + (p._deadline ? "(締切" + p._deadline + ")" : "");
+      p.t = label + "の無料予想" + (p._deadline ? "(締切" + p._deadline + ")" : "");
     } catch (e) { out.err(e.message); }
   }
 
@@ -1463,11 +1537,47 @@ BUILDERS.schedule = (el) => {
   const text = ta(el, 5, "投稿する文面");
   const cnt = document.createElement("div"); cnt.className = "count"; cnt.textContent = "0字"; el.appendChild(cnt);
   text.addEventListener("input", () => { cnt.textContent = text.value.length + "字"; cnt.classList.toggle("over", text.value.length > 140); });
-  fld(el, "画像/動画URL(任意)");
-  const mediaIn = document.createElement("input"); mediaIn.placeholder = "https://〜.jpg / .png / .mp4 (直リンク)"; el.appendChild(mediaIn);
+  fld(el, "画像/動画(任意)");
+  /* スマホから直接アップ */
+  const upRow = document.createElement("div"); upRow.style.cssText = "display:flex;gap:8px;align-items:center;margin-bottom:8px";
+  const fileBtn = document.createElement("button"); fileBtn.className = "mini cyan"; fileBtn.textContent = "📷 スマホから画像を選ぶ";
+  const fileInput = document.createElement("input"); fileInput.type = "file"; fileInput.accept = "image/*"; fileInput.style.display = "none";
+  upRow.appendChild(fileBtn); upRow.appendChild(fileInput); el.appendChild(upRow);
+  const upStatus = document.createElement("div"); upStatus.className = "desc"; upStatus.style.margin = "0 0 8px"; el.appendChild(upStatus);
+  const mediaIn = document.createElement("input"); mediaIn.placeholder = "または画像/動画の直リンクURL"; el.appendChild(mediaIn);
   const mediaHint = document.createElement("p"); mediaHint.className = "desc"; mediaHint.style.margin = "6px 0 0";
-  mediaHint.textContent = "公開された画像/動画の直リンクURLを入れると添付される。Supabase StorageやImgur等にアップした画像URLでOK。画像は5MBまで。";
+  mediaHint.textContent = "スマホから選ぶと自動でアップロードしてURLが入る。直リンクURLを直接貼ってもOK。画像は5MBまで。";
   el.appendChild(mediaHint);
+
+  /* プレビュー */
+  const preview = document.createElement("img"); preview.style.cssText = "display:none;max-width:100%;border-radius:10px;margin-top:8px;border:1px solid var(--border)";
+  el.appendChild(preview);
+  function showPreview(url) {
+    if (url && /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url)) { preview.src = url; preview.style.display = "block"; }
+    else { preview.style.display = "none"; }
+  }
+  mediaIn.addEventListener("input", () => showPreview(mediaIn.value.trim()));
+
+  fileBtn.onclick = () => fileInput.click();
+  fileInput.onchange = async () => {
+    const f = fileInput.files[0];
+    if (!f) return;
+    if (f.size > 5 * 1024 * 1024) { upStatus.innerHTML = '<span style="color:var(--bad)">5MBを超えてる。小さい画像を選んで。</span>'; return; }
+    fileBtn.disabled = true; upStatus.textContent = "アップロード中…";
+    try {
+      const ext = (f.name.split(".").pop() || "jpg").toLowerCase();
+      const path = (acct.value || "anon") + "/" + Date.now() + "_" + Math.random().toString(36).slice(2,8) + "." + ext;
+      const { error: upErr } = await sb.storage.from("post-media").upload(path, f, { contentType: f.type, upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = sb.storage.from("post-media").getPublicUrl(path);
+      mediaIn.value = pub.publicUrl;
+      showPreview(pub.publicUrl);
+      upStatus.innerHTML = '<span style="color:var(--ok)">アップ完了 ✓ URLが入った</span>';
+    } catch (e) {
+      upStatus.innerHTML = '<span style="color:var(--bad)">アップ失敗: ' + (e.message||e) + '<br>(Supabaseで post-media バケットを公開で作る必要あり)</span>';
+    }
+    fileBtn.disabled = false; fileInput.value = "";
+  };
   const save = runBtn(el, "予約する");
   const cancel = document.createElement("button"); cancel.className = "btn btn-ghost hidden"; cancel.textContent = "編集をやめる"; el.appendChild(cancel);
   const out = outArea(el);
@@ -1475,7 +1585,7 @@ BUILDERS.schedule = (el) => {
   const histEl = document.createElement("div"); el.appendChild(histEl);
   let editingId = null;
 
-  function resetForm() { editingId = null; text.value = ""; when.value = ""; mediaIn.value = ""; cnt.textContent = "0字"; save.textContent = "予約する"; cancel.classList.add("hidden"); }
+  function resetForm() { editingId = null; text.value = ""; when.value = ""; mediaIn.value = ""; cnt.textContent = "0字"; save.textContent = "予約する"; cancel.classList.add("hidden"); preview.style.display = "none"; upStatus.textContent = ""; }
   cancel.onclick = resetForm;
 
   save.onclick = async () => {
@@ -1506,7 +1616,7 @@ BUILDERS.schedule = (el) => {
   }
 
   function editPost(p) {
-    editingId = p.id; acct.value = p.screen_name; text.value = p.text; mediaIn.value = p.media_url || "";
+    editingId = p.id; acct.value = p.screen_name; text.value = p.text; mediaIn.value = p.media_url || ""; showPreview(p.media_url || "");
     const dt = new Date(p.scheduled_at); dt.setMinutes(dt.getMinutes()-dt.getTimezoneOffset());
     when.value = dt.toISOString().slice(0,16); cnt.textContent = p.text.length+"字";
     save.textContent = "更新する"; cancel.classList.remove("hidden"); window.scrollTo({top:0,behavior:"smooth"});
