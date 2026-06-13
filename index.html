@@ -212,6 +212,13 @@ async function loadCfgFor(account) {
   CFG_CACHE[S.activeAccount] = c;
   CFG = c;
 }
+/* キャッシュにあれば即CFGを差し替え(通信なし)。表示の即時切替に使う */
+function loadCfgSync(account) {
+  const a = account || "_default_";
+  S.activeAccount = a;
+  if (CFG_CACHE[a]) { CFG = CFG_CACHE[a]; return true; }
+  return false; // 未キャッシュ
+}
 async function saveCfg() {
   CFG_CACHE[S.activeAccount] = CFG;
   await kvSet("gen_config:" + S.activeAccount, CFG);
@@ -390,6 +397,13 @@ async function enter() {
   if (legacy) { CFG_CACHE["_default_"] = Object.assign(defaultCfg(), legacy); }
   await loadCfgFor("_default_");
   await loadClients();
+  /* 全アクティブアカウントの設定を先読みキャッシュ(切替を即座に) */
+  for (const c of S.clients.filter((x)=>x.status==="active")) {
+    if (!CFG_CACHE[c.screen_name]) {
+      const saved = await kvGet("gen_config:" + c.screen_name, null);
+      CFG_CACHE[c.screen_name] = Object.assign(defaultCfg(), saved || {});
+    }
+  }
   renderTop(); renderNav(); showTab(S.tab);
 }
 
@@ -964,7 +978,13 @@ BUILDERS.calendar = (el) => {
   S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
   if (!acct.options.length) { const o=document.createElement("option"); o.textContent="(クライアント未登録)"; o.value=""; acct.appendChild(o); }
   acct.value = S.activeAccount;
-  acct.onchange = async () => { await loadCfgFor(acct.value || "_default_"); updateYosouVisibility(); if (lastPlan) renderPlan(lastPlan); };
+  acct.onchange = async () => {
+    /* まずキャッシュから即座に切替→ボタン表示を即更新 */
+    const hit = loadCfgSync(acct.value || "_default_");
+    updateYosouVisibility();
+    if (!hit) { await loadCfgFor(acct.value || "_default_"); updateYosouVisibility(); }
+    if (lastPlan) renderPlan(lastPlan);
+  };
   const acctHint = document.createElement("p"); acctHint.className = "desc"; acctHint.style.margin = "6px 0 0";
   acctHint.textContent = "選んだアカウントの「生成設定」(性格・絵文字・無料予想の有無など)で文章が作られる。";
   el.appendChild(acctHint);
@@ -991,8 +1011,12 @@ BUILDERS.calendar = (el) => {
     yosouFld.style.display = isBoat ? "block" : "none";
     if (!isBoat) yosouOut.innerHTML = ""; // 非競艇に切り替えたら結果も消す
   }
-  /* 初期表示: 選択中アカウントの設定をロードしてから判定 */
-  (async () => { await loadCfgFor(acct.value || "_default_"); updateYosouVisibility(); })();
+  /* 初期表示: キャッシュがあれば即判定、なければ通信 */
+  (async () => {
+    const hit = loadCfgSync(acct.value || "_default_");
+    updateYosouVisibility();
+    if (!hit) { await loadCfgFor(acct.value || "_default_"); updateYosouVisibility(); }
+  })();
 
   {
     const runYosou = async (btn, label) => {
@@ -1276,17 +1300,26 @@ BUILDERS.calendar = (el) => {
     const label = whenLabel || "本日";
     const dateWord = label === "明日" ? "明日" : "本日";
     try {
+      const yyyymmdd = (() => {
+        const base = new Date();
+        if (label === "明日") base.setDate(base.getDate() + 1);
+        return "" + base.getFullYear() + String(base.getMonth()+1).padStart(2,"0") + String(base.getDate()).padStart(2,"0");
+      })();
       const raw = await callAI(
-        `${dateWord}(${p.d})の競艇(ボートレース)の無料予想を1レース分作る。\n\n` +
+        `${dateWord}(${p.d})のボートレースの無料予想を1レース分作る。締切時刻は必ずBOATRACE公式サイトの実データを使う。\n\n` +
+        `【公式サイトの使い方】\n` +
+        `・会場コード(jcd): 桐生01 戸田02 江戸川03 平和島04 多摩川05 浜名湖06 蒲郡07 常滑08 津09 三国10 びわこ11 住之江12 尼崎13 鳴門14 丸亀15 児島16 宮島17 徳山18 下関19 若松20 芦屋21 福岡22 唐津23 大村24\n` +
+        `・${dateWord}のレース一覧URL: https://www.boatrace.jp/owpc/pc/race/raceindex?jcd=（会場コード2桁）&hd=${yyyymmdd}\n` +
+        `・各レースの出走表URL: https://www.boatrace.jp/owpc/pc/race/racelist?rno=（レース番号）&jcd=（会場コード2桁）&hd=${yyyymmdd}\n\n` +
         `【手順・厳守】\n` +
-        `1. まずWeb検索で「${dateWord} ボートレース 出走表」「${dateWord} 競艇 開催 締切時刻」等を調べ、${dateWord}実際に開催されている会場を特定する。\n` +
-        `2. その会場の特定のレース(例:12R)を1つ選び、そのレースの「締切時刻(投票締切=発走時刻)」を出走表・公式情報から正確に読み取る。\n` +
-        `3. 締切時刻は必ず実際に検索で確認した値を使う。絶対に推測・概算・それっぽい数字の捏造をしない。常滑なら常滑、住之江なら住之江の、そのレース番号の実際の締切を使うこと。\n` +
-        `4. もし正確な締切時刻が検索で確認できない場合は、deadlineを空文字 "" にする(嘘の時刻を入れるくらいなら空にする)。\n\n` +
-        `必ず次のJSON形式のみで出力(マークダウン・前置き禁止):\n{"venue":"会場名","race":"12R","deadline":"HH:MM","deadline_source":"確認した情報源や根拠を一言","post":"投稿本文"}\n\n` +
-        `- "deadline": 実際に確認できた締切時刻(24時間表記)。確認できなければ ""\n` +
+        `1. まず${dateWord}開催中の会場を1つ選ぶ。\n` +
+        `2. その会場・そのレース番号の出走表URL(上の形式)をWeb検索/閲覧し、ページに記載の「締切予定時刻」を正確に読み取る。\n` +
+        `3. 締切時刻は必ず公式ページに記載の実際の値を使う。推測・概算・捏造は禁止。常滑なら常滑の、選んだレース番号の正しい締切予定時刻を使うこと。\n` +
+        `4. どうしても正確な締切時刻が取れない場合のみ、deadlineを空文字 "" にする(嘘の時刻は入れない)。\n\n` +
+        `必ず次のJSON形式のみで出力(マークダウン・前置き禁止):\n{"venue":"会場名","race":"12R","deadline":"HH:MM","deadline_source":"読み取った公式URL","post":"投稿本文"}\n\n` +
+        `- "deadline": 公式ページで確認した締切予定時刻(24時間表記)。確認できなければ ""\n` +
         `- "post": 下記フォーマットの投稿本文(改行は\\nで表現)\n\n` +
-        `本文フォーマット:\n1行目「${dateWord}の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【常滑12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n最後に「※予想は参考まで。投資は自己責任で」\n\nルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。会場名とR番号は本文と venue/race で一致させる。${sc()}`,
+        `本文フォーマット:\n1行目「${dateWord}の無料予想を1レース公開」\n空行\n【会場名+R番号】(例: 【常滑12R】)\n本命：X-X-X\n対抗：X-X-X\n穴狙い：X-X-X\n抑え：X-X-X\n大穴：X-X-X\n空行\n展開予想を1〜2行(風・潮・進入隊形などの根拠)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\nルール: 買い目は艇番1〜6の3連単フォーメーション風に5点。会場名とR番号は本文と venue/race で一致させる。注意書きや免責文(自己責任・参考まで等)は入れない。${sc()}`,
         true /* useSearch */
       );
       let parsed;
