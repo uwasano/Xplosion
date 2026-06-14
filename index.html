@@ -2161,11 +2161,17 @@ BUILDERS.calendar = (el) => {
     if (!addDay.value) { return; }
     addBtn.disabled = true; addBtn.textContent = "生成中…";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
-    const dt = new Date(addDay.value);
+    /* 入力値(datetime-local: "YYYY-MM-DDTHH:MM")から、秒を含めず正確な時刻を組み立てる */
+    const [datePart, timePart] = addDay.value.split("T");
+    const [yy, mo, da] = datePart.split("-").map(Number);
+    const [hh0, mm0] = (timePart || "21:00").split(":").map(Number);
+    const dt = new Date(yy, mo-1, da, hh0, mm0, 0, 0); /* 秒・ミリ秒を0に固定 */
+    const fixedH = String(hh0).padStart(2,"0") + ":" + String(mm0).padStart(2,"0");
     const WD = ["日","月","火","水","木","金","土"];
     const p = {
-      d: (dt.getMonth()+1) + "/" + dt.getDate(), w: WD[dt.getDay()],
-      h: String(dt.getHours()).padStart(2,"0") + ":" + String(dt.getMinutes()).padStart(2,"0"),
+      d: mo + "/" + da, w: WD[dt.getDay()],
+      h: fixedH,
+      _lockTime: true, /* 時刻を固定(genOneに上書きさせない) */
       g: "", t: addTheme.value || "おまかせ", y: "単発",
     };
     try {
@@ -2421,7 +2427,7 @@ BUILDERS.calendar = (el) => {
         if (r && r.thread) {
           p._text = r.thread[0]; p._thread = r.thread;
           p.t = "ミックス("+(sc2?sc2.scene:"おすすめ")+")"+(r.thread.length>1?" 🧵":""); p.y = "ミックス"; p.g = "シーシャミックス";
-          if (!p.h || !/^\d{1,2}:\d{2}$/.test(p.h)) p.h = "21:00";
+          if (!p._lockTime && (!p.h || !/^\d{1,2}:\d{2}$/.test(p.h))) p.h = "21:00";
           return;
         }
       }
