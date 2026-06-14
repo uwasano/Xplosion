@@ -3475,11 +3475,27 @@ BUILDERS.autoqueue = (el) => {
       return;
     }
     listEl.innerHTML = "";
+    const todayStr = today.toDateString();
+    const tmrw = new Date(today.getTime() + 86400000).toDateString();
+    let lastDateKey = null;
     rows.forEach((q) => {
+      const tm = new Date(q.scheduled_at);
+      /* 日付が変わったら見出しを挿入 */
+      const dKey = tm.toDateString();
+      if (dKey !== lastDateKey) {
+        lastDateKey = dKey;
+        const head2 = document.createElement("div");
+        const wd = ["日","月","火","水","木","金","土"][tm.getDay()];
+        let label = (tm.getMonth()+1) + "/" + tm.getDate() + "(" + wd + ")";
+        if (dKey === todayStr) label = "📅 今日 " + label;
+        else if (dKey === tmrw) label = "🌅 明日 " + label;
+        head2.textContent = label;
+        head2.style.cssText = "font-weight:800;font-size:13px;color:var(--accent);margin:14px 2px 6px;padding-bottom:4px;border-bottom:1px solid var(--border)";
+        listEl.appendChild(head2);
+      }
       const d = document.createElement("div"); d.className = "row";
       d.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap";
       /* 時刻(タップで変更) */
-      const tm = new Date(q.scheduled_at);
       const timeBtn = document.createElement("input"); timeBtn.type = "time";
       timeBtn.value = String(tm.getHours()).padStart(2,"0")+":"+String(tm.getMinutes()).padStart(2,"0");
       timeBtn.style.cssText = "width:auto;padding:6px 10px;font-family:var(--mono);font-size:15px;font-weight:800;color:var(--accent2);background:rgba(0,229,255,.08);border:1px solid var(--accent2);border-radius:8px";
