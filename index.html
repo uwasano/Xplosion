@@ -2220,7 +2220,13 @@ BUILDERS.calendar = (el) => {
     const box = document.createElement("textarea"); box.rows = 5; box.value = initialText;
     box.style.cssText = "width:100%;font-size:13px;line-height:1.6"; wrap.appendChild(box);
     const cnt = document.createElement("p"); cnt.className="desc"; cnt.style.margin="3px 0 6px";
-    const upd = () => { cnt.textContent = box.value.length+"字"+(box.value.length>140?" ⚠140字超(送信時に自動スレッド)":""); };
+    /* Xの字数: URLは何文字でも23字換算。実効字数で判定 */
+    const xLen = (s) => {
+      let t = s, used = 0;
+      t = t.replace(/https?:\/\/[^\s]+/g, () => { used += 23; return ""; });
+      return t.length + used;
+    };
+    const upd = () => { const n = xLen(box.value); cnt.textContent = n+"字"+(n>140?" ⚠140字超(送信時に自動スレッド)":""); };
     box.oninput = upd; upd(); wrap.appendChild(cnt);
     const acts = document.createElement("div"); acts.className="acts"; wrap.appendChild(acts);
     const send = document.createElement("button"); send.className="mini primary"; send.textContent="これを予約管理に送る";
@@ -2276,6 +2282,9 @@ BUILDERS.calendar = (el) => {
       + `検索して分かった内容に合わせて、トーンを変える:\n`
       + `・事件/事故/訃報/社会問題などセンシティブな話題 → 軽いノリ・茶化し・煽りは絶対NG。代わりに「なるほどそういう見方があるのか」と思われる誠実で思慮深い視点、多くの人が賛同できる冷静な意見を述べる。品位を保つ\n`
       + `・芸能/スポーツ/エンタメ/面白ネタ → 共感やツッコミ、楽しい乗っかり方でOK\n`
+      + `\n【何の話か分かるように書く・重要】\n`
+      + `- 読み手が文脈を知らなくても何の話か分かるよう、本文の中で「${tw}」(誰/何か)に必ず触れる。曖昧な「有名人」「あの件」だけで済ませない\n`
+      + `- 各案の最後の行に、検索で見つけた参考ニュースのURLを1つ「参考: https://...」の形で必ず添える(実在するURLのみ。無ければ書かない)\n`
       + `\n【全案共通のNG】\n`
       + `- 「9割の人が〜」「実は〜なの」「なぜなら〜(具体なし)」のような中身のない煽り\n`
       + `- 知ったかぶり・事実誤認。検索で確認した正確な内容だけ書く\n`
@@ -2283,7 +2292,7 @@ BUILDERS.calendar = (el) => {
       + `\n【良い投稿の条件】\n`
       + `- 読んだ人が「たしかに」「そういう考え方もあるな」と感じる、視点のある一言\n`
       + `- 賛同・共感・リポストされやすい、地に足のついた中身\n`
-      + `- 設定された文体・性格そのまま。業種の宣伝に無理に着地させない。各案140字以内\n`
+      + `- 設定された文体・性格そのまま。業種の宣伝に無理に着地させない。本文は140字以内(URLは字数に含めなくてよい)\n`
       + (shuffle ? `- 前回とは全く違う角度で新鮮な3案にする\n` : "")
       + `\n出力形式(厳守): 前置き・説明・「〜します」のような文は一切書かない。3案を「===」だけの行で区切って本文のみ出力する。`;
   }
