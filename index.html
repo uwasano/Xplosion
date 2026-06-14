@@ -2244,9 +2244,16 @@ BUILDERS.calendar = (el) => {
 
       /* 週間以外(15日・月間)は枠だけ来てるので、続けて全日分の本文を自動生成 */
       if (span.value !== "週間") {
+        /* 噂のシーシャBar: 頻度ぶんの日を先に「ミックス日」として確定 */
+        let mixDays = new Set();
+        if (isUwasaShisha(acct.value, CFG.bizName) && CFG.mixOn && (CFG.mixFreq||0) > 0) {
+          const want = Math.round(filtered.length * (CFG.mixFreq/100));
+          const idxs = filtered.map((_,i)=>i).sort(()=>Math.random()-0.5).slice(0, want);
+          mixDays = new Set(idxs);
+        }
         gen.textContent = "本文を生成中… 0/" + filtered.length;
         for (let i = 0; i < filtered.length; i++) {
-          await genOne(filtered[i]);
+          await genOne(filtered[i], false, mixDays.has(i));
           gen.textContent = "本文を生成中… " + (i+1) + "/" + filtered.length;
           renderPlan(filtered);
         }
@@ -2347,11 +2354,13 @@ BUILDERS.calendar = (el) => {
     });
   }
 
-  /* 通常の1投稿生成(shuffle=trueで毎回違う角度に) */
-  async function genOne(p, shuffle) {
+  /* 通常の1投稿生成(shuffle=trueで毎回違う角度に。forceMix=trueでミックス確定) */
+  async function genOne(p, shuffle, forceMix) {
     try {
-      /* 噂のシーシャBar: 頻度に応じてミックス紹介投稿に差し替え */
-      if (isUwasaShisha(acct.value, CFG.bizName) && CFG.mixOn && Math.random()*100 < (CFG.mixFreq||0)) {
+      /* 噂のシーシャBar: forceMix指定時、または(指定なしで)頻度に当たればミックス紹介に */
+      const shishaOn = isUwasaShisha(acct.value, CFG.bizName) && CFG.mixOn;
+      const doMix = shishaOn && (forceMix === true || (forceMix === undefined && Math.random()*100 < (CFG.mixFreq||0)));
+      if (doMix) {
         const pd = planDate(p);
         const ds = pd.getFullYear()+"-"+String(pd.getMonth()+1).padStart(2,"0")+"-"+String(pd.getDate()).padStart(2,"0");
         const sc2 = shPickScene(null, ds);
@@ -2364,7 +2373,12 @@ BUILDERS.calendar = (el) => {
         }
       }
       const variant = shuffle ? "\n※前回と違う切り口・フック・語り口で、新鮮な別パターンにすること。" : "";
-      const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${variant}${sc()}`);
+      /* 噂のシーシャBarの時、AIが勝手にフレーバー配合・おすすめミックス紹介を書くのを禁止
+         (ミックス紹介は専用エンジンが星評価付きで担当するため) */
+      const noMix = shishaOn
+        ? "\n【禁止】具体的なフレーバーの配合比やおすすめミックスの紹介は書かない(別機能が担当)。代わりに店の雰囲気・豆知識・季節・営業案内・共感ネタなどで書く。"
+        : "";
+      const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${variant}${noMix}${sc()}`);
       p._text = text.trim();
     } catch (e) { out.err(e.message); }
   }
