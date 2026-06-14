@@ -736,6 +736,17 @@ async function kvSet(key, value) {
 }
 
 /* ============ AI呼び出し(GAS中継) ============ */
+/* グローバル: GASにアクション+引数を送る(各タブから使える) */
+async function gasFetch_(action, extra) {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) throw new Error("ログインが切れた。リロードして。");
+  const res = await fetch(GAS_URL, {
+    method: "POST", headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify(Object.assign({ auth: data.session.access_token, action }, extra || {})),
+  });
+  return await res.json();
+}
+
 async function callAI(prompt, useSearch, model, wantUrls) {
   const { data } = await sb.auth.getSession();
   if (!data.session) throw new Error("ログインが切れた。リロードして。");
@@ -867,6 +878,7 @@ const TABS = [
   { id:"multi", num:"05", label:"形式展開" },
   { id:"trend", num:"06", label:"トレンド" },
   { id:"reply", num:"07", label:"リプ生成" },
+  { id:"unfollow", num:"🧹", label:"フォロー整理" },
   { id:"outreach", num:"07+", label:"🎯営業リプ" },
   { id:"gapcheck", num:"📭", label:"書き漏れ" },
   { id:"remake", num:"08", label:"リメイク" },
@@ -1773,6 +1785,170 @@ BUILDERS.gapcheck = (el) => {
   run();
 };
 
+/* ---- 💎 バズミラー(競合のフォロワーを狙ってリプで新規獲得) ---- */
+BUILDERS.replyfactory = (el) => {
+  head(el, "💎 バズミラー", "競合のXユーザー名を入れる→その人の伸びてる日本語ポストを取得→各ポストに自然なリプを量産。コピーして飛んで送信。競合のフォロワーを取りにいく。海外ポストは自動で除外。", [
+    "競合のユーザー名(@なしでOK・複数は改行)を入れる",
+    "伸びてるポストを取得→各ポストにリプ案",
+    "良いのをコピー→そのポストに飛んでリプ&フォロー",
+  ]);
+
+  const inWrap = document.createElement("div");
+  const ta = document.createElement("textarea"); ta.rows = 3;
+  ta.placeholder = "競合のユーザー名を入力(@は不要)\n複数入れたい時は改行で区切る\n例:\narisa1996kyotei\nkyotei_pro";
+  ta.style.cssText = "width:100%;font-size:14px";
+  inWrap.appendChild(ta);
+
+  const optRow = document.createElement("div"); optRow.style.cssText = "display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap";
+  const lab = document.createElement("span"); lab.className="desc"; lab.textContent = "リプの本数:"; optRow.appendChild(lab);
+  let perPost = 1;
+  const cntBtns = {};
+  [1,2,3].forEach(n => {
+    const b = document.createElement("button"); b.className="mini"; b.textContent = "1ポストに"+n+"案";
+    b.onclick = () => { perPost = n; Object.values(cntBtns).forEach(x=>x.classList.remove("cyan")); b.classList.add("cyan"); };
+    cntBtns[n] = b; optRow.appendChild(b);
+  });
+  cntBtns[1].classList.add("cyan");
+  inWrap.appendChild(optRow);
+
+  const goBtn = document.createElement("button"); goBtn.className = "mini primary"; goBtn.textContent = "💎 伸びてるポストを取得してリプ量産";
+  goBtn.style.cssText = "width:100%;margin-top:4px";
+  inWrap.appendChild(goBtn);
+  el.appendChild(inWrap);
+
+  const out = document.createElement("div"); out.style.cssText = "margin-top:10px"; el.appendChild(out);
+
+  goBtn.onclick = async () => {
+    const names = ta.value.split(/[\n,、]/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean);
+    if (!names.length) { alert("競合のユーザー名を入れて。"); return; }
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    goBtn.disabled = true; out.innerHTML = "";
+    /* 各ユーザーのポストを取得 */
+    let allPosts = [];
+    for (const name of names.slice(0, 5)) {
+      goBtn.textContent = "@"+name+" のポスト取得中…";
+      try {
+        const r = await gasFetch_("twUser", { userName: name });
+        if (r && r.tweets && r.tweets.length) {
+          r.tweets.forEach(t => { t._author = name; allPosts.push(t); });
+        } else if (r && r.error) {
+          const w = document.createElement("div"); w.className="muted"; w.style.cssText="font-size:12px;margin:4px 0";
+          w.textContent = "@"+name+": 取得できず("+(r.error)+")"; out.appendChild(w);
+        }
+      } catch(e) {
+        const w = document.createElement("div"); w.className="err"; w.textContent = "@"+name+": "+e.message; out.appendChild(w);
+      }
+    }
+    if (!allPosts.length) {
+      out.innerHTML += '<div class="muted" style="padding:8px">ポストが取得できんかった。ユーザー名が正しいか、APIキーが設定されてるか確認して。</div>';
+      goBtn.disabled = false; goBtn.textContent = "💎 伸びてるポストを取得してリプ量産"; return;
+    }
+    /* いいね数でソートして伸びてるポストTOP10 */
+    allPosts.sort((a,b)=> (b.likes||0) - (a.likes||0));
+    const top = allPosts.slice(0, 10);
+    out.innerHTML = '<div class="desc" style="margin:6px 0">伸びてるポスト'+top.length+'件。各ポストにリプ案を生成中…</div>';
+
+    /* 各ポストにリプ生成 */
+    goBtn.textContent = "リプを生成中…";
+    for (const p of top) {
+      const card = document.createElement("div");
+      card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px";
+      card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+' 🔁'+(p.retweets||0)+'</div>'
+        + '<div style="font-size:13px;line-height:1.55;margin-bottom:6px;white-space:pre-wrap">'+esc(p.text.length>180?p.text.slice(0,180)+"…":p.text)+'</div>';
+      const repBox = document.createElement("div"); card.appendChild(repBox);
+      out.appendChild(card);
+      try {
+        const r = await callAI(replyFactoryPrompt(p.text, perPost), false, "haiku", false);
+        const text = (typeof r === "string") ? r : r.text;
+        let reps = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>2 && !/^(承知|了解)/.test(s));
+        reps.slice(0, perPost).forEach(rep => {
+          const rWrap = document.createElement("div"); rWrap.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px";
+          const rTxt = document.createElement("div"); rTxt.style.cssText="font-size:13px;line-height:1.5;white-space:pre-wrap"; rTxt.textContent = rep;
+          rWrap.appendChild(rTxt);
+          const acts = document.createElement("div"); acts.style.cssText="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap";
+          const cp = document.createElement("button"); cp.className="mini"; cp.textContent="📋 コピー";
+          cp.onclick = () => { navigator.clipboard.writeText(rep); cp.textContent="コピーした✓"; setTimeout(()=>cp.textContent="📋 コピー",1500); };
+          const go = document.createElement("a"); go.className="mini cyan"; go.textContent="↗ ポストに飛ぶ"; go.href = p.url || ("https://x.com/"+p._author); go.target="_blank";
+          go.style.cssText="text-decoration:none;display:inline-block;padding:6px 10px;border-radius:8px";
+          acts.appendChild(cp); acts.appendChild(go); rWrap.appendChild(acts);
+          repBox.appendChild(rWrap);
+        });
+      } catch(e) { repBox.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    }
+    goBtn.disabled = false; goBtn.textContent = "💎 伸びてるポストを取得してリプ量産";
+  };
+
+  /* リプ生成プロンプト */
+  function replyFactoryPrompt(postText, n) {
+    return `次のXのポストに対する「リプライ(返信)」を${n}案作る。\n`
+      + `\n【相手のポスト】\n${postText}\n`
+      + personaClause()
+      + `\n【リプの狙い】\n`
+      + `- このポストを見た人や投稿主に「お、いいこと言うな」と思わせて、プロフィールを見てもらいフォローにつなげる\n`
+      + `- 投稿主への共感・補足・自分の体験・気の利いたひと言など、自然で感じのいいリプ\n`
+      + `\n【ルール】\n`
+      + `- 宣伝・売り込み・リンク貼りは絶対しない(リプ欄で嫌われる)。あくまで自然な会話\n`
+      + `- 媚びすぎ・テンプレ褒め(「素敵です!」だけ等)はNG。中身のある一言\n`
+      + `- 相手を否定・論破しない。感じよく\n`
+      + `- 設定された文体・性格そのまま。1案40〜80字くらい、長すぎない\n`
+      + `- 絵文字は使いすぎない\n`
+      + `\n出力形式(厳守): 前置きなし。${n}案を「===」だけの行で区切って本文のみ。`;
+  }
+};
+
+/* ---- 🧹 フォロー整理(非フォローバックを抽出して解除) ---- */
+BUILDERS.unfollow = (el) => {
+  head(el, "🧹 フォロー整理", "自分がフォローしてるのに相手がフォローバックしてない相手を抽出。フォロー比率を改善してアカウントの見栄えを整える。解除は1日30件まで(凍結対策)。", [
+    "対象アカウントを選んで「抽出」を押す",
+    "非フォローバックの一覧が出る",
+    "解除候補を確認→ワンタップ解除 or Xで開いて手動",
+  ]);
+
+  const note = document.createElement("div");
+  note.style.cssText = "background:rgba(255,107,53,.08);border:1px solid #ff6b35;border-radius:8px;padding:10px;font-size:12.5px;line-height:1.6;margin-bottom:10px;color:var(--text)";
+  note.innerHTML = "⚠️ <b>凍結対策</b>: Xは短時間の大量解除をスパム判定することがある。このツールは<b>1日30件まで</b>に制限してる。それでも一気にやりすぎず、数日に分けるのが安全。";
+  el.appendChild(note);
+
+  const goBtn = document.createElement("button"); goBtn.className = "mini primary"; goBtn.textContent = "🧹 非フォローバックを抽出";
+  goBtn.style.cssText = "width:100%"; el.appendChild(goBtn);
+  const statusEl = document.createElement("div"); statusEl.style.cssText="margin-top:8px"; el.appendChild(statusEl);
+  const out = document.createElement("div"); out.style.cssText="margin-top:8px"; el.appendChild(out);
+
+  goBtn.onclick = async () => {
+    if (!acct.value) { alert("クライアント(アカウント)を選んで。"); return; }
+    goBtn.disabled = true; goBtn.textContent = "抽出中…(フォロー数が多いと時間かかる)"; out.innerHTML = ""; statusEl.innerHTML = "";
+    try {
+      const j = await gasFetch_("nonFollowBack", { userName: acct.value });
+      if (j.error) { out.innerHTML = '<div class="err">'+esc(j.error)+'</div>'; goBtn.disabled=false; goBtn.textContent="🧹 非フォローバックを抽出"; return; }
+      const cand = j.candidates || [];
+      statusEl.innerHTML = '<div class="desc">フォロー中: '+(j.followingCount||0)+' / フォロワー: '+(j.followerCount||0)+' / 非フォローバック: <b style="color:var(--accent)">'+cand.length+'件</b><br>今日の解除済み: '+(j.todayUnfollowed||0)+'/30件</div>';
+      if (!cand.length) { out.innerHTML = '<div class="muted" style="padding:8px">非フォローバックは見つからんかった。きれいな状態や👍</div>'; goBtn.disabled=false; goBtn.textContent="🧹 非フォローバックを抽出"; return; }
+      let todayCount = j.todayUnfollowed || 0;
+      cand.slice(0, 100).forEach((u) => {
+        const card = document.createElement("div");
+        card.style.cssText = "display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px;flex-wrap:wrap";
+        card.innerHTML = '<div style="flex:1;min-width:140px"><div style="font-weight:700;font-size:13px">@'+esc(u.userName)+'</div><div style="font-size:11px;color:var(--muted)">'+esc(u.name||"")+' · フォロワー'+(u.followers||0)+'</div></div>';
+        const open = document.createElement("a"); open.className="mini"; open.textContent="↗開く"; open.href="https://x.com/"+u.userName; open.target="_blank";
+        open.style.cssText="text-decoration:none;padding:5px 9px;border-radius:7px;font-size:12px";
+        const unf = document.createElement("button"); unf.className="mini"; unf.textContent="解除"; unf.style.cssText="padding:5px 12px;font-size:12px;background:#ff6b35;color:#fff;border:none";
+        unf.onclick = async () => {
+          if (todayCount >= 30) { alert("今日の解除上限(30件)に達した。明日また続けて。"); return; }
+          unf.disabled = true; unf.textContent = "…";
+          try {
+            const r = await gasFetch_("unfollow", { screenName: acct.value, targetUserName: u.userName, targetId: u.id });
+            if (r.ok) { todayCount = r.todayUnfollowed; unf.textContent="解除✓"; unf.style.background="#666"; card.style.opacity="0.5";
+              statusEl.querySelector("div").innerHTML = statusEl.querySelector("div").innerHTML.replace(/今日の解除済み: \d+\/30件/, "今日の解除済み: "+todayCount+"/30件");
+            } else { unf.disabled=false; unf.textContent="解除"; alert(r.error||"解除失敗"); }
+          } catch(e) { unf.disabled=false; unf.textContent="解除"; alert(e.message); }
+        };
+        card.appendChild(open); card.appendChild(unf);
+        out.appendChild(card);
+      });
+    } catch (e) { out.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    goBtn.disabled = false; goBtn.textContent = "🧹 非フォローバックを抽出";
+  };
+};
+
 /* ---- 07+ 営業リプ(大手に絡んで新規フォロワー獲得) ---- */
 BUILDERS.outreach = (el) => {
   head(el, "🎯 営業リプ", "伸びてる投稿のURLを貼る→刺さるリプを生成→コピーして飛んで送信。リプ欄で目立って新規フォロワーを取る。", [
@@ -2201,7 +2377,10 @@ BUILDERS.calendar = (el) => {
   const btnPop = document.createElement("button"); btnPop.className = "mini cyan"; btnPop.textContent = "📈 Xの人気ポストを見る";
   const btnQuote = document.createElement("button"); btnQuote.className = "mini"; btnQuote.textContent = "💬 人気ポストを引用して作る";
   const btnEnjou = document.createElement("button"); btnEnjou.className = "mini cyan"; btnEnjou.textContent = "🔥 炎上ニュースをみる";
+  const btnMirror = document.createElement("button"); btnMirror.className = "mini"; btnMirror.textContent = "🪞 バズってる投稿をマネする";
+  const btnHunter = document.createElement("button"); btnHunter.className = "mini"; btnHunter.textContent = "🎯 バズってる投稿にリプする";
   trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote); trBtnRow.appendChild(btnEnjou);
+  trBtnRow.appendChild(btnMirror); trBtnRow.appendChild(btnHunter);
   trFld.appendChild(trBtnRow);
   const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
   trFld.appendChild(trDate);
@@ -2318,6 +2497,112 @@ BUILDERS.calendar = (el) => {
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
     btnEnjou.disabled = false; btnEnjou.textContent = "🔥 炎上ニュースをみる";
   };
+
+  /* 💎 バズミラー: 競合ユーザー名を聞く→伸びてる日本語ポスト取得→その型で自分用に3案 */
+  btnMirror.onclick = async () => {
+    const names = prompt("競合のXユーザー名を入力(@不要・複数はカンマ区切り)\n例: arisa1996kyotei, kyotei_pro");
+    if (!names) return;
+    const list = names.split(/[,、\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean).slice(0,5);
+    if (!list.length) return;
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    btnMirror.disabled = true; btnMirror.textContent = "競合ポスト取得中…"; trOut.innerHTML = "";
+    let posts = [];
+    for (const name of list) {
+      try { const r = await fetchYahooArg("twUser", { userName: name });
+        if (r && r.tweets) r.tweets.forEach(t=>{ t._author=name; posts.push(t); });
+        else if (r && r.error) { const w=document.createElement("div"); w.className="muted"; w.style.cssText="font-size:12px"; w.textContent="@"+name+": "+r.error; trOut.appendChild(w); }
+      } catch(e) {}
+    }
+    if (!posts.length) { trOut.innerHTML += '<div class="muted" style="padding:8px">日本語ポストが取れんかった。ユーザー名を確認して。</div>'; btnMirror.disabled=false; btnMirror.textContent="🪞 バズってる投稿をマネする"; return; }
+    posts.sort((a,b)=>(b.likes||0)-(a.likes||0));
+    trOut.innerHTML = '<div class="desc" style="margin:6px 0">競合の伸びてるポスト。気になる型を選んで、自分の事業版を作る:</div>';
+    posts.slice(0,8).forEach((p) => {
+      const card = document.createElement("div");
+      card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
+      card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+'</div>'
+        + '<div style="font-size:13px;line-height:1.5;margin-bottom:4px;white-space:pre-wrap">'+esc(p.text.slice(0,140))+(p.text.length>140?'…':'')+'</div>';
+      buzzTransformBtn(card, "この型でバズ投稿(3案)", (shuffle) => buzzPromptForPost(p.text, shuffle));
+      trOut.appendChild(card);
+    });
+    btnMirror.disabled = false; btnMirror.textContent = "🪞 バズってる投稿をマネする";
+  };
+
+  /* 🎯 リプハンター: 客を取りたい業界の競合→伸びてる投稿→今リプすべきを抽出→リプ3案 */
+  btnHunter.onclick = async () => {
+    const names = prompt("客を取りたい業界の競合アカウントを入力(@不要・複数はカンマ区切り)\n例: 競合シーシャ店、競合美容室\n※自分と同じ客層に向けて発信してるアカウントを入れる");
+    if (!names) return;
+    const list = names.split(/[,、\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean).slice(0,5);
+    if (!list.length) return;
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    btnHunter.disabled = true; btnHunter.textContent = "投稿取得中…"; trOut.innerHTML = "";
+    let posts = [];
+    for (const name of list) {
+      try { const r = await fetchYahooArg("twUser", { userName: name });
+        if (r && r.tweets) r.tweets.forEach(t=>{ t._author=name; posts.push(t); });
+        else if (r && r.error) { const w=document.createElement("div"); w.className="muted"; w.style.cssText="font-size:12px"; w.textContent="@"+name+": "+r.error; trOut.appendChild(w); }
+      } catch(e) {}
+    }
+    if (!posts.length) { trOut.innerHTML += '<div class="muted" style="padding:8px">日本語ポストが取れんかった。ユーザー名を確認して。</div>'; btnHunter.disabled=false; btnHunter.textContent="🎯 バズってる投稿にリプする"; return; }
+    /* 「今リプすると目立つ投稿」= 伸びてる(いいね多い)+リプが少なめ(埋もれてない)を優先 */
+    posts.forEach(p => { p._score = (p.likes||0) + (p.retweets||0)*2 - (p.replies||0)*3; });
+    posts.sort((a,b)=> b._score - a._score);
+    trOut.innerHTML = '<div class="desc" style="margin:6px 0">今リプすると目立つ投稿(伸びてる&リプがまだ少ない順)。リプして競合の客にアピール:</div>';
+    posts.slice(0,8).forEach((p) => {
+      const card = document.createElement("div");
+      card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px";
+      card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+' 💬'+(p.replies||0)+'</div>'
+        + '<div style="font-size:13px;line-height:1.55;margin-bottom:6px;white-space:pre-wrap">'+esc(p.text.length>180?p.text.slice(0,180)+"…":p.text)+'</div>';
+      const repBox = document.createElement("div"); card.appendChild(repBox);
+      trOut.appendChild(card);
+      makeHunterReplies(repBox, p);
+    });
+    btnHunter.disabled = false; btnHunter.textContent = "🎯 バズってる投稿にリプする";
+  };
+
+  /* リプハンターの個別リプ生成(3案) */
+  async function makeHunterReplies(host, p) {
+    const hbtn = document.createElement("button"); hbtn.className="mini cyan"; hbtn.textContent="この投稿にリプ(3案)";
+    const hOut = document.createElement("div");
+    const run = async (shuffle) => {
+      hbtn.disabled = true; hbtn.textContent = shuffle ? "作り直し中…" : "リプ生成中…"; hOut.innerHTML = "";
+      try {
+        const r = await callAI(hunterReplyPrompt(p.text, shuffle), false, "haiku", false);
+        const text = (typeof r === "string") ? r : r.text;
+        let reps = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>2 && !/^(承知|了解)/.test(s));
+        if (!reps.length) { hOut.innerHTML='<div class="muted" style="padding:6px">作れんかった。もう一回。</div>'; }
+        else {
+          hOut.innerHTML = "";
+          const sh=document.createElement("button"); sh.className="mini"; sh.textContent="🔀 作り直す"; sh.style.cssText="margin:6px 0"; sh.onclick=()=>run(true); hOut.appendChild(sh);
+          reps.slice(0,3).forEach(rep => {
+            const w=document.createElement("div"); w.style.cssText="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px";
+            const tx=document.createElement("div"); tx.style.cssText="font-size:13px;line-height:1.5;white-space:pre-wrap"; tx.textContent=rep; w.appendChild(tx);
+            const acts=document.createElement("div"); acts.style.cssText="display:flex;gap:6px;margin-top:6px";
+            const cp=document.createElement("button"); cp.className="mini"; cp.textContent="📋コピー"; cp.onclick=()=>{navigator.clipboard.writeText(rep); cp.textContent="✓"; setTimeout(()=>cp.textContent="📋コピー",1200);};
+            const go=document.createElement("a"); go.className="mini cyan"; go.textContent="↗ポストに飛ぶ"; go.href=p.url||("https://x.com/"+p._author); go.target="_blank"; go.style.cssText="text-decoration:none;padding:6px 10px;border-radius:8px";
+            acts.appendChild(cp); acts.appendChild(go); w.appendChild(acts); hOut.appendChild(w);
+          });
+        }
+      } catch(e) { hOut.innerHTML='<div class="err">'+e.message+'</div>'; }
+      hbtn.disabled=false; hbtn.textContent="この投稿にリプ(3案)";
+    };
+    hbtn.onclick=()=>run(false);
+    host.appendChild(hbtn); host.appendChild(hOut);
+  }
+
+  function hunterReplyPrompt(postText, shuffle) {
+    return `次のXのポストに対する「リプライ」を3案作る。これは競合のフォロワー(=自分の見込み客)の目に留まって、自分に興味を持ってもらうのが狙い。\n`
+      + `\n【相手のポスト】\n${postText}\n`
+      + personaClause()
+      + `\n【リプの狙いと書き方】\n`
+      + `- このポストを見てる人(その業界に興味がある人)に「お、この人わかってるな」と思わせる\n`
+      + `- 自分の体験・知識・気の利いた視点を、さらっと自然に添える\n`
+      + `- 宣伝・売り込み・リンクは絶対NG(リプ欄で嫌われる&スパム判定)。あくまで自然な会話\n`
+      + `- 投稿主や他のリプを否定・論破しない。感じよく、でも埋もれない一言\n`
+      + `- テンプレ褒め(「素敵です!」だけ等)はNG。中身のある具体的なリプ\n`
+      + `- 設定された文体・性格そのまま。1案40〜80字、絵文字は控えめ\n`
+      + (shuffle ? `- 前回と違う角度で\n` : "")
+      + `\n出力形式(厳守): 前置きなし。3案を「===」だけの行で区切って本文のみ。`;
+  }
 
   /* 炎上コメントボタン: 記事本文を取得 → その内容を踏まえてコメント3案 */
   function makeEnjouBtn(card, title, url) {
@@ -2553,15 +2838,28 @@ BUILDERS.calendar = (el) => {
     btnPop.disabled = true; btnPop.textContent = "人気ポスト取得中…"; trOut.innerHTML = "";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
     try {
-      const j = await fetchYahoo("popular");
-      const posts = (j && j.posts) ? j.posts : [];
-      if (!posts.length) { trOut.innerHTML = '<div class="err">人気ポスト取得失敗。少し待って再挑戦して。'+(j&&j.error?'<br>('+esc(j.error)+')':'')+'</div>'; return; }
-      const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
+      /* 業種キーワードでtwitterapi.io検索(無ければYahooにフォールバックでなくYahooも使う) */
+      const kw = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "";
+      let posts = [];
+      if (kw) {
+        const j = await gasFetch_("twSearch", { query: kw + " min_faves:50 -is:retweet lang:ja", queryType: "Top" });
+        posts = (j && j.tweets) ? j.tweets : [];
+        if (j && j.error && !posts.length) {
+          trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12.5px">取得できんかった('+esc(j.error)+')。<br>生成設定で業種を入れると、その分野の人気ポストが取れる。</div>';
+          btnPop.disabled=false; btnPop.textContent="📈 Xの人気ポストを見る"; return;
+        }
+      } else {
+        const j = await fetchYahoo("popular"); posts = (j && j.posts) ? j.posts : [];
+      }
+      if (!posts.length) { trOut.innerHTML = '<div class="muted" style="padding:8px">人気ポストが取れんかった。生成設定で業種を入れて再挑戦して。</div>'; btnPop.disabled=false; btnPop.textContent="📈 Xの人気ポストを見る"; return; }
+      /* いいね順 */
+      posts.sort((a,b)=>(b.likes||0)-(a.likes||0));
       trOut.innerHTML = '<div class="desc" style="margin:6px 0">今バズってる人気ポスト。気になるものを選んで、その型で事業版を作る:</div>';
       posts.slice(0,8).forEach((p) => {
         const card = document.createElement("div");
         card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
-        card.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(p.likes?'❤️ '+p.likes.toLocaleString()+'<br>':'')+esc(p.text.slice(0,90))+(p.text.length>90?'…':'')+'</div>';
+        card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">'+(p.author?'@'+esc(p.author)+' · ':'')+'❤️ '+(p.likes||0).toLocaleString()+(p.retweets?' 🔁'+p.retweets:'')+'</div>'
+          + '<div style="font-size:13px;line-height:1.5;margin-bottom:4px;white-space:pre-wrap">'+esc(p.text.slice(0,140))+(p.text.length>140?'…':'')+'</div>';
         buzzTransformBtn(card, "この型でバズ投稿(3案)", (shuffle) => buzzPromptForPost(p.text, shuffle));
         trOut.appendChild(card);
       });
