@@ -873,6 +873,7 @@ const TABS = [
   { id:"followers", num:"09", label:"推移記録" },
   { id:"report", num:"10", label:"週報" },
   { id:"schedule", num:"12", label:"予約管理" },
+  { id:"autoqueue", num:"⏰", label:"オート予定" },
   { id:"clients", num:"13", label:"クライアント" },
 ];
 function renderNav() {
@@ -3442,6 +3443,80 @@ BUILDERS.schedule = (el) => {
     updateTabs();
   }
   load();
+};
+
+/* ---- ⏰ オート予定(今日のキュー一覧・時刻変更可) ---- */
+BUILDERS.autoqueue = (el) => {
+  head(el, "オート予定", "今日オートで投稿される予定の一覧。時刻をタップすると変更できる。生成は各投稿時刻の少し前に自動で行われる。",
+    ["朝に自動で今日の予定が作られる","投稿時刻が近づくと内容が生成される","時刻を変えたい時はタップして調整"]);
+
+  const KIND_LABEL = { trend: "🔥 トレンド", normal: "📝 通常投稿", yosou: "🚤 無料予想", flavor: "💨 フレーバー" };
+  const STATUS_LABEL = { waiting: "待機中", processing: "生成中…", done: "生成済✓", error: "エラー" };
+
+  const bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:8px;margin-bottom:10px";
+  const mkBtn = (txt) => { const b = document.createElement("button"); b.className="btn btn-ghost"; b.textContent=txt; b.style.margin="0"; return b; };
+  const todayBtn = mkBtn("今日"); const refreshBtn = mkBtn("更新");
+  bar.appendChild(todayBtn); bar.appendChild(refreshBtn); el.appendChild(bar);
+  const listEl = document.createElement("div"); el.appendChild(listEl);
+
+  async function draw() {
+    listEl.innerHTML = '<div class="muted">読み込み中…</div>';
+    const today = new Date();
+    const ymd = today.getFullYear() + "-" + String(today.getMonth()+1).padStart(2,"0") + "-" + String(today.getDate()).padStart(2,"0");
+    let rows = [];
+    try {
+      const { data, error } = await sb.from("auto_queue").select("*").eq("run_date", ymd).order("scheduled_at");
+      if (error) throw error;
+      rows = data || [];
+    } catch(e) { listEl.innerHTML = '<div class="err">読み込み失敗: '+e.message+'</div>'; return; }
+
+    if (!rows.length) {
+      listEl.innerHTML = '<div class="muted" style="padding:12px">今日の予定はまだありません。<br>オートをONにしていれば、朝に自動で予定が作られます。</div>';
+      return;
+    }
+    listEl.innerHTML = "";
+    rows.forEach((q) => {
+      const d = document.createElement("div"); d.className = "row";
+      d.style.cssText = "display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+      /* 時刻(タップで変更) */
+      const tm = new Date(q.scheduled_at);
+      const timeBtn = document.createElement("input"); timeBtn.type = "time";
+      timeBtn.value = String(tm.getHours()).padStart(2,"0")+":"+String(tm.getMinutes()).padStart(2,"0");
+      timeBtn.style.cssText = "width:auto;padding:6px 10px;font-family:var(--mono);font-size:15px;font-weight:800;color:var(--accent2);background:rgba(0,229,255,.08);border:1px solid var(--accent2);border-radius:8px";
+      timeBtn.disabled = (q.status === "done" || q.status === "processing");
+      timeBtn.onchange = async () => {
+        if (!/^\d{1,2}:\d{2}$/.test(timeBtn.value)) return;
+        const [h,mi] = timeBtn.value.split(":").map(Number);
+        const nd = new Date(tm.getFullYear(), tm.getMonth(), tm.getDate(), h, mi, 0, 0);
+        const { error } = await sb.from("auto_queue").update({ scheduled_at: nd.toISOString() }).eq("id", q.id);
+        if (error) { alert("変更失敗: "+error.message); return; }
+        timeBtn.style.borderColor = "var(--ok)"; setTimeout(()=>{ timeBtn.style.borderColor="var(--accent2)"; }, 1200);
+      };
+      d.appendChild(timeBtn);
+      /* 種類 */
+      const kind = document.createElement("span"); kind.className = "pill genre";
+      kind.textContent = KIND_LABEL[q.kind] || q.kind; d.appendChild(kind);
+      /* アカウント */
+      const acct = document.createElement("span"); acct.className = "pill acct";
+      acct.textContent = "@"+q.screen_name; d.appendChild(acct);
+      /* ステータス */
+      const st = document.createElement("span"); st.className = "muted"; st.style.cssText="font-size:12px;margin-left:auto";
+      st.textContent = STATUS_LABEL[q.status] || q.status; d.appendChild(st);
+      /* 生成済みなら本文プレビュー */
+      if (q.status === "done" && q.result_text) {
+        const pre = document.createElement("div");
+        pre.style.cssText = "width:100%;font-size:12.5px;color:var(--muted);white-space:pre-wrap;margin-top:4px;padding-top:6px;border-top:1px solid var(--border)";
+        pre.textContent = q.result_text.length > 120 ? q.result_text.slice(0,120)+"…" : q.result_text;
+        d.appendChild(pre);
+      }
+      if (q.status === "error" && q.error_msg) {
+        const er = document.createElement("div"); er.className="err"; er.style.cssText="width:100%;margin-top:4px"; er.textContent = q.error_msg; d.appendChild(er);
+      }
+      listEl.appendChild(d);
+    });
+  }
+  draw();
+  todayBtn.onclick = draw; refreshBtn.onclick = draw;
 };
 
 /* ---- 13 クライアント ---- */
