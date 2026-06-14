@@ -2185,84 +2185,179 @@ BUILDERS.calendar = (el) => {
   const addOut = document.createElement("div"); addFld.appendChild(addOut);
   el.appendChild(addFld);
 
-  /* === 🔥 トレンド投稿(Yahoo!リアルタイム検索の今のトレンドを業種に絡めて生成・Haiku) === */
+  /* === 🔥 トレンド/人気ポスト連動投稿(Yahoo!リアルタイム検索・Haiku) === */
   const trFld = document.createElement("div");
   trFld.style.cssText = "margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px";
-  trFld.innerHTML = '<div style="font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin-bottom:6px">▸ 🔥 トレンド投稿</div>'
-    + '<p class="desc" style="margin:0 0 10px">今Xで伸びてる話題から、自分の業種に絡められそうなものだけAIが選んで投稿を作る(絡められなければ無理に作らない)。</p>';
-  const trBtn = document.createElement("button"); trBtn.className = "mini cyan"; trBtn.textContent = "🔥 今のトレンドで作る";
-  trFld.appendChild(trBtn);
+  trFld.innerHTML = '<div style="font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin-bottom:6px">▸ 🔥 トレンド連動投稿</div>'
+    + '<p class="desc" style="margin:0 0 10px">今Xで起きてることに乗っかって投稿を作る。自分の業種に絡められそうなものだけAIが選ぶ。</p>';
+  const trBtnRow = document.createElement("div"); trBtnRow.style.cssText = "display:flex;flex-direction:column;gap:8px";
+  const btnTrend = document.createElement("button"); btnTrend.className = "mini cyan"; btnTrend.textContent = "🌏 世の中のトレンドで作る(候補3つ)";
+  const btnPop = document.createElement("button"); btnPop.className = "mini cyan"; btnPop.textContent = "📈 Xの人気ポスト風に作る(候補3つ)";
+  const btnQuote = document.createElement("button"); btnQuote.className = "mini"; btnQuote.textContent = "💬 人気ポストを引用して作る";
+  trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote);
+  trFld.appendChild(trBtnRow);
   const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
   trFld.appendChild(trDate);
   const trOut = document.createElement("div"); trFld.appendChild(trOut);
   el.appendChild(trFld);
 
-  trBtn.onclick = async () => {
-    trBtn.disabled = true; trBtn.textContent = "トレンド取得中…";
-    trOut.innerHTML = "";
+  /* GAS経由でYahooデータ取得 */
+  async function fetchYahoo(action) {
+    const { data: sess } = await sb.auth.getSession();
+    if (!sess.session) throw new Error("ログインが切れた。リロードして。");
+    const res = await fetch(GAS_URL, {
+      method: "POST", headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ auth: sess.session.access_token, action }),
+    });
+    return await res.json();
+  }
+
+  /* 生成結果を1件、編集+送信できるカードにして返す */
+  function renderTrendCard(host, initialText, label, regenFn) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px";
+    if (label) { const tag = document.createElement("div"); tag.style.cssText="font-size:11px;color:var(--accent);margin-bottom:4px"; tag.textContent=label; wrap.appendChild(tag); }
+    const box = document.createElement("textarea"); box.rows = 5; box.value = initialText;
+    box.style.cssText = "width:100%;font-size:13px;line-height:1.6"; wrap.appendChild(box);
+    const cnt = document.createElement("p"); cnt.className="desc"; cnt.style.margin="3px 0 6px";
+    const upd = () => { cnt.textContent = box.value.length+"字"+(box.value.length>140?" ⚠140字超(送信時に自動スレッド)":""); };
+    box.oninput = upd; upd(); wrap.appendChild(cnt);
+    const acts = document.createElement("div"); acts.className="acts"; wrap.appendChild(acts);
+    const send = document.createElement("button"); send.className="mini primary"; send.textContent="これを予約管理に送る";
+    send.onclick = async () => {
+      if (!acct.value) { alert("クライアント未登録"); return; }
+      send.disabled = true;
+      let when;
+      if (trDate.value) { const [dp,tp]=trDate.value.split("T"); const [y,mo,da]=dp.split("-").map(Number); const [h,mi]=tp.split(":").map(Number); when=new Date(y,mo-1,da,h,mi,0,0); }
+      else { when = new Date(Date.now()+10*60000); }
+      const { error } = await saveScheduledPost({ screen_name: acct.value, text: box.value.trim(), scheduled_at: when.toISOString(), status: "draft" });
+      if (error) { send.disabled=false; alert(error.message); return; }
+      send.textContent = "送った✓";
+    };
+    acts.appendChild(send);
+    host.appendChild(wrap);
+  }
+
+  /* ① 世の中のトレンドで作る(候補3つ) */
+  btnTrend.onclick = async () => {
+    btnTrend.disabled = true; btnTrend.textContent = "トレンド取得中…"; trOut.innerHTML = "";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
     try {
-      /* GAS経由でYahoo!リアルタイム検索のトレンドを取得 */
-      const { data: sess } = await sb.auth.getSession();
-      if (!sess.session) throw new Error("ログインが切れた。リロードして。");
-      const res = await fetch(GAS_URL, {
-        method: "POST", headers: { "Content-Type": "text/plain" },
-        body: JSON.stringify({ auth: sess.session.access_token, action: "trends" }),
-      });
-      const j = await res.json();
+      const j = await fetchYahoo("trends");
       const trends = (j && j.trends) ? j.trends : [];
-      if (!trends.length) { trOut.innerHTML = '<div class="err">トレンドが取得できんかった。少し待って再挑戦して。</div>'; trBtn.disabled=false; trBtn.textContent="🔥 今のトレンドで作る"; return; }
-      trBtn.textContent = "投稿を生成中…";
-      /* AIに、業種に絡められるトレンドを選ばせて投稿を作らせる(Haiku) */
+      if (!trends.length) { trOut.innerHTML = '<div class="err">トレンド取得失敗。少し待って再挑戦して。</div>'; return; }
+      btnTrend.textContent = "投稿を3案生成中…";
       const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
       const prompt =
-        `あなたは「${bizWord}」のXアカウント運用者。今Xで伸びてるトレンドワード一覧から、自分の業種に"自然に絡められるもの"を選んで、トレンド便乗のX投稿を1本作る。\n\n` +
+        `あなたは「${bizWord}」のXアカウント運用者。今Xで伸びてるトレンド一覧から、自分の業種に"自然に絡められるもの"を使って、トレンド便乗のX投稿を【3案】作る。\n\n` +
         `トレンド一覧:\n${trends.slice(0,25).map((t,i)=>(i+1)+". "+t).join("\n")}\n\n` +
-        `ルール:\n` +
-        `- 自分の業種に無理なく絡められるトレンドだけ選ぶ。1つでもあれば使う\n` +
-        `- どれも絡めるのが不自然なら、出力の冒頭に「SKIP」とだけ書く(無理に作らない)\n` +
-        `- 絡める場合: そのトレンドに便乗しつつ、最後は自分の業種・店に自然に着地させる\n` +
-        `- 炎上狙いはしない。便乗してても下品・不謹慎にしない\n` +
-        `- 140字以内。前置き不要・投稿本文のみ\n` +
-        `- 選んだトレンドが分かるよう、本文の最後の行に [使用:〇〇] と書く(これは後で消す)`;
-      let text = await callAI(prompt, false, "haiku");
-      /* SKIP判定 */
-      if (/^\s*SKIP/i.test(text)) {
-        trOut.innerHTML = '<div class="muted" style="padding:10px">今のトレンドには、この業種に自然に絡められそうな話題がなかった。時間を置くとトレンドは変わるので、また試して。</div>';
-        trBtn.disabled=false; trBtn.textContent="🔥 今のトレンドで作る"; return;
-      }
-      /* [使用:〇〇] を抜き出して本文から除去 */
-      let usedTrend = "";
-      const um = text.match(/\[使用:([^\]]+)\]/);
-      if (um) { usedTrend = um[1].trim(); text = text.replace(/\[使用:[^\]]+\]/g, "").trim(); }
-      /* 表示(編集可) */
-      trOut.innerHTML = "";
-      if (usedTrend) { const tag = document.createElement("div"); tag.style.cssText="font-size:11.5px;color:var(--accent);margin:8px 0 4px"; tag.textContent="🔥 便乗トレンド: "+usedTrend; trOut.appendChild(tag); }
-      const box = document.createElement("textarea"); box.rows = 5; box.value = text;
-      box.style.cssText = "width:100%;font-size:13.5px;line-height:1.7";
-      trOut.appendChild(box);
-      const cnt = document.createElement("p"); cnt.className="desc"; cnt.style.margin="4px 0 8px";
-      const upd = () => { cnt.textContent = box.value.length+"字"+(box.value.length>140?" ⚠140字超(送信時に自動スレッド分割)":""); };
-      box.oninput = upd; upd(); trOut.appendChild(cnt);
-      const acts = document.createElement("div"); acts.className="acts"; trOut.appendChild(acts);
-      const re = document.createElement("button"); re.className="mini"; re.textContent="🔀 作り直し";
-      re.onclick = () => { trBtn.click(); };
-      acts.appendChild(re);
-      const send = document.createElement("button"); send.className="mini primary"; send.textContent="予約管理に送る";
-      send.onclick = async () => {
-        if (!acct.value) { trOut.innerHTML += '<div class="err">クライアント未登録</div>'; return; }
-        send.disabled = true;
-        /* 投稿時刻: 指定があればそれ、なければ今から10分後 */
-        let when;
-        if (trDate.value) { const [dp,tp]=trDate.value.split("T"); const [y,mo,da]=dp.split("-").map(Number); const [h,mi]=tp.split(":").map(Number); when=new Date(y,mo-1,da,h,mi,0,0); }
-        else { when = new Date(Date.now()+10*60000); }
-        const { error } = await saveScheduledPost({ screen_name: acct.value, text: box.value.trim(), scheduled_at: when.toISOString(), status: "draft" });
-        if (error) { send.disabled=false; trOut.innerHTML += '<div class="err">'+error.message+'</div>'; return; }
-        send.textContent = "送った✓";
-      };
-      acts.appendChild(send);
+        `ルール:\n- 業種に無理なく絡められるトレンドを選ぶ。案ごとに別のトレンド/切り口にする\n- 便乗しつつ最後は自分の業種に自然に着地。炎上・下品はNG\n- 各案140字以内\n- どれも絡めるのが不自然なら、全体の冒頭に「SKIP」とだけ書く\n` +
+        `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ(番号や前置き不要)。`;
+      const text = await callAI(prompt, false, "haiku");
+      if (/^\s*SKIP/i.test(text)) { trOut.innerHTML = '<div class="muted" style="padding:10px">今のトレンドには業種に絡められそうな話題がなかった。時間を置くと変わるのでまた試して。</div>'; return; }
+      const cands = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>5);
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">気に入った案を送る:</div>';
+      cands.slice(0,3).forEach((c,i)=> renderTrendCard(trOut, c, "案"+(i+1)));
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
-    trBtn.disabled = false; trBtn.textContent = "🔥 今のトレンドで作る";
+    btnTrend.disabled = false; btnTrend.textContent = "🌏 世の中のトレンドで作る(候補3つ)";
+  };
+
+  /* ② Xの人気ポスト風に作る(候補3つ) — バズってる投稿の"構文・ノリ"を真似て業種版に */
+  btnPop.onclick = async () => {
+    btnPop.disabled = true; btnPop.textContent = "人気ポスト取得中…"; trOut.innerHTML = "";
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    try {
+      const j = await fetchYahoo("popular");
+      const posts = (j && j.posts) ? j.posts : [];
+      if (!posts.length) { trOut.innerHTML = '<div class="err">人気ポスト取得失敗。少し待って再挑戦して。</div>'; return; }
+      btnPop.textContent = "投稿を3案生成中…";
+      const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
+      const prompt =
+        `あなたは「${bizWord}」のXアカウント運用者。今バズってる人気ポストの"型・ノリ・フックの作り方"を参考に、自分の業種で同じようにウケそうな投稿を【3案】作る。\n\n` +
+        `バズってる人気ポスト例(内容ではなく型を参考にする):\n${posts.slice(0,8).map((p,i)=>(i+1)+". "+p.text.slice(0,80)).join("\n")}\n\n` +
+        `ルール:\n- 人気ポストの"構文の妙・フック・オチの付け方"だけ真似る。内容は自分の業種の話にする\n- パクリにならないよう題材は完全に自分の業種で作る\n- 各案で違う型を試す。炎上・下品はNG\n- 各案140字以内\n` +
+        `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
+      const text = await callAI(prompt, false, "haiku");
+      const cands = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>5);
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">バズ構文を真似た3案:</div>';
+      cands.slice(0,3).forEach((c,i)=> renderTrendCard(trOut, c, "案"+(i+1)));
+    } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    btnPop.disabled = false; btnPop.textContent = "📈 Xの人気ポスト風に作る(候補3つ)";
+  };
+
+  /* ③ 人気ポストを引用して作る — 人気ポスト5件、各々にバズりそうな引用コメント+シャッフル */
+  btnQuote.onclick = async () => {
+    btnQuote.disabled = true; btnQuote.textContent = "人気ポスト取得中…"; trOut.innerHTML = "";
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    try {
+      const j = await fetchYahoo("popular");
+      const posts = (j && j.posts) ? j.posts : [];
+      if (!posts.length) { trOut.innerHTML = '<div class="err">人気ポスト取得失敗。少し待って再挑戦して。</div>'; return; }
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">引用したいポストを選ぶ(バズりそうな引用コメントをAIが作る・🔀で作り直し):</div>';
+      const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
+
+      /* バズる引用コメントを生成する共通関数(shuffleで毎回違う角度に) */
+      async function genQuoteComment(srcText, shuffle) {
+        const variant = shuffle ? "\n※前回と全く違う切り口・フックで、新鮮な別パターンにすること。" : "";
+        const prompt =
+          `あなたは「${bizWord}」のXアカウント運用者。次の人気ポストを引用リポストして【バズを狙う】。引用コメント(自分の一言)を作る。\n\n` +
+          `引用元ポスト: 「${srcText.slice(0,200)}」\n\n` +
+          `バズらせるコツ:\n- 引用元に「乗っかる/ツッコむ/共感する/逆を言う」など反応として面白くする\n- 自分の業種(${bizWord})に自然に繋げて、最後に興味を引く\n- 強い一言・問いかけ・あるあるネタなど、リポストやいいねされやすい形\n- 炎上狙い・下品はNG\n` +
+          `- 引用元URLは含めない(Xが自動で付ける)。コメント本文のみ\n- 100字以内\n前置き不要・コメント本文のみ出力。${variant}`;
+        return (await callAI(prompt, false, "haiku")).trim();
+      }
+
+      posts.slice(0,5).forEach((p) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:8px";
+        card.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">❤️ '+p.likes.toLocaleString()+'<br>'+esc(p.text.slice(0,90))+(p.text.length>90?'…':'')+'</div>';
+        const useBtn = document.createElement("button"); useBtn.className="mini cyan"; useBtn.textContent="この投稿を引用する";
+        const result = document.createElement("div");
+        useBtn.onclick = async () => {
+          useBtn.disabled = true; useBtn.textContent = "引用コメント生成中…";
+          try {
+            const comment = await genQuoteComment(p.text, false);
+            result.innerHTML = "";
+            const fullText = comment + "\n" + p.url;
+            /* 編集可能カード + シャッフルボタン */
+            const wrap = document.createElement("div");
+            wrap.style.cssText = "border-top:1px solid var(--border);margin-top:8px;padding-top:8px";
+            const tag = document.createElement("div"); tag.style.cssText="font-size:11px;color:var(--accent);margin-bottom:4px"; tag.textContent="💬 バズ狙いの引用コメント(末尾に引用元URL)";
+            wrap.appendChild(tag);
+            const box = document.createElement("textarea"); box.rows=5; box.value=fullText;
+            box.style.cssText="width:100%;font-size:13px;line-height:1.6"; wrap.appendChild(box);
+            const cnt = document.createElement("p"); cnt.className="desc"; cnt.style.margin="3px 0 6px";
+            const upd=()=>{ cnt.textContent=box.value.length+"字"+(box.value.length>140?" ⚠140字超(送信時に自動スレッド)":""); }; box.oninput=upd; upd(); wrap.appendChild(cnt);
+            const acts = document.createElement("div"); acts.className="acts"; wrap.appendChild(acts);
+            /* シャッフル: 引用コメントだけ作り直す(URLは保持) */
+            const shuf = document.createElement("button"); shuf.className="mini"; shuf.textContent="🔀 引用を作り直す";
+            shuf.onclick = async () => {
+              shuf.disabled=true; shuf.textContent="生成中…";
+              try { const c2 = await genQuoteComment(p.text, true); box.value = c2 + "\n" + p.url; upd(); } catch(e){ alert(e.message); }
+              shuf.disabled=false; shuf.textContent="🔀 引用を作り直す";
+            };
+            acts.appendChild(shuf);
+            const send = document.createElement("button"); send.className="mini primary"; send.textContent="予約管理に送る";
+            send.onclick = async () => {
+              if (!acct.value) { alert("クライアント未登録"); return; }
+              send.disabled=true;
+              let when;
+              if (trDate.value) { const [dp,tp]=trDate.value.split("T"); const [y,mo,da]=dp.split("-").map(Number); const [h,mi]=tp.split(":").map(Number); when=new Date(y,mo-1,da,h,mi,0,0); }
+              else { when = new Date(Date.now()+10*60000); }
+              const { error } = await saveScheduledPost({ screen_name: acct.value, text: box.value.trim(), scheduled_at: when.toISOString(), status: "draft" });
+              if (error) { send.disabled=false; alert(error.message); return; }
+              send.textContent="送った✓";
+            };
+            acts.appendChild(send);
+            result.appendChild(wrap);
+          } catch(e){ alert(e.message); }
+          useBtn.disabled=false; useBtn.textContent="この投稿を引用する";
+        };
+        card.appendChild(useBtn); card.appendChild(result);
+        trOut.appendChild(card);
+      });
+    } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    btnQuote.disabled = false; btnQuote.textContent = "💬 人気ポストを引用して作る";
   };
 
   addBtn.onclick = async () => {
