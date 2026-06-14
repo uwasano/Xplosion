@@ -182,6 +182,158 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* ============================================================
+ * 噂のシーシャBar ミックスAIエンジン(仕様書準拠・数値/相性/禁止は確定値)
+ * ============================================================ */
+function isUwasaShisha(acc, biz){
+  const norm = s => (s||"").toLowerCase()
+    .replace(/[ぁ-ん]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60))
+    .replace(/[\s　・,，.\-_]/g,"");
+  const t = norm(acc)+"|"+norm(biz);
+  const hasUwasa = t.includes("噂") || t.includes("ウワサ");
+  const jp = hasUwasa && t.includes("シーシャ");
+  const en = t.includes("uwasa") && (t.includes("shisha")||t.includes("sisha"));
+  return jp || en;
+}
+const SHISHA_DEFAULT_DB = {
+"CHABA":{"ピーチライム":[7,5,1,3,7,9],"ピーチアプリコット":[8,2,0,4,8,9],"タンジェリンストロベリーライチ":[8,4,0,4,9,10],"トロピックラブ":[8,4,0,4,8,9],"チョコレートアイスクリーム":[10,0,2,9,10,9],"アイスボンボン":[7,0,7,4,7,6],"ダブルアップル":[6,0,0,8,10,9],"エルダーベリー":[5,2,0,3,7,5],"キウイアップルグースベリー":[6,5,0,3,8,7],"アヒル":[4,1,0,4,6,3],"オーシャン":[1,1,8,1,7,5],"アンコ":[10,0,0,10,9,4],"ライム":[1,9,0,1,8,2],"ヒノキ":[0,0,0,5,10,1],"チーズケーキ":[9,0,0,8,8,9]},
+"SOCIAL SMOKE":{"ドゥルセデリチェ":[9,0,0,8,9,9],"アブソリュートゼロ":[0,0,10,1,8,1],"ホンコンミルクティー":[8,0,0,6,9,9]},
+"ROYAL SMOKE":{"USコミッショナー":[5,2,0,5,7,5],"スプリングウォーター":[0,0,3,0,3,1]},
+"DEBAJ":{"ミルク":[8,0,0,6,7,5],"ツーレモン":[1,10,0,1,8,2]},
+"AFZAL":{"ジンジャーエール":[4,3,2,2,8,5],"アールグレイ":[3,1,0,3,10,9],"ライチ":[8,1,0,2,9,10]},
+"AL FAKHAMAH":{"マスティック":[1,0,0,5,10,2]},
+"AL WAHA":{"パンラズナ":[6,0,0,7,10,4]},
+"LIRRA":{"アサイー":[7,2,0,4,8,8],"パイナップル":[7,4,0,2,8,7],"ジャスミン":[1,0,0,1,10,2],"レモン":[1,9,0,1,8,2],"ジューシーメロン":[8,0,0,3,8,8],"ミルク":[8,0,0,6,7,4],"バブルガム":[9,0,0,4,9,8],"キャラメル":[10,0,0,8,8,3],"ピスタチオブリーズ":[7,0,1,7,8,8],"レモングラス":[0,1,0,1,9,2],"ラズベリー":[6,4,0,2,8,7],"ホワイトムスク":[0,0,0,3,10,1]},
+"GOLDEN LAYALINA":{"BTS":[6,2,0,4,8,6],"ブルーヘヴン":[5,1,3,2,8,5],"キーライム":[3,7,0,2,8,3],"アップルシナモン":[6,0,0,6,9,6]},
+"AL FAKHER":{"キウイ":[6,5,0,2,8,8],"レモン":[1,9,0,1,8,2],"ブルーベリー":[7,2,0,3,9,9],"マンゴー":[8,2,0,3,8,9],"スイカ":[7,1,0,2,7,8],"ピーチ":[8,2,0,3,8,9],"グレープフルーツ":[2,8,0,1,8,2],"ローズ":[0,0,0,2,10,1],"ココナッツ":[7,0,0,5,8,8],"オレンジ":[4,7,0,2,8,5],"ガム":[6,0,1,2,7,6],"バニラ":[9,0,0,7,8,4],"カルダモン":[0,0,0,5,10,1],"チョコレート":[9,0,0,9,10,8],"ダブルアップル":[6,0,0,8,10,9]},
+"DOZAJ":{"マジックスモーク":[5,1,2,5,8,5],"グレープフルーツ":[2,8,0,1,8,2],"アイス":[0,0,10,0,7,1],"グレープ":[7,1,0,3,8,9],"バナナ":[9,0,0,6,8,8],"ツイスト":[5,3,1,3,7,5],"マンゴー":[8,2,0,3,8,9],"ドラゴンフルーツ":[7,1,0,2,7,8],"グリーンミックス":[3,2,1,2,7,4],"ベルガモットティー":[2,1,0,2,10,9],"マカロンピンク":[9,0,0,6,8,8],"リンデンティー":[2,0,0,2,9,5],"ビスケット":[8,0,0,7,8,6],"ポップコーン":[7,0,0,7,8,5],"アイスクリームレモン":[8,4,2,6,8,8],"ピスタチオ":[6,0,0,7,8,7],"レモン":[1,9,0,1,8,2],"ペア":[7,1,0,2,8,8],"ストロベリー":[8,2,0,2,8,9],"チェリー":[7,2,0,3,8,8],"ハニー":[9,0,0,5,8,3],"ピンクレモネード":[5,6,0,1,8,6],"ライム":[1,9,0,1,8,2],"グァバ":[8,2,0,2,8,9],"ミント":[0,0,9,0,8,1],"ブラウンシュガー":[10,0,0,7,8,3],"ザクロ":[7,3,0,3,8,8],"ミルク":[8,0,0,6,7,4],"チョコレート":[9,0,0,9,10,8],"エターナル":[5,1,1,4,8,4],"コットンキャンディー":[10,0,0,4,8,8],"ピーチ":[8,2,0,3,8,9],"クロワッサンマーマレード":[8,2,0,7,8,7],"ヨーグルト":[6,3,0,4,8,9],"デッドシー":[0,0,8,2,7,2],"シナモン":[0,0,0,5,10,1],"コーラ":[7,1,0,3,8,8],"グリーンティー":[2,0,0,3,9,8],"キウイ":[6,5,0,2,8,8]}
+};
+const SHISHA_SS=[["ピーチ","ライチ"],["ピーチ","ベルガモットティー"],["ピーチ","レモン"],["ピーチ","ミント"],["マンゴー","グァバ"],["マンゴー","パイナップル"],["マンゴー","ミント"],["ライチ","ジャスミン"],["ライチ","ベルガモットティー"],["ライチ","レモン"],["ブルーベリー","チーズケーキ"],["ブルーベリー","ミルク"],["ブルーベリー","バニラ"],["ヨーグルト","ストロベリー"],["ヨーグルト","ピーチ"],["アールグレイ","レモン"],["アールグレイ","ミント"],["ホンコンミルクティー","キャラメル"],["ホンコンミルクティー","ミルク"],["グレープ","ブルーベリー"],["アサイー","ブルーベリー"],["アサイー","ラズベリー"],["メロン","ミルク"],["ピスタチオ","ミルク"],["チョコレート","バナナ"],["ココナッツ","マンゴー"],["ココナッツ","パイナップル"]];
+const SHISHA_S=[["グァバ","ピンクレモネード"],["グァバ","ライム"],["キウイ","レモン"],["キウイ","ミント"],["スイカ","ミント"],["スイカ","ライム"],["ペア","レモン"],["ペア","ミント"],["ザクロ","レモン"],["ストロベリー","ミルク"],["チェリー","バニラ"],["グリーンティー","レモン"],["グリーンティー","ミント"],["オーシャン","ライム"],["オーシャン","ミント"],["コーラ","レモン"],["コーラ","ライム"],["アップルシナモン","バニラ"],["パンラズナ","ダブルアップル"]];
+const SHISHA_A=[["エルダーベリー","ブルーベリー"],["ラズベリー","レモン"],["ラズベリー","ミント"],["バブルガム","ミント"],["ガム","ミント"],["ドラゴンフルーツ","ライチ"],["ドラゴンフルーツ","レモン"],["タンジェリンストロベリーライチ","ミント"],["トロピックラブ","ミント"],["ピーチアプリコット","レモン"],["ピーチライム","ミント"],["アイスクリームレモン","ミント"],["ドゥルセデリチェ","ミルク"],["マカロンピンク","ミルク"],["コットンキャンディー","ミルク"]];
+const SHISHA_NAME_MAP={"ジューシーメロン":"メロン"};
+const shNm = n => SHISHA_NAME_MAP[n]||n;
+const SHISHA_PAIR={};
+[["SS",SHISHA_SS],["S",SHISHA_S],["A",SHISHA_A]].forEach(([r,l])=>l.forEach(([a,b])=>SHISHA_PAIR[[a,b].sort().join("|")]=r));
+const shPairRank = (a,b) => SHISHA_PAIR[[shNm(a),shNm(b)].sort().join("|")] || null;
+const SHISHA_ACCENT=new Set(["ミント","アイス","アブソリュートゼロ","ローズ","ジャスミン","ホワイトムスク","カルダモン","シナモン","レモングラス","マスティック","デッドシー"]);
+const SHISHA_CITRUS=new Set(["レモン","ツーレモン","スーパーレモン","ライム","キーライム","グレープフルーツ","オレンジ","ピンクレモネード","タンジェリン"]);
+const SHISHA_BANNED=[["レモン","チョコレート"],["ライム","チョコレート"],["グレープフルーツ","チョコレート"],["レモン","チーズケーキ"],["ライム","チーズケーキ"],["グレープフルーツ","チーズケーキ"],["ヒノキ","マンゴー"],["ヒノキ","パイナップル"],["ヒノキ","グァバ"],["ヒノキ","トロピックラブ"],["ローズ","コーラ"],["ジャスミン","コーラ"],["ホワイトムスク","コーラ"],["カルダモン","ミルク"],["カルダモン","チーズケーキ"],["ダブルアップル","ミルク"],["ダブルアップル","チョコレート"],["ダブルアップル","キャラメル"],["アンコ","ミント"],["アンコ","ジャスミン"],["オーシャン","チョコレート"],["オーシャン","チーズケーキ"]];
+const SHISHA_BANNED_SET=new Set(SHISHA_BANNED.map(p=>p.slice().sort().join("|")));
+const SHISHA_DYN_CITRUS_BAN=new Set(["ポップコーン","ビスケット","アンコ"]);
+const SHISHA_AUD={
+ "初心者":{lead:["ピーチ","ライチ","マンゴー","メロン","ジューシーメロン","ストロベリー","ベルガモットティー"], ban:new Set(["ヒノキ","アンコ","カルダモン","マスティック"])},
+ "女性人気":{lead:["ライチ","ピーチ","ジャスミン","ストロベリー","ヨーグルト","ベルガモットティー","アサイー"], ban:new Set()},
+ "男性人気":{lead:["アールグレイ","ダブルアップル","グレープ","コーラ","パンラズナ","ホンコンミルクティー"], ban:new Set()},
+ "フルーツ系":{lead:["ピーチ","マンゴー","ライチ","グァバ","グレープ","キウイ","ジューシーメロン","ストロベリー"], ban:new Set()},
+ "紅茶系":{lead:["アールグレイ","ベルガモットティー","リンデンティー","ホンコンミルクティー"], ban:new Set()},
+ "スイーツ系":{lead:["チーズケーキ","チョコレートアイスクリーム","ドゥルセデリチェ","ミルク","キャラメル","バニラ","ピスタチオ","マカロンピンク"], ban:new Set()},
+ "重め":{lead:["ダブルアップル","チョコレート","チョコレートアイスクリーム","アンコ","ドゥルセデリチェ","ビスケット","ブラウンシュガー"], ban:new Set()},
+ "おまかせ":{lead:null, ban:new Set()}
+};
+/* 現在のミックスDB(CFG.mixDBがあればそれ、無ければデフォルト) */
+function shishaDB(){ return (CFG && CFG.mixDB) ? CFG.mixDB : SHISHA_DEFAULT_DB; }
+function shAllItems(){const DB=shishaDB();const o=[];for(const b in DB)for(const n in DB[b])o.push({name:n,brand:b,v:DB[b][n]});return o;}
+function shVget(name){const DB=shishaDB();for(const b in DB)if(DB[b][name])return DB[b][name];return[0,0,0,0,0,0];}
+function shIsBanned(names){
+  for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){
+    if(SHISHA_BANNED_SET.has([names[i],names[j]].sort().join("|"))) return true;
+  }
+  for(const s of SHISHA_DYN_CITRUS_BAN) if(names.includes(s)) for(const x of names) if(SHISHA_CITRUS.has(x)) return true;
+  return false;
+}
+function shScoreCombo(combo){
+  const names = combo.map(c=>c.name);
+  if(new Set(names).size!==names.length) return {sc:-999};
+  if(shIsBanned(names)) return {sc:-999};
+  if(names.filter(n=>SHISHA_CITRUS.has(n)).length>=3) return {sc:-999};
+  const acc = combo.filter(c=>SHISHA_ACCENT.has(c.name));
+  if(acc.length>=2) return {sc:-999};
+  if(combo.some(c=>SHISHA_ACCENT.has(c.name)&&c.ratio>=2)) return {sc:-999};
+  const leadByRatio = combo.slice().sort((a,b)=>b.ratio-a.ratio)[0];
+  if(shVget(leadByRatio.name)[5] < 7) return {sc:-999};
+  let sc=70, ss=0, s=0, a=0;
+  for(let i=0;i<names.length;i++)for(let j=i+1;j<names.length;j++){
+    const r=shPairRank(names[i],names[j]);
+    if(r==="SS"){sc+=9;ss++;} else if(r==="S"){sc+=6;s++;} else if(r==="A"){sc+=4;a++;}
+  }
+  if(ss>=2) sc=Math.max(sc,90);
+  const vs=names.map(shVget);
+  if(vs.filter(v=>v[0]>=8).length>=3) sc-=8;
+  if(vs.filter(v=>v[3]>=7).length>=3) sc-=8;
+  if(names.filter(n=>SHISHA_CITRUS.has(n)).length>=2) sc-=3;
+  if(acc.length===1) sc+=3;
+  sc=Math.min(sc,99);
+  const rank = ss>=2?"SS":(ss+s>=1?"S":(a>=1?"A":""));
+  return {sc, ss, s, a, rank, info:`SS${ss}/S${s}/A${a}`};
+}
+const shRatioFor = k => k===2?[6,4] : k===3?[6,3,1] : [5,2,2,1];
+function shGenerate(audience, count){
+  const items = shAllItems();
+  const conf = SHISHA_AUD[audience]||SHISHA_AUD["おまかせ"];
+  const banSet = conf.ban;
+  let leads = items.filter(it=>it.v[5]>=7 && !SHISHA_ACCENT.has(it.name) && !SHISHA_CITRUS.has(it.name) && !banSet.has(it.name));
+  if(conf.lead) leads = leads.filter(it=>conf.lead.includes(it.name)||conf.lead.includes(shNm(it.name)));
+  if(leads.length===0) leads = items.filter(it=>it.v[5]>=7 && !SHISHA_ACCENT.has(it.name) && !SHISHA_CITRUS.has(it.name));
+  const results=[], seen=new Set(); let tries=0;
+  while(results.length<count && tries<4000){
+    tries++;
+    if(leads.length===0) break;
+    const lead = leads[(Math.random()*leads.length)|0];
+    const ln = lead.name;
+    let mates = items.filter(it=>shPairRank(ln,it.name) && it.name!==ln && !banSet.has(it.name));
+    if(mates.length===0) continue;
+    const helper = mates[(Math.random()*mates.length)|0].name;
+    let outlineCand = items.filter(it=>(shPairRank(ln,it.name)||SHISHA_CITRUS.has(it.name)) && ![ln,helper].includes(it.name) && !banSet.has(it.name));
+    const useOutline = outlineCand.length>0 && Math.random()<0.85;
+    const outline = useOutline ? outlineCand[(Math.random()*outlineCand.length)|0].name : null;
+    const accChoices = ["ミント","ミント","ミント","アイス","アブソリュートゼロ"].filter(x=>!banSet.has(x));
+    const acc = accChoices[(Math.random()*accChoices.length)|0];
+    let parts=[ln,helper]; if(outline)parts.push(outline); parts.push(acc);
+    parts=[...new Set(parts)];
+    if(parts.length<2) continue;
+    const ratios = shRatioFor(parts.length);
+    const combo = parts.map((n,i)=>({name:n, ratio:ratios[i]||1}));
+    const res = shScoreCombo(combo);
+    if(res.sc>=80){
+      const key=parts.slice().sort().join("|");
+      if(seen.has(key)) continue;
+      seen.add(key);
+      results.push({combo, ...res});
+    }
+  }
+  results.sort((a,b)=>b.sc-a.sc);
+  return results;
+}
+/* ブランド名を引く */
+function shBrandOf(name){const DB=shishaDB();for(const b in DB)if(DB[b][name])return b;return"";}
+/* 配合加重平均で甘酸涼重を出す */
+function shAvg(combo, idx){
+  let tot=0, w=0;
+  combo.forEach(c=>{ const v=shVget(c.name); tot+=v[idx]*c.ratio; w+=c.ratio; });
+  return w? tot/w : 0;
+}
+const shBar = v => {const f=Math.round(v); return "★".repeat(Math.max(0,Math.min(10,f)))+"☆".repeat(Math.max(0,10-f));};
+function shLabel(sc){ return sc>=90?"超おすすめ":(sc>=85?"おすすめ":"提供可"); }
+function shMixName(combo){ const s=combo.slice().sort((a,b)=>b.ratio-a.ratio); return (s[0]?s[0].name:"")+(s[1]?"×"+s[1].name:""); }
+
+/* おすすめミックスを投稿文にする(噂のシーシャBar用)。頻度判定はsc呼び出し側 */
+async function shMixPostText(audience){
+  const picks = shGenerate(audience||"おまかせ", 1);
+  if (!picks.length) return null;
+  const m = picks[0];
+  const haigou = m.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ");
+  const prompt =
+    `あなたは金沢・片町「噂のシーシャBar」の店長。今日のおすすめミックスを紹介するX投稿を1本書く。\n` +
+    `ミックス名: ${shMixName(m.combo)}\n配合: ${haigou}\nおすすめ度: ${m.sc}点(${shLabel(m.sc)})\n相性: ${m.info}\n` +
+    `味の特徴: 甘さ${Math.round(shAvg(m.combo,0))}/酸味${Math.round(shAvg(m.combo,1))}/清涼${Math.round(shAvg(m.combo,2))}/重さ${Math.round(shAvg(m.combo,3))}(各10段階)\n\n` +
+    `ルール:\n- 実際に提供できる本物のミックスとして、味の魅力が伝わるように書く\n- 配合比や銘柄を自然に織り込む(マニアっぽくなりすぎない)\n- 来店したくなる締め。店の場所(金沢・片町)は無理に入れない\n- 140字以内。ハッシュタグは0〜2個\n前置き不要・投稿本文のみ。${sc()}`;
+  const text = await callAI(prompt, false);
+  return (text && text.trim()) ? text.trim() : null;
+}
+
+
+
 /* ============ 状態 ============ */
 const S = { sns: "X", mode: "標準", profile: "", genres: ["シーシャバー(店舗)","ゲーム制作","開発・ツール"], tab: "calendar", clients: [], activeAccount: "_default_" };
 
@@ -194,6 +346,8 @@ function defaultCfg() {
     gender: "不問",
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
+    /* 噂のシーシャBar専用: おすすめミックス機能 */
+    mixOn: false, mixFreq: 30, mixDB: null,
   };
 }
 
@@ -427,8 +581,8 @@ function renderTop() {
   });
   $("modes").innerHTML = '<span class="lbl">MODE</span>';
   const wrap = document.createElement("div"); wrap.className = "chips";
-  const MODE_ICON = { "標準": "📝", "自分の文体": "🖋️", "バズ特化": "🔥" };
-  ["標準","自分の文体","バズ特化"].forEach((m) => {
+  const MODE_ICON = { "標準": "📝", "バズ特化": "🔥" };
+  ["標準","バズ特化"].forEach((m) => {
     const c = document.createElement("button");
     const on = S.mode === m;
     c.className = "chip" + (on ? " on cyan" : "");
@@ -441,7 +595,7 @@ function renderTop() {
     wrap.appendChild(c);
   });
   $("modes").appendChild(wrap);
-  $("modeWarn").classList.toggle("hidden", !(S.mode === "自分の文体" && !S.profile));
+  $("modeWarn").classList.add("hidden");
 }
 
 /* ============ タブ ============ */
@@ -459,7 +613,6 @@ const TABS = [
   { id:"remake", num:"08", label:"リメイク" },
   { id:"followers", num:"09", label:"推移記録" },
   { id:"report", num:"10", label:"週報" },
-  { id:"style", num:"11", label:"文体学習" },
   { id:"schedule", num:"12", label:"予約管理" },
   { id:"clients", num:"13", label:"クライアント" },
 ];
@@ -649,7 +802,7 @@ BUILDERS.settings = (el) => {
     if (!CFG.useBiz) return;
     const mk = (label, key, ph) => {
       fld(bizBox, label); const i = document.createElement("input"); i.placeholder = ph; i.value = CFG[key] || "";
-      i.oninput = () => { CFG[key] = i.value; save(); }; bizBox.appendChild(i);
+      i.oninput = () => { CFG[key] = i.value; save(); if (key === "bizName" && window._redrawMix) window._redrawMix(); }; bizBox.appendChild(i);
     };
     mk("店名・事業名(任意)", "bizName", "例: 噂のシーシャBar");
     mk("エリア(任意)", "bizArea", "例: 金沢・片町");
@@ -797,10 +950,116 @@ BUILDERS.settings = (el) => {
   }
   drawOrig();
 
+  /* === 噂のシーシャBar専用: おすすめミックスブロック === */
+  const mixBox = document.createElement("div"); el.appendChild(mixBox);
+  function drawMix() {
+    /* 判定: 店名/事業名が噂のシーシャBarの時だけ表示 */
+    const show = isUwasaShisha(S.activeAccount, CFG.bizName);
+    if (!show) { mixBox.innerHTML = ""; mixBox.style.display = "none"; return; }
+    mixBox.style.display = "block";
+    mixBox.innerHTML = "";
+    /* バッジ */
+    const badge = document.createElement("div");
+    badge.style.cssText = "margin-top:20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap";
+    badge.innerHTML = '<span style="font-size:11px;font-weight:800;letter-spacing:.12em;font-family:var(--mono);background:linear-gradient(135deg,#ff2d95,#a855f7);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">🌿 SHISHA MIX AI</span><span style="font-size:10px;color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:2px 8px">噂のシーシャBar 専用</span>';
+    mixBox.appendChild(badge);
+    /* ON/OFFトグル */
+    const tg = document.createElement("div");
+    tg.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
+    tg.innerHTML = '<div><div style="font-weight:700;font-size:14px">おすすめシーシャミックス</div><div style="font-size:11px;color:var(--muted)">味の構造で組む・禁止組合せ自動除外</div></div>';
+    const sw = document.createElement("button");
+    sw.style.cssText = "flex:0 0 auto;width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;transition:.2s;position:relative;" + (CFG.mixOn ? "background:linear-gradient(135deg,#10b981,#059669)" : "background:#3a3a4a");
+    sw.innerHTML = '<span style="position:absolute;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;'+(CFG.mixOn?"left:27px":"left:3px")+'"></span>';
+    sw.onclick = async () => { CFG.mixOn = !CFG.mixOn; await save(); drawMix(); };
+    tg.appendChild(sw);
+    mixBox.appendChild(tg);
+    if (!CFG.mixOn) return; /* OFFなら以下は出さない */
+
+    /* 頻度スライダー */
+    const fwrap = document.createElement("div"); fwrap.style.cssText = "margin-top:12px";
+    const flbl = document.createElement("div"); flbl.style.cssText = "display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px";
+    flbl.innerHTML = '<span>投稿での出現頻度</span><span style="color:var(--accent);font-weight:700" id="mixFreqVal">'+CFG.mixFreq+'%</span>';
+    fwrap.appendChild(flbl);
+    const sl = document.createElement("input"); sl.type="range"; sl.min=0; sl.max=100; sl.step=5; sl.value=CFG.mixFreq;
+    sl.style.cssText = "width:100%";
+    const fhint = document.createElement("div"); fhint.style.cssText="font-size:11px;color:var(--muted);margin-top:4px";
+    const updHint = () => { fhint.textContent = "10投稿につき約"+Math.round(CFG.mixFreq/10)+"回ミックス提案が混ざる"; };
+    sl.oninput = () => { CFG.mixFreq = parseInt(sl.value); document.getElementById("mixFreqVal").textContent = CFG.mixFreq+"%"; updHint(); };
+    sl.onchange = () => save();
+    fwrap.appendChild(sl); updHint(); fwrap.appendChild(fhint);
+    mixBox.appendChild(fwrap);
+
+    /* 客層選択 */
+    fld(mixBox, "客層を選んで生成");
+    const audWrap = document.createElement("div"); audWrap.style.cssText="display:flex;flex-wrap:wrap;gap:6px";
+    const AUDS = ["おまかせ","初心者","女性人気","男性人気","フルーツ系","紅茶系","スイーツ系","重め"];
+    let selAud = "おまかせ";
+    AUDS.forEach((a)=>{
+      const c = document.createElement("button"); c.className="mini"; c.textContent=a;
+      if(a===selAud){ c.style.background="linear-gradient(135deg,#ff2d95,#a855f7)"; c.style.color="#fff"; }
+      c.onclick = () => { selAud=a; audWrap.querySelectorAll("button").forEach(x=>{x.style.background="";x.style.color="";}); c.style.background="linear-gradient(135deg,#ff2d95,#a855f7)"; c.style.color="#fff"; };
+      audWrap.appendChild(c);
+    });
+    mixBox.appendChild(audWrap);
+
+    /* 生成ボタン+在庫情報 */
+    const genRow = document.createElement("div"); genRow.style.cssText="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap";
+    const genB = document.createElement("button"); genB.className="mini cyan"; genB.textContent="この客層で生成";
+    genRow.appendChild(genB);
+    const DB = shishaDB();
+    const nB = Object.keys(DB).length, nF = Object.values(DB).reduce((s,o)=>s+Object.keys(o).length,0);
+    const inv = document.createElement("span"); inv.style.cssText="font-size:11px;color:var(--muted)"; inv.textContent = "在庫: "+nB+"ブランド / "+nF+"フレーバー";
+    genRow.appendChild(inv);
+    mixBox.appendChild(genRow);
+
+    const mixOut = document.createElement("div"); mixBox.appendChild(mixOut);
+    genB.onclick = () => {
+      genB.disabled = true; genB.textContent = "生成中…";
+      setTimeout(() => { /* 計算は同期だが体感のため */
+        const picks = shGenerate(selAud, 3);
+        mixOut.innerHTML = "";
+        if (!picks.length) { mixOut.innerHTML = '<div class="err">条件に合うミックスが見つからん。在庫を増やすか客層を変えて。</div>'; genB.disabled=false; genB.textContent="この客層で生成"; return; }
+        picks.forEach((p)=> mixOut.appendChild(renderMixCard(p)));
+        genB.disabled = false; genB.textContent = "この客層で生成";
+      }, 50);
+    };
+  }
+  drawMix();
+  /* 店名変更で判定が変わるので、bizName入力を監視して再描画 */
+  window._redrawMix = drawMix;
+
   const done = runBtn(el, "保存して全機能に反映");
   const okm = document.createElement("div"); okm.className = "okmsg"; el.appendChild(okm);
-  done.onclick = async () => { await save(); okm.textContent = "保存した。全AI機能に反映される。"; setTimeout(()=>okm.textContent="",2500); };
+  done.onclick = async () => { await save(); okm.textContent = "保存した。全AI機能に反映される。"; setTimeout(()=>okm.textContent="",2500); drawMix(); };
 };
+
+/* ミックス結果カードを描画 */
+function renderMixCard(p) {
+  const card = document.createElement("div");
+  card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px";
+  const sweet=shAvg(p.combo,0), sour=shAvg(p.combo,1), cool=shAvg(p.combo,2), heavy=shAvg(p.combo,3);
+  const lead = p.combo.slice().sort((a,b)=>b.ratio-a.ratio)[0];
+  const label = shLabel(p.sc);
+  const labelColor = p.sc>=90?"#10b981":(p.sc>=85?"var(--accent)":"var(--muted)");
+  let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
+  h += '<span style="font-weight:800;font-size:15px">'+esc(shMixName(p.combo))+'</span>';
+  h += '<span style="font-size:13px;font-weight:800;color:'+labelColor+'">'+p.sc+'点 '+label+'</span></div>';
+  /* 配合 */
+  h += '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">';
+  h += p.combo.map(c=>esc(c.name)+'<span style="opacity:.6">('+esc(shBrandOf(c.name))+')</span> '+c.ratio).join(' / ');
+  h += '</div>';
+  /* バー */
+  const barRow = (lbl,v) => '<div style="display:flex;align-items:center;gap:8px;font-size:11px;margin:2px 0"><span style="width:42px;color:var(--muted)">'+lbl+'</span><span style="font-family:var(--mono);letter-spacing:-1px;color:var(--accent)">'+shBar(v)+'</span></div>';
+  h += barRow("甘さ",sweet)+barRow("酸味",sour)+barRow("清涼",cool)+barRow("重さ",heavy);
+  h += '<div style="font-size:11px;color:var(--muted);margin-top:6px">相性 '+p.info+'</div>';
+  card.innerHTML = h;
+  /* コピーボタン */
+  const cp = document.createElement("button"); cp.className="mini"; cp.style.marginTop="8px"; cp.textContent="📋 配合をコピー";
+  const txt = shMixName(p.combo)+"\n"+p.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ")+"\nおすすめ度: "+p.sc+"点 "+label;
+  cp.onclick = () => { navigator.clipboard.writeText(txt); cp.textContent="✓ コピーした"; setTimeout(()=>cp.textContent="📋 配合をコピー",1500); };
+  card.appendChild(cp);
+  return card;
+}
 
 /* スライダー付きフィールド(5%〜100%) */
 function sliderField(el, label, key, onChange) {
@@ -1065,6 +1324,15 @@ BUILDERS.gapcheck = (el) => {
     try {
       await loadCfgFor(account);
       const isBoat = /競艇|ボートレース|ボート/.test(CFG.bizType || "");
+      /* 噂のシーシャBar: 頻度に応じてミックス紹介投稿にする */
+      if (isUwasaShisha(account, CFG.bizName) && CFG.mixOn && Math.random()*100 < (CFG.mixFreq||0)) {
+        const mixText = await shMixPostText("おまかせ");
+        if (mixText) {
+          btn.disabled = false; btn.textContent = o;
+          showDraftPreview(account, gap, mixText, "20:00", btn);
+          return;
+        }
+      }
       const prompt =
         `${S.sns}の投稿を1本作る。日付: ${gap.ds}(${gap.label}曜)。\n` +
         `このアカウントの業種・性格・文体設定に沿って、その日にふさわしい投稿を1本。\n` +
@@ -1913,6 +2181,19 @@ BUILDERS.followers = (el) => {
     `毎日の数字を入れるだけで増減・ペース・目標到達予測を自動計算。${S.sns}の数字だけ表示(右上で切替)。同日は上書き。`,
     [`${S.sns}のアプリでフォロワー数を見る`,"数字を入れて「記録」","目標を設定すると「いつ届くか」も予測"]);
 
+  /* 対象アカウント選択(アカ別に記録を分ける) */
+  let recAcct = S.activeAccount || "_default_";
+  const actives = S.clients.filter((c)=>c.status==="active" && c.screen_name !== "_test_" && !/^_test/.test(c.screen_name));
+  if (actives.length) {
+    fld(el, "どのアカウントの記録?");
+    const asel = document.createElement("select");
+    const od = document.createElement("option"); od.value="_default_"; od.textContent="共通(既定)"; asel.appendChild(od);
+    actives.forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; asel.appendChild(o); });
+    asel.value = recAcct;
+    asel.onchange = async () => { recAcct = asel.value; await reload(); };
+    el.appendChild(asel);
+  }
+
   fld(el, "記録する指標");
   const metric = chipsSingle(el, METRICS[S.sns], METRICS[S.sns][0]);
   fld(el, "今日の数値");
@@ -1927,14 +2208,18 @@ BUILDERS.followers = (el) => {
   const histEl = document.createElement("div"); el.appendChild(histEl);
 
   let records = [], goals = {};
+  /* アカ別の保存キー。_default_は従来キー(既存データ互換)、それ以外は followers:アカ名 */
+  const recKey = () => recAcct === "_default_" ? "followers" : "followers:" + recAcct;
+  const goalKey = () => recAcct === "_default_" ? "goals" : "goals:" + recAcct;
   const key = (m) => S.sns + ":" + m;
   const fmtJP = (d) => parseInt(d.slice(5,7)) + "/" + parseInt(d.slice(8,10));
 
-  (async () => {
-    records = await kvGet("followers", []);
-    goals = await kvGet("goals", {});
+  async function reload() {
+    records = await kvGet(recKey(), []);
+    goals = await kvGet(goalKey(), {});
     drawAll();
-  })();
+  }
+  reload();
 
   rec.onclick = async () => {
     const n = parseInt(num.value); if (isNaN(n)) return;
@@ -1942,7 +2227,7 @@ BUILDERS.followers = (el) => {
     records = records.filter((r) => !(r.date === today && r.platform === key(metric.value)));
     records.push({ date: today, platform: key(metric.value), count: n });
     records.sort((a,b)=>a.date.localeCompare(b.date));
-    await kvSet("followers", records);
+    await kvSet(recKey(), records);
     num.value = ""; msg.textContent = fmtJP(today) + " の" + metric.value + "を " + n.toLocaleString() + " で記録した";
     setTimeout(()=>msg.textContent="",2500);
     drawAll();
@@ -2000,13 +2285,13 @@ BUILDERS.followers = (el) => {
         (fc ? (fc.done ? "— 達成済み🎉" : "まで残り <b>"+fc.remain.toLocaleString()+"</b>。今のペースなら <b style='color:var(--accent2)'>約"+fc.days+"日後("+fc.date+")</b> に到達")
             : "— 7日分くらい記録が貯まると予測が出る") +
         ' <button class="mini" style="float:right;flex:none;padding:4px 8px;font-size:11px">変更</button>';
-      d.querySelector("button").onclick = async () => { delete goals[S.sns]; await kvSet("goals", goals); drawGoal(); drawChart(); };
+      d.querySelector("button").onclick = async () => { delete goals[S.sns]; await kvSet(goalKey(), goals); drawGoal(); drawChart(); };
       goalEl.appendChild(d);
     } else {
       const w = document.createElement("div"); w.style.cssText = "display:flex;gap:10px"; goalEl.appendChild(w);
       const gi = document.createElement("input"); gi.type = "number"; gi.placeholder = "例: 1000"; w.appendChild(gi);
       const gb = document.createElement("button"); gb.className = "mini cyan"; gb.style.flex = "0 0 80px"; gb.textContent = "設定"; w.appendChild(gb);
-      gb.onclick = async () => { const n = parseInt(gi.value); if (!n) return; goals[S.sns] = n; await kvSet("goals", goals); drawGoal(); drawChart(); };
+      gb.onclick = async () => { const n = parseInt(gi.value); if (!n) return; goals[S.sns] = n; await kvSet(goalKey(), goals); drawGoal(); drawChart(); };
     }
   }
 
@@ -2066,7 +2351,7 @@ BUILDERS.followers = (el) => {
         '<button style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer">×</button>';
       d.querySelector("button").onclick = async () => {
         records = records.filter((x)=>!(x.date===r.date&&x.platform===r.platform));
-        await kvSet("followers", records); drawAll();
+        await kvSet(recKey(), records); drawAll();
       };
       histEl.appendChild(d);
     });
@@ -2081,7 +2366,7 @@ BUILDERS.report = (el) => {
   const linkEl = document.createElement("div"); linkEl.className = "row"; linkEl.style.fontFamily = "var(--mono)"; linkEl.style.fontSize = "12.5px"; el.appendChild(linkEl);
   let fdata = [];
   (async () => {
-    const recs = await kvGet("followers", []);
+    const recs = await kvGet(recKey(), []);
     const cutoff = new Date(Date.now()-8*86400000).toISOString().slice(0,10);
     fdata = recs.filter((r)=>r.platform===S.sns+":フォロワー" && r.date>=cutoff).sort((a,b)=>a.date.localeCompare(b.date));
     linkEl.style.color = fdata.length ? "var(--ok)" : "var(--muted)";
