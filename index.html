@@ -736,9 +736,10 @@ async function kvSet(key, value) {
 }
 
 /* ============ AI呼び出し(GAS中継) ============ */
-async function callAI(prompt, useSearch, model) {
+async function callAI(prompt, useSearch, model, wantUrls) {
   const { data } = await sb.auth.getSession();
   if (!data.session) throw new Error("ログインが切れた。リロードして。");
+  let lastUrls = [];
   const doFetch = async (p) => {
     const res = await fetch(GAS_URL, {
       method: "POST",
@@ -747,6 +748,7 @@ async function callAI(prompt, useSearch, model) {
     });
     const j = await res.json();
     if (j.error) throw new Error(j.error);
+    lastUrls = j.urls || [];
     return j.text;
   };
 
@@ -767,7 +769,7 @@ async function callAI(prompt, useSearch, model) {
       else text = retry; // 2回目もダメなら諦めて返す(無限ループ防止)
     }
   }
-  return text;
+  return wantUrls ? { text, urls: lastUrls } : text;
 }
 
 /* 業種ごとの「混ざってはいけない題材ワード」 */
@@ -2273,28 +2275,27 @@ BUILDERS.calendar = (el) => {
     return "\n口調: " + (toneMap[CFG.tone] || "自然体な") + "感じ。絵文字は" + (CFG.emoji||"少なめ") + "。\n";
   }
 
-  /* トレンドワード → まず検索で内容を確認し、その話題に合った投稿3案。
-     軽いノリやテンプレ煽りは禁止。賛同・尊敬される誠実な視点で。前置きは書かせない。 */
+  /* トレンドワード → まず検索で内容を確認し、その話題に対する"自分の感想・意見"を投稿3案。
+     ニュース説明・読み上げは禁止。前置きも書かせない。 */
   function buzzPromptForTrend(tw, shuffle) {
-    return `「${tw}」は今Xでトレンドになっているワード。これが何の話題か必ずWeb検索で正確に確認してから、X投稿を【3案】作る。\n`
+    return `「${tw}」は今Xでトレンドのワード。何の話題か必ずWeb検索で確認する(事実を間違えないため)。\n`
+      + `そのうえで、この話題に対する【自分の感想・意見・気持ち】をつぶやくX投稿を3案作る。\n`
       + personaClause()
-      + `\n【話題に応じた書き分け・最重要】\n`
-      + `検索して分かった内容に合わせて、トーンを変える:\n`
-      + `・事件/事故/訃報/社会問題などセンシティブな話題 → 軽いノリ・茶化し・煽りは絶対NG。代わりに「なるほどそういう見方があるのか」と思われる誠実で思慮深い視点、多くの人が賛同できる冷静な意見を述べる。品位を保つ\n`
-      + `・芸能/スポーツ/エンタメ/面白ネタ → 共感やツッコミ、楽しい乗っかり方でOK\n`
-      + `\n【何の話か分かるように書く・重要】\n`
-      + `- 読み手が文脈を知らなくても何の話か分かるよう、本文の中で「${tw}」(誰/何か)に必ず触れる。曖昧な「有名人」「あの件」だけで済ませない\n`
-      + `- 各案の最後の行に、検索で見つけた参考ニュースのURLを1つ「参考: https://...」の形で必ず添える(実在するURLのみ。無ければ書かない)\n`
-      + `\n【全案共通のNG】\n`
-      + `- 「9割の人が〜」「実は〜なの」「なぜなら〜(具体なし)」のような中身のない煽り\n`
-      + `- 知ったかぶり・事実誤認。検索で確認した正確な内容だけ書く\n`
-      + `- 不謹慎・下品・特定個人への誹謗中傷・断定的な決めつけ\n`
-      + `\n【良い投稿の条件】\n`
-      + `- 読んだ人が「たしかに」「そういう考え方もあるな」と感じる、視点のある一言\n`
-      + `- 賛同・共感・リポストされやすい、地に足のついた中身\n`
-      + `- 設定された文体・性格そのまま。業種の宣伝に無理に着地させない。本文は140字以内(URLは字数に含めなくてよい)\n`
-      + (shuffle ? `- 前回とは全く違う角度で新鮮な3案にする\n` : "")
-      + `\n出力形式(厳守): 前置き・説明・「〜します」のような文は一切書かない。3案を「===」だけの行で区切って本文のみ出力する。`;
+      + `\n【最重要・これを徹底】\n`
+      + `- ニュースの説明・要約・読み上げは絶対にしない。「〇〇が逮捕された」「〜でトレンド入りしてる」のような事実報告から始めない\n`
+      + `- いきなり自分の感情・本音・ツッコミ・気づきから入る。検索した内容は"前提として知ってる体"で、説明せずに自分の言葉で語る\n`
+      + `- 「📱トレンド入りしてるね」みたいな実況・メタ発言は不要\n`
+      + `- 検索結果の文をそのまま使わない。自分が普段しゃべるみたいな、生きた言葉にする\n`
+      + `\n【話題に応じたトーン】\n`
+      + `・事件/事故/訃報/社会問題 → 茶化し・煽りはNG。誠実で、人に「たしかに」と思わせる本音や視点\n`
+      + `・芸能/スポーツ/エンタメ → 共感・ツッコミ・素直な気持ちでOK\n`
+      + `\n【NG】「9割の人が〜」「実は〜なの」みたいな空っぽの煽り / 知ったかぶり / 誹謗中傷・決めつけ\n`
+      + `\n【良い例のイメージ】(コピー禁止・あくまで"感想から入る"の例)\n`
+      + `「正直こういうニュース見ると、人って見えてる部分が全てじゃないんやなって思う」みたいに、本人の感じたことが主役\n`
+      + `\n設定された文体・性格そのまま。業種の宣伝に着地させない。本文140字以内(URLは別)。\n`
+      + `各案の最後に、検索で見つけた実在する参考ニュースURLを「参考: https://...」で添える(実在URLのみ。無ければ書かない)。\n`
+      + (shuffle ? `前回とは全く違う角度・感情で新鮮な3案にする。\n` : "")
+      + `\n出力形式(厳守): 前置き・説明は一切なし。3案を「===」だけの行で区切って本文のみ出力。`;
   }
 
   /* 人気ポスト → その型を真似た文体そのままのバズ投稿3案プロンプト */
@@ -2321,12 +2322,22 @@ BUILDERS.calendar = (el) => {
     const run = async (shuffle) => {
       btn.disabled = true; btn.textContent = shuffle ? "作り直し中…" : (useSearch ? "内容を調べて生成中…" : "生成中…"); out.innerHTML = "";
       try {
-        const text = await callAI(promptFn(shuffle), !!useSearch, useSearch ? "sonnet" : "haiku");
+        const r = await callAI(promptFn(shuffle), !!useSearch, useSearch ? "sonnet" : "haiku", true);
+        const text = (typeof r === "string") ? r : r.text;
+        const urls = (typeof r === "string") ? [] : (r.urls || []);
         /* 前置き除去: 「〜します」「作ります」等の説明行を落とす */
         let body = text.replace(/^.*?(します|作ります|を作成|3案[:：]|案です)[。:：]?\s*\n/m, "");
-        const cands = body.split(/\n?===+\n?/).map(s=>s.trim())
+        let cands = body.split(/\n?===+\n?/).map(s=>s.trim())
           .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
           .filter(s=>s.length>5 && !/^(承知|了解|分かりました)/i.test(s));
+        /* 検索時、URLが無い案には検索で見つけたURLを補う */
+        if (useSearch && urls.length) {
+          cands = cands.map((c, i) => {
+            if (/https?:\/\//.test(c)) return c;
+            const u = urls[i] || urls[0];
+            return c + "\n参考: " + u;
+          });
+        }
         if (!cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; }
         else {
           const shufRow = document.createElement("div"); shufRow.style.cssText="margin:6px 0";
