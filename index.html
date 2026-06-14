@@ -315,7 +315,98 @@ function shAvg(combo, idx){
 }
 const shBar = v => {const f=Math.round(v); return "★".repeat(Math.max(0,Math.min(10,f)))+"☆".repeat(Math.max(0,10-f));};
 function shLabel(sc){ return sc>=90?"超おすすめ":(sc>=85?"おすすめ":"提供可"); }
+/* 予約投稿をDBに保存する共通関数。textが140字超なら自動でスレッド分割。
+   既にthread指定がある場合(ミックス等)はそれを優先しつつ、1本目が長ければさらに分割。 */
+async function saveScheduledPost(rec) {
+  /* rec: { screen_name, text, scheduled_at, status, media_url?, thread? } */
+  const existingThread = Array.isArray(rec.thread) ? rec.thread.slice() : [];
+  const split = autoSplitThread(rec.text, 140);
+  let finalText = split.text;
+  let finalThread = [];
+  if (split.thread) finalThread = finalThread.concat(split.thread);
+  /* 既存のthread(2本目以降)も、それぞれ140字超なら分割して足す */
+  existingThread.forEach((t) => {
+    const s2 = autoSplitThread(t, 140);
+    finalThread.push(s2.text);
+    if (s2.thread) finalThread = finalThread.concat(s2.thread);
+  });
+  const payload = {
+    screen_name: rec.screen_name,
+    text: finalText,
+    scheduled_at: rec.scheduled_at,
+    status: rec.status || "draft",
+    media_url: rec.media_url || null,
+    thread: finalThread.length ? finalThread : null,
+  };
+  return await sb.from("scheduled_posts").insert(payload);
+}
+
 function shMixName(combo){ const s=combo.slice().sort((a,b)=>b.ratio-a.ratio); return (s[0]?s[0].name:"")+(s[1]?"×"+s[1].name:""); }
+
+/* 長文を140字以内のツイート配列に自動分割する(スレッド用)。
+   返り値 { text, thread } : text=1本目, thread=2本目以降(無ければnull)。
+   段落(空行)→文(句点)→読点や区切り の順で、できるだけ文の意味が途切れない位置で割る。 */
+function autoSplitThread(full, limit) {
+  limit = limit || 140;
+  const src = String(full || "").trim();
+  if (src.length <= limit) return { text: src, thread: null };
+
+  /* テキストを「これ以上分けたくない最小単位」に砕く。
+     優先: 段落(空行) > 文末(。！？と改行) > 読点・中黒・スラッシュ > それでも長ければ単語境界 */
+  function tokenize(text) {
+    /* まず段落 */
+    return text.split(/\n\s*\n/).map(s => s.trim()).filter(Boolean);
+  }
+  /* 1ピースが長すぎる時、自然な区切りでさらに砕く(文の途中で切らない) */
+  function breakPiece(piece) {
+    if (piece.length <= limit) return [piece];
+    /* 文末(。！？)や改行で割る。区切り文字は前の文にくっつける */
+    let parts = piece.split(/(?<=[。！？\n])/).map(s => s).filter(s => s.length);
+    /* まだlimit超の塊があれば、読点・中黒・スラッシュ・空白で割る */
+    const refined = [];
+    parts.forEach(pt => {
+      if (pt.length <= limit) { refined.push(pt); return; }
+      let sub = pt.split(/(?<=[、，・/／\s])/).filter(s => s.length);
+      let buf = "";
+      sub.forEach(token => {
+        if (token.length > limit) {
+          /* 1トークンが長すぎる(URLや長い単語)→最終手段で機械的に割るが、できるだけ境界で */
+          if (buf) { refined.push(buf); buf = ""; }
+          for (let i = 0; i < token.length; i += limit) refined.push(token.slice(i, i + limit));
+        } else if ((buf + token).length > limit) {
+          if (buf) refined.push(buf);
+          buf = token;
+        } else {
+          buf += token;
+        }
+      });
+      if (buf) refined.push(buf);
+    });
+    return refined;
+  }
+
+  /* 段落を取り、各段落を必要なら砕いて、limit以内に詰め込む */
+  const pieces = [];
+  tokenize(src).forEach(block => { breakPiece(block).forEach(p => pieces.push(p)); });
+
+  /* ピースを順に詰めてツイートを作る(境界をまたいで文を切らない) */
+  const tweets = [];
+  let cur = "";
+  pieces.forEach(piece => {
+    const sep = cur ? (cur.endsWith("\n") ? "" : "\n") : "";
+    if ((cur + sep + piece).length > limit) {
+      if (cur.trim()) tweets.push(cur.trim());
+      cur = piece;
+    } else {
+      cur += sep + piece;
+    }
+  });
+  if (cur.trim()) tweets.push(cur.trim());
+
+  if (!tweets.length) return { text: src.slice(0, limit), thread: null };
+  return { text: tweets[0], thread: tweets.length > 1 ? tweets.slice(1) : null };
+}
+
 
 /* シチュエーション(気分)タグ。カテゴリ→該当シーンの配列。
    pref: そのシーンに寄せたい味の傾向(おすすめ生成時のヒント) */
@@ -1581,7 +1672,7 @@ BUILDERS.gapcheck = (el) => {
       sendBtn.disabled = true; sendBtn.textContent = "送信中…";
       try {
         const threadVals = threadAreas.map(t=>t.value.trim()).filter(Boolean);
-        const { error } = await sb.from("scheduled_posts").insert({
+        const { error } = await saveScheduledPost({
           screen_name: account,
           text: body.value.trim(),
           scheduled_at: new Date(gap.ds + "T" + (tIn.value||"12:00") + ":00").toISOString(),
@@ -2000,7 +2091,7 @@ BUILDERS.calendar = (el) => {
           if (!acct.value) { yosouOut.innerHTML += '<div class="err">クライアント未登録</div>'; return; }
           send.disabled = true;
           const dt = planDate(p);
-          const { error } = await sb.from("scheduled_posts").insert({
+          const { error } = await saveScheduledPost({
             screen_name: acct.value, text: p._text, scheduled_at: dt.toISOString(), status: "draft",
           });
           if (error) { send.disabled = false; yosouOut.innerHTML += '<div class="err">'+error.message+'</div>'; return; }
@@ -2040,28 +2131,45 @@ BUILDERS.calendar = (el) => {
     try {
       await genOne(p);
       addOut.innerHTML = "";
-      /* 編集できる本文エリア */
+      /* 1本目本文(編集可) */
       const box = document.createElement("textarea");
-      box.rows = 8; box.value = p._text;
+      box.rows = 7; box.value = p._text;
       box.style.cssText = "width:100%;font-size:13.5px;line-height:1.7;margin-top:10px";
       addOut.appendChild(box);
       const cnt = document.createElement("p"); cnt.className = "desc"; cnt.style.margin = "4px 0 6px";
-      const updCnt = () => { cnt.textContent = box.value.length + "字" + (S.sns==="X" && box.value.length>140 ? " ⚠140字超" : ""); };
+      const updCnt = () => { cnt.textContent = "1本目 "+box.value.length + "字" + (S.sns==="X" && box.value.length>140 ? " ⚠140字超(スレッドに分けて)" : ""); };
       box.oninput = updCnt; updCnt();
       addOut.appendChild(cnt);
+      /* スレッド2本目以降(p._threadがあれば編集欄を出す) */
+      let threadAreas = [];
+      const threadWrap = document.createElement("div"); addOut.appendChild(threadWrap);
+      function drawThreadAreas() {
+        threadWrap.innerHTML = ""; threadAreas = [];
+        const rest = (p._thread && p._thread.length > 1) ? p._thread.slice(1) : [];
+        rest.forEach((t2, i) => {
+          const lbl = document.createElement("p"); lbl.className="desc"; lbl.style.margin="6px 0 2px"; lbl.textContent = "🧵 "+(i+2)+"本目(リプ)";
+          threadWrap.appendChild(lbl);
+          const ta2 = document.createElement("textarea"); ta2.rows = 5; ta2.value = t2;
+          ta2.style.cssText = "width:100%;font-size:13px;line-height:1.6";
+          threadWrap.appendChild(ta2); threadAreas.push(ta2);
+        });
+      }
+      drawThreadAreas();
       const acts = document.createElement("div"); acts.className = "acts"; addOut.appendChild(acts);
       const re = document.createElement("button"); re.className = "mini"; re.textContent = "🔀 作り直し";
-      re.onclick = async () => { re.disabled = true; re.textContent = "生成中…"; await genOne(p, true); box.value = p._text; updCnt(); re.disabled = false; re.textContent = "🔀 作り直し"; };
+      re.onclick = async () => { re.disabled = true; re.textContent = "生成中…"; await genOne(p, true); box.value = p._text; updCnt(); drawThreadAreas(); re.disabled = false; re.textContent = "🔀 作り直し"; };
       acts.appendChild(re);
       const send = document.createElement("button"); send.className = "mini primary"; send.textContent = "予約管理に送る";
       send.onclick = async () => {
         if (!acct.value) { addOut.innerHTML += '<div class="err">クライアント未登録</div>'; return; }
         send.disabled = true;
-        const { error } = await sb.from("scheduled_posts").insert({
+        const threadVals = threadAreas.map(t=>t.value.trim()).filter(Boolean);
+        const { error } = await saveScheduledPost({
           screen_name: acct.value, text: box.value.trim(), scheduled_at: dt.toISOString(), status: "draft",
+          thread: threadVals.length ? threadVals : null,
         });
         if (error) { send.disabled = false; addOut.innerHTML += '<div class="err">'+error.message+'</div>'; return; }
-        send.textContent = "送った✓";
+        send.textContent = threadVals.length ? "送った✓(🧵"+(threadVals.length+1)+"連投)" : "送った✓";
       };
       acts.appendChild(send);
     } catch (e) { addOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
@@ -2164,15 +2272,19 @@ BUILDERS.calendar = (el) => {
       bulk.className = "btn"; bulk.textContent = "完成してる分を全部 予約管理に送る";
       bulk.onclick = async () => {
         if (!acct.value) { out.err("クライアント未登録。先に認証リンクから登録して。"); return; }
-        const rows = plan.filter((p) => p._text).map((p) => ({
-          screen_name: acct.value, text: p._text, scheduled_at: planDate(p).toISOString(), status: "draft",
-          thread: (p._thread && p._thread.length > 1) ? p._thread.slice(1) : null,
-        }));
-        if (!rows.length) { out.err("完成した投稿文がまだない。"); return; }
-        bulk.disabled = true;
-        const { error } = await sb.from("scheduled_posts").insert(rows);
-        if (error) { out.err("送信エラー: " + error.message); bulk.disabled = false; return; }
-        bulk.textContent = rows.length + "件送った✓ 予約管理タブでGOを出すと確定";
+        const targets = plan.filter((p) => p._text);
+        if (!targets.length) { out.err("完成した投稿文がまだない。"); return; }
+        bulk.disabled = true; bulk.textContent = "送信中…";
+        let okCount = 0, errMsg = "";
+        for (const p of targets) {
+          const { error } = await saveScheduledPost({
+            screen_name: acct.value, text: p._text, scheduled_at: planDate(p).toISOString(), status: "draft",
+            thread: (p._thread && p._thread.length > 1) ? p._thread.slice(1) : null,
+          });
+          if (error) { errMsg = error.message; } else { okCount++; }
+        }
+        if (errMsg && okCount === 0) { out.err("送信エラー: " + errMsg); bulk.disabled = false; bulk.textContent = "完成してる分を全部 予約管理に送る"; return; }
+        bulk.textContent = okCount + "件送った✓ 予約管理タブでGOを出すと確定";
       };
       listEl.appendChild(bulk);
     }
@@ -2379,6 +2491,17 @@ BUILDERS.calendar = (el) => {
     box.value = text; body.appendChild(box);
     /* 編集したらp._textに反映(送信・コピーに使う) */
     box.oninput = () => { p._text = box.value; };
+    /* スレッド2本目以降(あれば編集欄を出す) */
+    const threadAreas = [];
+    if (p._thread && p._thread.length > 1) {
+      p._thread.slice(1).forEach((t2, i) => {
+        const lbl = document.createElement("p"); lbl.className="desc"; lbl.style.margin="6px 0 2px"; lbl.textContent = "🧵 "+(i+2)+"本目(リプ)";
+        body.appendChild(lbl);
+        const ta2 = document.createElement("textarea"); ta2.rows = 5; ta2.value = t2;
+        ta2.style.cssText = "width:100%;font-size:13px;line-height:1.6";
+        body.appendChild(ta2); threadAreas.push(ta2);
+      });
+    }
     const acts = document.createElement("div"); acts.className = "acts"; body.appendChild(acts);
     const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "コピー";
     cp.onclick = () => { navigator.clipboard.writeText(p._text); cp.textContent = "コピー済"; setTimeout(()=>cp.textContent="コピー",1500); };
@@ -2388,12 +2511,13 @@ BUILDERS.calendar = (el) => {
       sd.onclick = async () => {
         if (!acct.value) { out.err("クライアント未登録。先に認証リンクから登録して。"); return; }
         sd.disabled = true;
-        const { error } = await sb.from("scheduled_posts").insert({
+        const threadVals = threadAreas.map(t=>t.value.trim()).filter(Boolean);
+        const { error } = await saveScheduledPost({
           screen_name: acct.value, text: p._text, scheduled_at: planDate(p).toISOString(), status: "draft",
-          thread: (p._thread && p._thread.length > 1) ? p._thread.slice(1) : null,
+          thread: threadVals.length ? threadVals : null,
         });
         if (error) { out.err("送信エラー: " + error.message); sd.disabled = false; return; }
-        sd.textContent = "送った✓";
+        sd.textContent = threadVals.length ? "送った✓(🧵"+(threadVals.length+1)+")" : "送った✓";
       };
       acts.appendChild(sd);
       const a = document.createElement("a"); a.className = "mini"; a.textContent = "Xで投稿→";
@@ -2715,7 +2839,7 @@ BUILDERS.schedule = (el) => {
     const rec = { screen_name: acct.value, scheduled_at: new Date(when.value).toISOString(), text: text.value.trim(), media_url: mediaIn.value.trim() || null };
     const { error } = editingId
       ? await sb.from("scheduled_posts").update(rec).eq("id", editingId)
-      : await sb.from("scheduled_posts").insert(rec);
+      : await saveScheduledPost({ ...rec, status: "draft" });
     save.disabled = false;
     if (error) { out.err("保存エラー: " + error.message); return; }
     resetForm(); load();
@@ -2726,11 +2850,17 @@ BUILDERS.schedule = (el) => {
 
   function postRow(p, actions) {
     const d = document.createElement("div"); d.className = "row";
+    const threadCount = (p.thread && p.thread.length) ? p.thread.length : 0;
     d.innerHTML = '<div class="meta"><span class="pill time">'+hhmm(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span>" +
-      (p.media_url?'<span class="pill genre">🖼 画像</span>':"") + "</div>" +
+      (p.media_url?'<span class="pill genre">🖼 画像</span>':"") +
+      (threadCount?'<span class="pill genre">🧵 '+(threadCount+1)+'連投</span>':"") + "</div>" +
       "<pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
+      (threadCount ? '<div style="font-size:12px;color:var(--muted);border-left:2px solid var(--border);padding-left:8px;margin-top:6px"></div>' : "") +
       '<div class="acts">' + actions.map((a,i)=>'<button class="mini '+(a.primary?'primary':'')+'" data-i="'+i+'">'+a.label+'</button>').join("") + '</div>';
     d.querySelector("pre").textContent = p.text;
+    if (threadCount) {
+      d.querySelector("pre + div").textContent = "🧵 " + p.thread.map((t,i)=>"("+(i+2)+") "+t).join("\n\n");
+    }
     actions.forEach((a,i)=>{ d.querySelector('[data-i="'+i+'"]').onclick = a.fn; });
     return d;
   }
