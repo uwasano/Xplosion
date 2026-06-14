@@ -2228,7 +2228,7 @@ BUILDERS.calendar = (el) => {
       t = t.replace(/https?:\/\/[^\s]+/g, () => { used += 23; return ""; });
       return t.length + used;
     };
-    const upd = () => { const n = xLen(box.value); cnt.textContent = n+"字"+(n>140?" ⚠140字超(送信時に自動スレッド)":""); };
+    const upd = () => { const n = xLen(box.value); cnt.textContent = n+"字"+(n>140?" ⚠140字超。短くするのがおすすめ(URLは23字換算)":" (URLは23字換算)"); };
     box.oninput = upd; upd(); wrap.appendChild(cnt);
     const acts = document.createElement("div"); acts.className="acts"; wrap.appendChild(acts);
     const send = document.createElement("button"); send.className="mini primary"; send.textContent="これを予約管理に送る";
@@ -2292,8 +2292,9 @@ BUILDERS.calendar = (el) => {
       + `\n【NG】「9割の人が〜」「実は〜なの」みたいな空っぽの煽り / 知ったかぶり / 誹謗中傷・決めつけ\n`
       + `\n【良い例のイメージ】(コピー禁止・あくまで"感想から入る"の例)\n`
       + `「正直こういうニュース見ると、人って見えてる部分が全てじゃないんやなって思う」みたいに、本人の感じたことが主役\n`
-      + `\n設定された文体・性格そのまま。業種の宣伝に着地させない。本文140字以内(URLは別)。\n`
-      + `各案の最後に、検索で見つけた実在する参考ニュースURLを「参考: https://...」で添える(実在URLのみ。無ければ書かない)。\n`
+      + `\n設定された文体・性格そのまま。業種の宣伝に着地させない。\n`
+      + `【字数・URL】本文とURLを合わせて必ず140字以内に収める(スレッドに分けない・1投稿で完結)。URLはXでは23字換算なので、本文は実質115字くらいまで。\n`
+      + `URLを載せる時は「参考:」などの文字は付けず、本文の最後に改行してURLだけを置く。検索で見つけた実在URLのみ。無理なら載せない。\n`
       + (shuffle ? `前回とは全く違う角度・感情で新鮮な3案にする。\n` : "")
       + `\n出力形式(厳守): 前置き・説明は一切なし。3案を「===」だけの行で区切って本文のみ出力。`;
   }
@@ -2329,13 +2330,14 @@ BUILDERS.calendar = (el) => {
         let body = text.replace(/^.*?(します|作ります|を作成|3案[:：]|案です)[。:：]?\s*\n/m, "");
         let cands = body.split(/\n?===+\n?/).map(s=>s.trim())
           .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
+          .map(s=> s.replace(/(\n*)参考[:：]\s*(https?:\/\/)/,"$1$2").trim())  /* 「参考:」の文字だけ消してURLは残す */
           .filter(s=>s.length>5 && !/^(承知|了解|分かりました)/i.test(s));
-        /* 検索時、URLが無い案には検索で見つけたURLを補う */
+        /* 検索時、URLが無い案には検索で見つけたURLを(「参考:」なしで)補う */
         if (useSearch && urls.length) {
           cands = cands.map((c, i) => {
             if (/https?:\/\//.test(c)) return c;
             const u = urls[i] || urls[0];
-            return c + "\n参考: " + u;
+            return c + "\n" + u;
           });
         }
         if (!cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; }
