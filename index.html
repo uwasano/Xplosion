@@ -593,6 +593,7 @@ function defaultCfg() {
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
+    competitors: "",
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
@@ -1051,6 +1052,18 @@ BUILDERS.settings = (el) => {
   const typeNote = document.createElement("p"); typeNote.className = "desc"; typeNote.style.margin = "6px 0 0";
   typeNote.textContent = "ここに「競艇」または「ボート」と入れると、カレンダーに🚤無料予想ボタンが出る。";
   el.appendChild(typeNote);
+
+  /* 競合アカウント(バズミラー・リプハンターで自動取得する相手) */
+  fld(el, "競合アカウント(バズミラー・リプハンター用)");
+  const rivalIn = document.createElement("textarea"); rivalIn.rows = 3;
+  rivalIn.placeholder = "客を取りたい業界の競合アカウントのユーザー名(@不要)\n複数は改行 or カンマ区切り\n例:\narisa1996kyotei\nkyotei_pro";
+  rivalIn.value = CFG.competitors || "";
+  rivalIn.style.cssText = "width:100%;font-size:14px";
+  rivalIn.oninput = () => { CFG.competitors = rivalIn.value; save(); };
+  el.appendChild(rivalIn);
+  const rivalNote = document.createElement("p"); rivalNote.className = "desc"; rivalNote.style.margin = "6px 0 0";
+  rivalNote.textContent = "ここに登録すると、トレンド画面の「🪞バズってる投稿をマネする」「🎯バズってる投稿にリプする」がボタン一発で自動取得する(毎回入力しなくてOK)。";
+  el.appendChild(rivalNote);
 
   /* 店名・エリア(任意・AIに教えるか選べる) */
   fld(el, "店名・エリアをAIに教える");
@@ -2498,13 +2511,16 @@ BUILDERS.calendar = (el) => {
     btnEnjou.disabled = false; btnEnjou.textContent = "🔥 炎上ニュースをみる";
   };
 
-  /* 💎 バズミラー: 競合ユーザー名を聞く→伸びてる日本語ポスト取得→その型で自分用に3案 */
+  /* 🪞 バズってる投稿をマネする: 登録済み競合から自動取得(未登録なら入力) */
   btnMirror.onclick = async () => {
-    const names = prompt("競合のXユーザー名を入力(@不要・複数はカンマ区切り)\n例: arisa1996kyotei, kyotei_pro");
-    if (!names) return;
-    const list = names.split(/[,、\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean).slice(0,5);
-    if (!list.length) return;
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    let src = (CFG.competitors || "").trim();
+    if (!src) {
+      src = prompt("競合がまだ登録されてない。\n競合のXユーザー名を入力(@不要・複数はカンマ区切り)\n\n※生成設定の「競合アカウント」に登録すると、次から自動取得できる。");
+      if (!src) return;
+    }
+    const list = src.split(/[,、\n\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean).slice(0,5);
+    if (!list.length) return;
     btnMirror.disabled = true; btnMirror.textContent = "競合ポスト取得中…"; trOut.innerHTML = "";
     let posts = [];
     for (const name of list) {
@@ -2515,7 +2531,7 @@ BUILDERS.calendar = (el) => {
     }
     if (!posts.length) { trOut.innerHTML += '<div class="muted" style="padding:8px">日本語ポストが取れんかった。ユーザー名を確認して。</div>'; btnMirror.disabled=false; btnMirror.textContent="🪞 バズってる投稿をマネする"; return; }
     posts.sort((a,b)=>(b.likes||0)-(a.likes||0));
-    trOut.innerHTML = '<div class="desc" style="margin:6px 0">競合の伸びてるポスト。気になる型を選んで、自分の事業版を作る:</div>';
+    trOut.innerHTML = '<div class="desc" style="margin:6px 0">競合の伸びてるポスト('+list.map(n=>"@"+n).join(" ")+')。気になる型を選んで、自分の事業版を作る:</div>';
     posts.slice(0,8).forEach((p) => {
       const card = document.createElement("div");
       card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
@@ -2527,13 +2543,16 @@ BUILDERS.calendar = (el) => {
     btnMirror.disabled = false; btnMirror.textContent = "🪞 バズってる投稿をマネする";
   };
 
-  /* 🎯 リプハンター: 客を取りたい業界の競合→伸びてる投稿→今リプすべきを抽出→リプ3案 */
+  /* 🎯 バズってる投稿にリプする: 登録済み競合から自動取得(未登録なら入力) */
   btnHunter.onclick = async () => {
-    const names = prompt("客を取りたい業界の競合アカウントを入力(@不要・複数はカンマ区切り)\n例: 競合シーシャ店、競合美容室\n※自分と同じ客層に向けて発信してるアカウントを入れる");
-    if (!names) return;
-    const list = names.split(/[,、\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean).slice(0,5);
-    if (!list.length) return;
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    let src = (CFG.competitors || "").trim();
+    if (!src) {
+      src = prompt("競合がまだ登録されてない。\n客を取りたい業界の競合アカウントを入力(@不要・複数はカンマ区切り)\n\n※生成設定の「競合アカウント」に登録すると、次から自動取得できる。");
+      if (!src) return;
+    }
+    const list = src.split(/[,、\n\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean).slice(0,5);
+    if (!list.length) return;
     btnHunter.disabled = true; btnHunter.textContent = "投稿取得中…"; trOut.innerHTML = "";
     let posts = [];
     for (const name of list) {
@@ -2543,10 +2562,9 @@ BUILDERS.calendar = (el) => {
       } catch(e) {}
     }
     if (!posts.length) { trOut.innerHTML += '<div class="muted" style="padding:8px">日本語ポストが取れんかった。ユーザー名を確認して。</div>'; btnHunter.disabled=false; btnHunter.textContent="🎯 バズってる投稿にリプする"; return; }
-    /* 「今リプすると目立つ投稿」= 伸びてる(いいね多い)+リプが少なめ(埋もれてない)を優先 */
     posts.forEach(p => { p._score = (p.likes||0) + (p.retweets||0)*2 - (p.replies||0)*3; });
     posts.sort((a,b)=> b._score - a._score);
-    trOut.innerHTML = '<div class="desc" style="margin:6px 0">今リプすると目立つ投稿(伸びてる&リプがまだ少ない順)。リプして競合の客にアピール:</div>';
+    trOut.innerHTML = '<div class="desc" style="margin:6px 0">今リプすると目立つ投稿('+list.map(n=>"@"+n).join(" ")+')。伸びてる&リプがまだ少ない順。リプして競合の客にアピール:</div>';
     posts.slice(0,8).forEach((p) => {
       const card = document.createElement("div");
       card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px";
