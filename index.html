@@ -317,17 +317,65 @@ const shBar = v => {const f=Math.round(v); return "★".repeat(Math.max(0,Math.m
 function shLabel(sc){ return sc>=90?"超おすすめ":(sc>=85?"おすすめ":"提供可"); }
 function shMixName(combo){ const s=combo.slice().sort((a,b)=>b.ratio-a.ratio); return (s[0]?s[0].name:"")+(s[1]?"×"+s[1].name:""); }
 
-/* おすすめミックスを投稿文にする(噂のシーシャBar用)。頻度判定はsc呼び出し側 */
-async function shMixPostText(audience){
-  const picks = shGenerate(audience||"おまかせ", 1);
+/* シチュエーション(気分)タグ。カテゴリ→該当シーンの配列。
+   pref: そのシーンに寄せたい味の傾向(おすすめ生成時のヒント) */
+const SHISHA_SCENES = {
+  "仕事":["上司に怒られた","会議が長すぎた","メール返信だけで1日終わった","残業から生還した","有給の前日","給料日","商談が決まった","今日だけは仕事を忘れたい"],
+  "休日":["今日は何もしたくない","ゴロゴロする才能を発揮した","サウナ帰り","ジム帰り","買い物帰り","ドライブ帰り","映画を観た後","夜更かしする気満々"],
+  "深夜":["朝まで語りたい","深夜テンション","眠いけど寝たくない","夜景を見ながら吸いたい","雨の日の夜","一人の時間を楽しみたい","何か考え事をしたい"],
+  "ご褒美":["今週頑張った","契約が決まった","ボーナスが入った","自分にご褒美をあげたい","記念日","誕生日","なんとなく機嫌がいい"],
+  "友達":["久しぶりに集まった","朝まで話したい","飲み会終わり","初対面同士で来た","シーシャ初体験","とりあえず盛り上がりたい"],
+  "男性ウケ":["筋トレ後","サウナ後","深夜ドライブ帰り","給料日前なのに来てしまった","競艇勝った","パチンコ勝った","良い時計を買った","今日は少し大人な気分"],
+  "女性ウケ":["美容室帰り","ネイル帰り","推し活帰り","カフェ巡り帰り","自分磨きの日","少し贅沢したい","写真を撮りたい気分"],
+  "エモ":["夏を思い出したい","青春を思い出したい","昔の曲を聴きたい夜","ちょっとだけエモい気分","夜更けを楽しみたい"],
+  "旅行":["県外から来た","初めてこの街に来た","観光で歩き疲れた","明日帰る","今日着いたばかり","ホテルに帰る前に一服","飛行機降りた勢","新幹線降りた勢","レンタカー返却後","旅の思い出を整理したい"],
+  "出張":["出張終わり","商談終わり","ホテルで寝る前","明日の仕事を忘れたい","スーツを脱いだ瞬間","1人出張の夜","取引先との食事帰り","出張最終日"],
+  "金沢":["兼六園を歩いてきた","近江町市場帰り","金沢駅で写真撮った","片町を満喫したい","金沢最後の夜","海鮮食べた後","日本酒飲んだ後","北陸旅行中"],
+  "一人旅":["一人旅中","ノープラン旅行中","気づいたらここにいた","誰とも話してない1日だった","旅先で少し休憩したい"],
+};
+/* カテゴリ→寄せたい客層(味の傾向のヒント) */
+const SHISHA_SCENE_AUD = {
+  "仕事":"重め","休日":"フルーツ系","深夜":"紅茶系","ご褒美":"スイーツ系","友達":"フルーツ系",
+  "男性ウケ":"男性人気","女性ウケ":"女性人気","エモ":"紅茶系","旅行":"初心者","出張":"重め","金沢":"おまかせ","一人旅":"紅茶系",
+};
+/* ランダムにシーンを1つ選ぶ(カテゴリ指定可) */
+function shPickScene(category){
+  const cats = category ? [category] : Object.keys(SHISHA_SCENES);
+  const cat = cats[Math.floor(Math.random()*cats.length)];
+  const arr = SHISHA_SCENES[cat];
+  return { category: cat, scene: arr[Math.floor(Math.random()*arr.length)], aud: SHISHA_SCENE_AUD[cat]||"おまかせ" };
+}
+
+
+/* おすすめミックスを投稿文にする(噂のシーシャBar用)
+   scene指定があればそのシチュエーションに寄せる */
+async function shMixPostText(audience, sceneObj){
+  /* シーンが来たらその客層に寄せる */
+  const aud = sceneObj ? sceneObj.aud : (audience||"おまかせ");
+  const picks = shGenerate(aud, 1);
   if (!picks.length) return null;
   const m = picks[0];
   const haigou = m.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ");
+  const sweet=Math.round(shAvg(m.combo,0)), sour=Math.round(shAvg(m.combo,1)), cool=Math.round(shAvg(m.combo,2)), heavy=Math.round(shAvg(m.combo,3));
+  /* 吸いごたえ = 重さ+香りベース(シーシャ用語) */
+  const kick = Math.round((shAvg(m.combo,3) + shAvg(m.combo,3))/2);
+  const star = (v) => "★".repeat(Math.max(1,Math.min(6,Math.round(v*6/10)))) + "☆".repeat(6-Math.max(1,Math.min(6,Math.round(v*6/10))));
+  const osusume = m.sc>=90?6:(m.sc>=85?5:4);
+  const gekioshi = m.ss>=3?6:(m.ss>=2?5:(m.ss>=1?4:3));
+  const sceneLine = sceneObj ? `こんなあなたにオススメ → 「${sceneObj.scene}」\n` : "";
   const prompt =
-    `あなたは金沢・片町「噂のシーシャBar」の店長。今日のおすすめミックスを紹介するX投稿を1本書く。\n` +
-    `ミックス名: ${shMixName(m.combo)}\n配合: ${haigou}\nおすすめ度: ${m.sc}点(${shLabel(m.sc)})\n相性: ${m.info}\n` +
-    `味の特徴: 甘さ${Math.round(shAvg(m.combo,0))}/酸味${Math.round(shAvg(m.combo,1))}/清涼${Math.round(shAvg(m.combo,2))}/重さ${Math.round(shAvg(m.combo,3))}(各10段階)\n\n` +
-    `ルール:\n- 実際に提供できる本物のミックスとして、味の魅力が伝わるように書く\n- 配合比や銘柄を自然に織り込む(マニアっぽくなりすぎない)\n- 来店したくなる締め。店の場所(金沢・片町)は無理に入れない\n- 140字以内。ハッシュタグは0〜2個\n前置き不要・投稿本文のみ。${sc()}`;
+    `あなたは金沢・片町「噂のシーシャBar」の店長。おすすめミックスを紹介するX投稿を1本書く。\n` +
+    `ミックス名: ${shMixName(m.combo)}\n配合: ${haigou}\n` +
+    (sceneObj ? `今回の切り口(シチュエーション): 「${sceneObj.scene}」な気分の人に向けて書く\n` : "") +
+    `\n【投稿に必ず入れる要素】\n` +
+    `1行目: フック(${sceneObj?`「${sceneObj.scene}」に共感する一言から始める`:"目を引く一言"})\n` +
+    `・ミックス名と配合(フレーバー名は正式名称で正確に。略さない)\n` +
+    `・味の説明(甘さ・酸味・清涼感・煙の印象などをシーシャの言葉で。「飲みごたえ」は誤り、「吸いごたえ」「キック」「煙の濃さ」を使う)\n` +
+    `・下記の★評価をそのまま本文に含める:\n` +
+    (sceneObj?`　こんなあなたにオススメ ${star(8)}\n`:"") +
+    `　オススメ度 ${star(osusume*10/6)}\n　激推し度 ${star(gekioshi*10/6)}\n` +
+    `　甘さ ${star(sweet)} / 酸味 ${star(sour)} / 清涼感 ${star(cool)} / 吸いごたえ ${star(heavy)}\n` +
+    `\nルール: 来店したくなる締め。140〜200字程度(星評価ぶん長くてOK)。ハッシュタグ0〜2個。前置き不要・投稿本文のみ。${sc()}`;
   const text = await callAI(prompt, false);
   return (text && text.trim()) ? text.trim() : null;
 }
@@ -1019,7 +1067,7 @@ BUILDERS.settings = (el) => {
         const picks = shGenerate(selAud, 3);
         mixOut.innerHTML = "";
         if (!picks.length) { mixOut.innerHTML = '<div class="err">条件に合うミックスが見つからん。在庫を増やすか客層を変えて。</div>'; genB.disabled=false; genB.textContent="この客層で生成"; return; }
-        picks.forEach((p)=> mixOut.appendChild(renderMixCard(p)));
+        picks.forEach((p)=> mixOut.appendChild(renderMixCard(p, selAud)));
         genB.disabled = false; genB.textContent = "この客層で生成";
       }, 50);
     };
@@ -1034,7 +1082,7 @@ BUILDERS.settings = (el) => {
 };
 
 /* ミックス結果カードを描画 */
-function renderMixCard(p) {
+function renderMixCard(p, audience) {
   const card = document.createElement("div");
   card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px";
   const sweet=shAvg(p.combo,0), sour=shAvg(p.combo,1), cool=shAvg(p.combo,2), heavy=shAvg(p.combo,3);
@@ -1044,6 +1092,13 @@ function renderMixCard(p) {
   let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">';
   h += '<span style="font-weight:800;font-size:15px">'+esc(shMixName(p.combo))+'</span>';
   h += '<span style="font-size:13px;font-weight:800;color:'+labelColor+'">'+p.sc+'点 '+label+'</span></div>';
+  /* こんなあなたにおすすめ(客層訴求) */
+  const pitch = {
+    "初心者":"シーシャ初めての人・吸いやすさ重視","女性人気":"女性・甘い系や華やかな香り好き",
+    "男性人気":"男性・しっかり吸いごたえ重視","フルーツ系":"フルーツの爽やかさが好きな人",
+    "紅茶系":"紅茶・茶葉の香り好き","スイーツ系":"甘いデザート系・スイーツ好き","重め":"濃厚で重ため・吸い応え重視",
+  }[audience];
+  if (pitch) h += '<div style="font-size:11.5px;color:var(--accent);background:rgba(255,45,149,.08);border-radius:6px;padding:4px 8px;margin-bottom:8px">💡 こんなあなたに: '+esc(pitch)+'</div>';
   /* 配合 */
   h += '<div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">';
   h += p.combo.map(c=>esc(c.name)+'<span style="opacity:.6">('+esc(shBrandOf(c.name))+')</span> '+c.ratio).join(' / ');
@@ -1055,7 +1110,7 @@ function renderMixCard(p) {
   card.innerHTML = h;
   /* コピーボタン */
   const cp = document.createElement("button"); cp.className="mini"; cp.style.marginTop="8px"; cp.textContent="📋 配合をコピー";
-  const txt = shMixName(p.combo)+"\n"+p.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ")+"\nおすすめ度: "+p.sc+"点 "+label;
+  const txt = shMixName(p.combo)+"\n"+p.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ")+"\nおすすめ度: "+p.sc+"点 "+label+(pitch?"\nこんなあなたに: "+pitch:"");
   cp.onclick = () => { navigator.clipboard.writeText(txt); cp.textContent="✓ コピーした"; setTimeout(()=>cp.textContent="📋 配合をコピー",1500); };
   card.appendChild(cp);
   return card;
@@ -1326,7 +1381,8 @@ BUILDERS.gapcheck = (el) => {
       const isBoat = /競艇|ボートレース|ボート/.test(CFG.bizType || "");
       /* 噂のシーシャBar: 頻度に応じてミックス紹介投稿にする */
       if (isUwasaShisha(account, CFG.bizName) && CFG.mixOn && Math.random()*100 < (CFG.mixFreq||0)) {
-        const mixText = await shMixPostText("おまかせ");
+        const sc2 = shPickScene();
+        const mixText = await shMixPostText(null, sc2);
         if (mixText) {
           btn.disabled = false; btn.textContent = o;
           showDraftPreview(account, gap, mixText, "20:00", btn);
@@ -1917,6 +1973,24 @@ BUILDERS.calendar = (el) => {
       });
       /* 週間は完成文(x)をそのまま反映 */
       filtered.forEach((p) => { if (p.x) p._text = p.x; });
+
+      /* 噂のシーシャBar: 週間の場合、頻度に応じて何本かをミックス紹介に差し替え */
+      if (span.value === "週間" && isUwasaShisha(acct.value, CFG.bizName) && CFG.mixOn && (CFG.mixFreq||0) > 0) {
+        const want = Math.round(filtered.length * (CFG.mixFreq/100));
+        if (want > 0) {
+          /* ランダムな位置をwant個選んでミックス投稿に差し替え */
+          const idxs = filtered.map((_,i)=>i).sort(()=>Math.random()-0.5).slice(0, want);
+          gen.textContent = "ミックス生成中…";
+          for (const ix of idxs) {
+            const sc2 = shPickScene();
+            const mixText = await shMixPostText(null, sc2);
+            if (mixText) {
+              filtered[ix]._text = mixText;
+              filtered[ix].t = "ミックス("+sc2.scene+")"; filtered[ix].y = "ミックス"; filtered[ix].g = "シーシャミックス";
+            }
+          }
+        }
+      }
       renderPlan(filtered);
 
       /* 週間以外(15日・月間)は枠だけ来てるので、続けて全日分の本文を自動生成 */
@@ -2022,6 +2096,17 @@ BUILDERS.calendar = (el) => {
   /* 通常の1投稿生成(shuffle=trueで毎回違う角度に) */
   async function genOne(p, shuffle) {
     try {
+      /* 噂のシーシャBar: 頻度に応じてミックス紹介投稿に差し替え */
+      if (isUwasaShisha(acct.value, CFG.bizName) && CFG.mixOn && Math.random()*100 < (CFG.mixFreq||0)) {
+        const sc2 = shPickScene();
+        const mixText = await shMixPostText(null, sc2);
+        if (mixText) {
+          p._text = mixText;
+          p.t = "ミックス("+sc2.scene+")"; p.y = "ミックス"; p.g = "シーシャミックス";
+          if (!p.h || !/^\d{1,2}:\d{2}$/.test(p.h)) p.h = "21:00";
+          return;
+        }
+      }
       const variant = shuffle ? "\n※前回と違う切り口・フック・語り口で、新鮮な別パターンにすること。" : "";
       const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${variant}${sc()}`);
       p._text = text.trim();
