@@ -2200,7 +2200,8 @@ BUILDERS.calendar = (el) => {
   const btnTrend = document.createElement("button"); btnTrend.className = "mini cyan"; btnTrend.textContent = "🌏 世の中のトレンドを見る";
   const btnPop = document.createElement("button"); btnPop.className = "mini cyan"; btnPop.textContent = "📈 Xの人気ポストを見る";
   const btnQuote = document.createElement("button"); btnQuote.className = "mini"; btnQuote.textContent = "💬 人気ポストを引用して作る";
-  trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote);
+  const btnEnjou = document.createElement("button"); btnEnjou.className = "mini cyan"; btnEnjou.textContent = "🔥 炎上ニュースをみる";
+  trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote); trBtnRow.appendChild(btnEnjou);
   trFld.appendChild(trBtnRow);
   const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
   trFld.appendChild(trDate);
@@ -2238,11 +2239,15 @@ BUILDERS.calendar = (el) => {
     let urlToThread = false;
     const hasUrl = () => /https?:\/\//.test(box.value);
     const urlOptWrap = document.createElement("label");
-    urlOptWrap.style.cssText = "display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:2px 0 6px;cursor:pointer";
+    urlOptWrap.style.cssText = "display:flex;align-items:flex-start;gap:8px;font-size:12.5px;line-height:1.45;color:var(--muted);margin:4px 0 8px;cursor:pointer;width:100%";
     const urlChk = document.createElement("input"); urlChk.type = "checkbox";
+    urlChk.style.cssText = "flex:0 0 auto;width:18px;height:18px;margin:1px 0 0;cursor:pointer";
     urlChk.onchange = () => { urlToThread = urlChk.checked; };
+    const urlTxt = document.createElement("span");
+    urlTxt.style.cssText = "flex:1 1 auto";
+    urlTxt.textContent = "URLをツリー2つ目(リプ)で投稿する(本文を140字フル使える)";
     urlOptWrap.appendChild(urlChk);
-    urlOptWrap.appendChild(document.createTextNode("URLをツリー2つ目(リプ)で投稿する(本文を140字フル使える)"));
+    urlOptWrap.appendChild(urlTxt);
     const refreshUrlOpt = () => { urlOptWrap.style.display = hasUrl() ? "flex" : "none"; };
     refreshUrlOpt(); box.addEventListener("input", refreshUrlOpt);
     wrap.appendChild(urlOptWrap);
@@ -2275,8 +2280,7 @@ BUILDERS.calendar = (el) => {
   }
 
   /* ① 世の中のトレンド: 一覧を見る → ワードでバズ投稿3案(業種に無理に絡めず、文体・性格そのまま) */
-  btnTrend.onclick = async () => {
-    btnTrend.disabled = true; btnTrend.textContent = "トレンド取得中…"; trOut.innerHTML = "";
+  btnTrend.onclick = async () => {    btnTrend.disabled = true; btnTrend.textContent = "トレンド取得中…"; trOut.innerHTML = "";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
     try {
       const j = await fetchYahoo("trends");
@@ -2287,12 +2291,50 @@ BUILDERS.calendar = (el) => {
         const card = document.createElement("div");
         card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
         card.innerHTML = '<div style="font-weight:700;font-size:14px;margin-bottom:6px">🌏 '+esc(tw)+'</div>';
-        buzzTransformBtn(card, "このワードでバズ投稿(3案)", (shuffle) => buzzPromptForTrend(tw, shuffle), true);
+        buzzTransformBtn(card, "このワードでバズ投稿(3案)", (shuffle) => buzzPromptForTrend(tw, shuffle), true, tw);
         trOut.appendChild(card);
       });
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
     btnTrend.disabled = false; btnTrend.textContent = "🌏 世の中のトレンドを見る";
   };
+
+  /* 炎上ニュース: livedoor炎上記事の一覧 → 各記事に「この炎上にコメント(3案)」 */
+  btnEnjou.onclick = async () => {
+    btnEnjou.disabled = true; btnEnjou.textContent = "炎上ニュース取得中…"; trOut.innerHTML = "";
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    try {
+      const j = await fetchYahoo("enjou");
+      const news = (j && j.news) ? j.news : [];
+      if (!news.length) { trOut.innerHTML = '<div class="muted" style="padding:8px">今は炎上ニュースが取得できんかった。話題が無い日もある。少し待って再挑戦してな。</div>'; btnEnjou.disabled=false; btnEnjou.textContent="🔥 炎上ニュースをみる"; return; }
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">今の炎上系ニュース。気になるものに、自分の視点でコメント(誹謗中傷はNG・冷静な意見でバズる):</div>';
+      news.slice(0,15).forEach((n) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
+        card.innerHTML = '<div style="font-weight:700;font-size:13.5px;margin-bottom:4px;line-height:1.5">🔥 '+esc(n.title)+'</div>'
+          + '<a href="'+esc(n.url)+'" target="_blank" style="font-size:11px;color:var(--accent2);word-break:break-all">'+esc(n.url)+'</a>';
+        buzzTransformBtn(card, "この炎上にコメント(3案)", (shuffle) => buzzPromptForEnjou(n.title, n.url, shuffle), false);
+        trOut.appendChild(card);
+      });
+    } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    btnEnjou.disabled = false; btnEnjou.textContent = "🔥 炎上ニュースをみる";
+  };
+
+  /* 炎上ニュース個別 → コメント投稿3案プロンプト(URLは決まってるので確実) */
+  function buzzPromptForEnjou(title, url, shuffle) {
+    return `次の炎上系ニュースについて、X投稿を3案作る。\n`
+      + `ニュース見出し:「${title}」\n`
+      + `ニュースURL: ${url}\n`
+      + personaClause()
+      + `\n【条件】\n`
+      + `- この炎上ニュースへの自分のリアルな本音・ツッコミ・意見を書く(友達に話すような体温のある言葉)\n`
+      + `- あらすじ・概要の説明から入らない。説明口調・要約は禁止\n`
+      + `- 誹謗中傷・特定個人への過度な攻撃・決めつけはNG。冷静で「たしかに」と思わせる視点にする\n`
+      + `- 「9割の人が〜」「実は〜なの」みたいな空っぽの煽りは禁止\n`
+      + `- 各案の本文の最後に、上記のニュースURLを改行して載せる(そのままコピー・創作しない)\n`
+      + `- 本文140字以内(URLは別・23字換算)。設定の文体・性格そのまま\n`
+      + (shuffle ? `- 前回と全く違う角度・感情で新鮮に\n` : "")
+      + `\n出力形式(厳守): 前置きなし。3案を「===」だけの行で区切り、各案は「本文(改行)URL」の形。`;
+  }
 
   /* 設定済みの文体・性格を文章化(プロンプトに差し込む) */
   function personaClause() {
@@ -2306,28 +2348,27 @@ BUILDERS.calendar = (el) => {
   /* トレンドワード → まず検索で内容を確認し、その話題に対する"自分の感想・意見"を投稿3案。
      ニュース説明・読み上げは禁止。前置きも書かせない。 */
   function buzzPromptForTrend(tw, shuffle) {
-    return `「${tw}」は今Xでトレンドのワード。何の話題か必ずWeb検索で確認する(事実を間違えないため)。\n`
-      + `そのうえで、この話題に【自分の感想・意見・気持ち】を乗せたX投稿を3案作る。\n`
+    return `「${tw}」は今まさにXでトレンドになっているワード。\n`
+      + `【最初に必ずやること】Web検索して、「${tw}」が"今日・直近"何の話題でトレンドになっているのか、正確な事実を確認する。複数の検索結果で内容を裏取りする。\n`
+      + `古い情報や別の同名トピックと混同しないこと。あくまで"今トレンドになっている理由"を掴む。\n`
+      + `そのうえで、その話題に【自分の感想・意見・気持ち】を乗せたX投稿を3案作る。\n`
       + personaClause()
       + `\n【本文に必ず入れる3要素】\n`
-      + `1. トレンドワード「${tw}」(固有名詞そのもの) ← これが無いと検索にもトレンドにも乗らない\n`
-      + `2. 何が起きたのか(出来事の核心。検索で分かった事実) ← これが無いと何の話か伝わらず不自然\n`
-      + `3. 自分の感想・本音・ツッコミ ← これがメイン。人間っぽさ・共感の核\n`
-      + `この3つを、説明口調にならないよう"1つの自然なつぶやき"に溶け込ませる。\n`
-      + `\n【お手本の形】(競艇の例・あくまで構造の参考)\n`
-      + `「○○(固有名詞)が△△(出来事)って時点でめっちゃ熱い展開やん🔥 □□(感想)」\n`
-      + `→ 固有名詞・出来事・感想が1文に自然に入っている。これを真似る\n`
-      + `\n【NG】\n`
-      + `- 「○○が逮捕された。」のような事実報告だけで終わる(感想が無い)\n`
-      + `- 「正直この人見てると〜」のように固有名詞も出来事も無く、誰の何の話か分からない\n`
-      + `- ニュースの読み上げ・要約口調。検索結果の文そのまま\n`
+      + `1. トレンドワード「${tw}」(固有名詞そのもの)\n`
+      + `2. 今回実際に起きたこと(検索で確認した"直近の事実"だけ。推測・想像・古い話は禁止)\n`
+      + `3. 自分の感想・本音・ツッコミ(メイン)\n`
+      + `この3つを説明口調にならないよう1つの自然なつぶやきに溶け込ませる。\n`
+      + `\n【お手本の形】「○○(固有名詞)が△△(出来事)って時点でめっちゃ熱い🔥 □□(感想)」\n`
+      + `\n【絶対NG】\n`
+      + `- 検索で確認できていない内容を書く(例: 番組名・金額・人物などを推測で書く)。確信が持てない事実は書かない\n`
+      + `- 事実報告だけで感想が無い / 「正直この人見てると〜」のように何の話か分からない\n`
       + `- 「9割の人が〜」「実は〜なの」みたいな空っぽの煽り / 知ったかぶり / 誹謗中傷・決めつけ\n`
       + `\n【話題に応じたトーン】\n`
       + `・事件/事故/訃報/社会問題 → 茶化し・煽りNG。誠実で人に「たしかに」と思わせる本音や視点\n`
       + `・芸能/スポーツ/エンタメ → 共感・ツッコミ・素直な気持ちでOK\n`
       + `\n設定された文体・性格そのまま。業種の宣伝に着地させない。\n`
-      + `【字数・URL】本文とURLを合わせて必ず140字以内(1投稿で完結・スレッドにしない)。URLはX上23字換算なので本文は実質115字くらいまで。\n`
-      + `URLを載せる時は「参考:」などの文字を付けず、本文の最後に改行してURLだけ置く。検索で見つけた実在URLのみ。無理なら載せない。\n`
+      + `【字数】各案140字以内。\n`
+      + `【URL】本文にURLは書かない(URLはシステムが検索結果から自動で付ける)。本文は感想だけにする。\n`
       + (shuffle ? `前回とは全く違う角度・感情で新鮮な3案にする。\n` : "")
       + `\n出力形式(厳守): 前置き・説明は一切なし。3案を「===」だけの行で区切って本文のみ出力。`;
   }
@@ -2349,44 +2390,95 @@ BUILDERS.calendar = (el) => {
   }
 
   /* バズ投稿3案を出すボタン(シャッフル付き)。promptFn(shuffle)がプロンプトを返す。
-     useSearch=true でWeb検索して内容確認(トレンド用)。SKIP判定あり。 */
-  function buzzTransformBtn(card, label, promptFn, useSearch) {
+     useSearch=true でWeb検索して内容確認(トレンド用)。 */
+  function buzzTransformBtn(card, label, promptFn, useSearch, trendWord) {
     const btn = document.createElement("button"); btn.className = "mini cyan"; btn.textContent = label;
     const out = document.createElement("div");
     const run = async (shuffle) => {
-      btn.disabled = true; btn.textContent = shuffle ? "作り直し中…" : (useSearch ? "内容を調べて生成中…" : "生成中…"); out.innerHTML = "";
+      btn.disabled = true; btn.textContent = shuffle ? "作り直し中…" : (useSearch ? "ニュースと照合中…" : "生成中…"); out.innerHTML = "";
       try {
-        const r = await callAI(promptFn(shuffle), !!useSearch, useSearch ? "sonnet" : "haiku", true);
+        if (!(useSearch && trendWord)) {
+          /* トレンド以外(型まね等)は従来通り */
+          const r0 = await callAI(promptFn(shuffle), false, "haiku", false);
+          const text0 = (typeof r0 === "string") ? r0 : r0.text;
+          let cands0 = text0.split(/\n?===+\n?/).map(s=>s.trim())
+            .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
+            .filter(s=>s.length>5 && !/^(承知|了解|分かりました)/i.test(s));
+          renderCands(cands0);
+          btn.disabled=false; btn.textContent=label; return;
+        }
+        /* トレンド: Yahoo!ニュースを取得して関連ニュースを探す */
+        let newsList = [];
+        try { const nr = await fetchYahoo("news"); newsList = (nr && nr.news) ? nr.news : []; } catch(e) {}
+        if (!newsList.length) {
+          out.innerHTML = '<div class="muted" style="padding:8px;font-size:12.5px">⚠️ 今ニュースが取得できんかった。少し待ってもう一回試して。</div>';
+          btn.disabled=false; btn.textContent=label; return;
+        }
+        /* ワードに関連するニュースを絞る */
+        const wordKey = trendWord.replace(/\s+/g,"");
+        let related = newsList.filter(n => n.title.replace(/\s+/g,"").includes(wordKey));
+        if (!related.length && trendWord.length >= 2) {
+          related = newsList.filter(n => [...trendWord].filter(ch => /[一-龠ァ-ヶ]/.test(ch) && n.title.includes(ch)).length >= Math.min(2, trendWord.length));
+        }
+        /* 関連ニュースが無ければ、想像で書かず正直に「該当なし」を出す */
+        if (!related.length) {
+          out.innerHTML = '<div class="muted" style="padding:8px;font-size:12.5px">⚠️「'+esc(trendWord)+'」に関するニュースが今のYahoo!ニュースに見つからんかった。<br>世間でニュースになってない話題かも。別のワード(ニュース性のあるやつ)で試すのがおすすめ。</div>';
+          btn.disabled=false; btn.textContent=label; return;
+        }
+        const useList = related.slice(0, 12);
+        const newsText = useList.map((n,i)=>`${i+1}. ${n.title}\n   ${n.url}`).join("\n");
+        const r = await callAI(buzzPromptForTrendWithNews(trendWord, newsText, shuffle), false, "sonnet", false);
         const text = (typeof r === "string") ? r : r.text;
-        const urls = (typeof r === "string") ? [] : (r.urls || []);
-        /* 前置き除去: 「〜します」「作ります」等の説明行を落とす */
+        /* AIが「該当なし」と判断したら正直に伝える */
+        if (/^\s*該当なし/.test(text.trim())) {
+          out.innerHTML = '<div class="muted" style="padding:8px;font-size:12.5px">⚠️「'+esc(trendWord)+'」に合うニュースが無かった。世間で話題になってない可能性が高い。別のワードで試して。</div>';
+          btn.disabled=false; btn.textContent=label; return;
+        }
         let body = text.replace(/^.*?(します|作ります|を作成|3案[:：]|案です)[。:：]?\s*\n/m, "");
         let cands = body.split(/\n?===+\n?/).map(s=>s.trim())
           .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
-          .map(s=> s.replace(/(\n*)参考[:：]\s*(https?:\/\/)/,"$1$2").trim())  /* 「参考:」の文字だけ消してURLは残す */
-          .filter(s=>s.length>5 && !/^(承知|了解|分かりました)/i.test(s));
-        /* 検索時、URLが無い案には検索で見つけたURLを(「参考:」なしで)補う */
-        if (useSearch && urls.length) {
-          cands = cands.map((c, i) => {
-            if (/https?:\/\//.test(c)) return c;
-            const u = urls[i] || urls[0];
-            return c + "\n" + u;
-          });
-        }
-        if (!cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; }
-        else {
-          const shufRow = document.createElement("div"); shufRow.style.cssText="margin:6px 0";
-          const shuf = document.createElement("button"); shuf.className="mini"; shuf.textContent="🔀 3案ぜんぶ作り直す";
-          shuf.onclick = () => run(true);
-          shufRow.appendChild(shuf); out.appendChild(shufRow);
-          cands.slice(0,3).forEach((c,i)=> renderTrendCard(out, c, "案"+(i+1)));
-        }
+          .filter(s=>s.length>5 && !/^(承知|了解|分かりました|該当)/i.test(s));
+        renderCands(cands);
       } catch(e) { out.innerHTML = '<div class="err">'+e.message+'</div>'; }
       btn.disabled = false; btn.textContent = label;
     };
+    /* 候補を描画する共通処理 */
+    function renderCands(cands) {
+      if (!cands || !cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; return; }
+      out.innerHTML = "";
+      const shufRow = document.createElement("div"); shufRow.style.cssText="margin:6px 0";
+      const shuf = document.createElement("button"); shuf.className="mini"; shuf.textContent="🔀 3案ぜんぶ作り直す";
+      shuf.onclick = () => run(true);
+      shufRow.appendChild(shuf); out.appendChild(shufRow);
+      cands.slice(0,3).forEach((c,i)=> renderTrendCard(out, c, "案"+(i+1)));
+    }
     btn.onclick = () => run(false);
     card.appendChild(btn); card.appendChild(out);
     return btn;
+  }
+
+  /* Yahoo!ニュース照合版プロンプト: 実在ニュースの見出し+URLから選んで投稿 */
+  function buzzPromptForTrendWithNews(tw, newsText, shuffle) {
+    return `今Xでトレンドの「${tw}」について、X投稿を3案作る。\n`
+      + `\n下は今のYahoo!ニュースの見出しとURLの一覧:\n${newsText}\n`
+      + `\n【手順】\n`
+      + `1. 上の一覧から「${tw}」に直接関連する"直近の"ニュースを1つ選ぶ\n`
+      + `2. そのニュースに対する自分のリアルな感想・本音だけを書く\n`
+      + `3. 各案の本文の最後に、選んだニュースのURLを改行して載せる(一覧の正確なURLをコピー。創作しない)\n`
+      + `※「${tw}」に直接関連するニュースが一覧に無ければ、最初の行に「該当なし」とだけ書く(無理に関連付けない)\n`
+      + personaClause()
+      + `\n【最重要・AIっぽさを消す】\n`
+      + `- 「〜になってるのは〜だからっしょ」のような"トレンド理由の説明"から入らない。理由説明は不要\n`
+      + `- 作品やニュースのあらすじ・概要を説明しない(例「○○が△△をやっつける王道展開」みたいなWiki的説明は禁止)\n`
+      + `- 友達にLINEで送るみたいな、リアルで具体的な一言の感想にする。例:「これ見ると毎年冬きたなって感じるわ」「結局これ何回見ても面白い」みたいな体温のある言葉\n`
+      + `- きれいにまとめようとしない。ちょっと言い切ったり、素の感情を出す\n`
+      + `\n【その他のNG】\n`
+      + `- 推測・知ったかぶり(一覧のニュースに無いことを書かない)\n`
+      + `- 「9割の人が〜」「実は〜なの」みたいな空っぽの煽り/誹謗中傷/決めつけ\n`
+      + `- 事件・事故・訃報は茶化さず誠実に。芸能・スポーツ・エンタメは共感・ツッコミOK\n`
+      + `\n本文は140字以内(URLは別・23字換算)。設定の文体・性格そのまま。\n`
+      + (shuffle ? `前回と全く違う角度・感情で新鮮に。\n` : "")
+      + `\n出力形式(厳守): 前置きなし。3案を「===」だけの行で区切り、各案は「本文(改行)URL」の形。`;
   }
 
   /* 項目カードに「事業に絡める」ボタンを付ける共通ヘルパー。
@@ -3638,6 +3730,7 @@ BUILDERS.clients = (el) => {
       const biz = bizMap[c.screen_name] || "";
       /* 全アカウント共通: トレンド・通常 */
       d.appendChild(autoFeatureRow(c.screen_name, "trend", "🔥 オートトレンド投稿", "毎日、今のトレンドからバズ投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#ff2d95,#a855f7)"));
+      d.appendChild(autoFeatureRow(c.screen_name, "enjou", "🔥 オート炎上ニュース", "炎上系ニュースに自分の視点でコメント(2日以内・話題が無い日は投稿なし)", "linear-gradient(135deg,#ff6b35,#ff2d95)"));
       d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
       /* 競艇業種のみ: 予想 */
       if (/競艇|ボートレース|ボート/.test(biz)) {
