@@ -493,11 +493,12 @@ async function shMixPostText(audience, sceneObj){
   const prompt =
     `金沢・片町のシーシャ店の店長として、おすすめミックスを紹介する短いX投稿の「本文だけ」を書く。\n` +
     persona +
-    (sceneObj ? `\nこの投稿の切り口:「${sceneObj.scene}」な気分・状況の人に語りかける。共感する一言から自然に始める。\n` : "") +
+    (sceneObj ? `\nこの投稿の切り口:「${sceneObj.scene}」という気分・状況の人に語りかける。この言葉を不自然に名詞化・言い換えせず、共感する一言から自然に始める。\n` : "") +
     `\nミックス: ${shMixName(m.combo)}\n配合: ${haigou}\n味: 甘さ${sweet}/酸味${sour}/清涼${cool}/吸いごたえ${heavy}(10段階)\n` +
     `\n書き方の注意(重要):\n` +
     `- AIっぽい・広告っぽい文章にしない。店長が実際にXでつぶやくようなリアルなノリでOK\n` +
     `- 「〜な夜に寄り添う」「登場」みたいなテンプレ広告表現は使わない\n` +
+    `- 自然な日本語で書く。「〜した時間」「〜したい時」など、文法的に正しく自然な言い回しにする(不自然な体言止めや誤用をしない)\n` +
     `- フレーバー名は正式名称で正確に(略さない)。配合(銘柄と比率)は本文に1行入れる\n` +
     `- 「飲みごたえ」は誤り。シーシャなので「吸いごたえ」「煙」「キック」を使う\n` +
     `- 100〜130字程度。ハッシュタグは付けても1個\n` +
@@ -2839,8 +2840,41 @@ BUILDERS.schedule = (el) => {
   const save = runBtn(el, "予約する");
   const cancel = document.createElement("button"); cancel.className = "btn btn-ghost hidden"; cancel.textContent = "編集をやめる"; el.appendChild(cancel);
   const out = outArea(el);
-  const pendEl = document.createElement("div"); el.appendChild(pendEl);
+
+  /* 横タブ(予約待ち / 予約確定 / 履歴) */
+  const tabBar = document.createElement("div");
+  tabBar.style.cssText = "display:flex;gap:6px;margin:14px 0 10px;border-bottom:1px solid var(--border);padding-bottom:0";
+  const tabDefs = [
+    { key: "draft", label: "📋 予約待ち" },
+    { key: "pending", label: "⏰ 予約確定" },
+    { key: "done", label: "✅ 履歴" },
+  ];
+  let activeSub = "draft";
+  const tabBtns = {};
+  tabDefs.forEach((t) => {
+    const b = document.createElement("button");
+    b.textContent = t.label;
+    b.style.cssText = "flex:1;padding:10px 4px;font-size:13px;font-weight:700;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);cursor:pointer;transition:.15s";
+    b.onclick = () => { activeSub = t.key; updateTabs(); };
+    tabBar.appendChild(b); tabBtns[t.key] = b;
+  });
+  el.appendChild(tabBar);
+
+  const draftEl = document.createElement("div"); el.appendChild(draftEl);
+  const pendingEl = document.createElement("div"); el.appendChild(pendingEl);
   const histEl = document.createElement("div"); el.appendChild(histEl);
+
+  function updateTabs() {
+    tabDefs.forEach((t) => {
+      const on = activeSub === t.key;
+      tabBtns[t.key].style.color = on ? "var(--accent)" : "var(--muted)";
+      tabBtns[t.key].style.borderBottomColor = on ? "var(--accent)" : "transparent";
+    });
+    draftEl.style.display = activeSub === "draft" ? "block" : "none";
+    pendingEl.style.display = activeSub === "pending" ? "block" : "none";
+    histEl.style.display = activeSub === "done" ? "block" : "none";
+  }
+
   let editingId = null;
 
   function resetForm() { editingId = null; text.value = ""; when.value = ""; mediaIn.value = ""; cnt.textContent = "0字"; save.textContent = "予約する"; cancel.classList.add("hidden"); preview.style.display = "none"; upStatus.textContent = ""; }
@@ -2893,7 +2927,11 @@ BUILDERS.schedule = (el) => {
     const drafts = data.filter((p)=>p.status==="draft").sort(byTime);
     const pending = data.filter((p)=>p.status==="pending").sort(byTime);
     const done = data.filter((p)=>p.status!=="pending"&&p.status!=="draft").sort((a,b)=>(b.posted_at||b.scheduled_at).localeCompare(a.posted_at||a.scheduled_at)).slice(0,20);
-    pendEl.innerHTML = "";
+
+    /* タブのラベルに件数を反映 */
+    tabBtns["draft"].textContent = "📋 予約待ち" + (drafts.length?" ("+drafts.length+")":"");
+    tabBtns["pending"].textContent = "⏰ 予約確定" + (pending.length?" ("+pending.length+")":"");
+    tabBtns["done"].textContent = "✅ 履歴" + (done.length?" ("+done.length+")":"");
 
     /* 日付区切りヘッダーを挟みながらリスト描画 */
     const WD = ["日","月","火","水","木","金","土"];
@@ -2916,15 +2954,15 @@ BUILDERS.schedule = (el) => {
       });
     }
 
-    /* 承認待ち */
-    fld(pendEl, "承認待ち(" + drafts.length + "件) — GOで予約確定");
-    if (!drafts.length) pendEl.innerHTML += '<div class="muted">承認待ちなし</div>';
+    /* === 予約待ちタブ === */
+    draftEl.innerHTML = "";
+    if (!drafts.length) draftEl.innerHTML = '<div class="muted" style="text-align:center;margin-top:20px">承認待ちなし。カレンダーや書き漏れから投稿を送るとここに入る。</div>';
     else {
       const bulkRow = document.createElement("div"); bulkRow.className = "acts";
       const goAll = document.createElement("button"); goAll.className = "mini primary"; goAll.textContent = "全部GO(" + drafts.length + "件を一括確定)";
       goAll.onclick = async () => {
         await sb.from("scheduled_posts").update({ status: "pending" }).eq("status", "draft");
-        load();
+        activeSub = "pending"; load();
       };
       const delAll = document.createElement("button"); delAll.className = "mini"; delAll.textContent = "全部キャンセル";
       delAll.onclick = async () => {
@@ -2933,29 +2971,34 @@ BUILDERS.schedule = (el) => {
         load();
       };
       bulkRow.appendChild(goAll); bulkRow.appendChild(delAll);
-      pendEl.appendChild(bulkRow);
-      renderList(pendEl, drafts, (p) => [
+      draftEl.appendChild(bulkRow);
+      renderList(draftEl, drafts, (p) => [
         { label: "GO", primary: true, fn: async () => { await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id); load(); } },
         { label: "編集", fn: () => editPost(p) },
         { label: "キャンセル", fn: async () => { await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
       ]);
     }
 
-    /* 予約確定 */
-    fld(pendEl, "予約確定(" + pending.length + "件) — 時間が来たら自動投稿");
-    if (!pending.length) pendEl.innerHTML += '<div class="muted">予約なし</div>';
-    renderList(pendEl, pending, (p) => [
+    /* === 予約確定タブ === */
+    pendingEl.innerHTML = "";
+    if (!pending.length) pendingEl.innerHTML = '<div class="muted" style="text-align:center;margin-top:20px">予約確定なし。予約待ちでGOを出すとここに入る。</div>';
+    else renderList(pendingEl, pending, (p) => [
       { label: "編集", fn: () => editPost(p) },
       { label: "予約キャンセル", fn: async () => { if (!confirm("この予約をキャンセルする?")) return; await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
     ]);
-    histEl.innerHTML = ""; fld(histEl, "履歴(直近20件)");
-    if (!done.length) histEl.innerHTML += '<div class="muted">履歴なし</div>';
+
+    /* === 履歴タブ === */
+    histEl.innerHTML = "";
+    if (!done.length) histEl.innerHTML = '<div class="muted" style="text-align:center;margin-top:20px">履歴なし。</div>';
     done.forEach((p) => {
       const d = document.createElement("div"); d.className = "row";
-      d.innerHTML = '<div class="meta"><span class="pill time">'+fmtD(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+'</span><span class="pill st-'+p.status+'">'+(p.status==="posted"?"投稿済":"エラー")+"</span></div><pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>"+(p.error_msg?'<div class="err">'+esc(p.error_msg)+"</div>":"");
+      const threadCount = (p.thread && p.thread.length) ? p.thread.length : 0;
+      d.innerHTML = '<div class="meta"><span class="pill time">'+fmtD(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+'</span><span class="pill st-'+p.status+'">'+(p.status==="posted"?"投稿済":"エラー")+"</span>"+(threadCount?'<span class="pill genre">🧵'+(threadCount+1)+'</span>':"")+"</div><pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>"+(p.error_msg?'<div class="err">'+esc(p.error_msg)+"</div>":"");
       d.querySelector("pre").textContent = p.text;
       histEl.appendChild(d);
     });
+
+    updateTabs();
   }
   load();
 };
