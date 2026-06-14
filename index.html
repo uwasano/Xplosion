@@ -2189,7 +2189,7 @@ BUILDERS.calendar = (el) => {
   const trFld = document.createElement("div");
   trFld.style.cssText = "margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px";
   trFld.innerHTML = '<div style="font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin-bottom:6px">▸ 🔥 トレンド連動投稿</div>'
-    + '<p class="desc" style="margin:0 0 10px">今Xで起きてることを見て、気に入ったものを選んで事業に絡める。引用もできる。</p>';
+    + '<p class="desc" style="margin:0 0 10px">今Xで起きてることを見て、気になるワードやポストから、自分の文体のままバズりそうな投稿を作る(3案・シャッフルあり)。</p>';
   const trBtnRow = document.createElement("div"); trBtnRow.style.cssText = "display:flex;flex-direction:column;gap:8px";
   const btnTrend = document.createElement("button"); btnTrend.className = "mini cyan"; btnTrend.textContent = "🌏 世の中のトレンドを見る";
   const btnPop = document.createElement("button"); btnPop.className = "mini cyan"; btnPop.textContent = "📈 Xの人気ポストを見る";
@@ -2238,7 +2238,7 @@ BUILDERS.calendar = (el) => {
     host.appendChild(wrap);
   }
 
-  /* ① 世の中のトレンド: まず一覧を見る → 気に入ったトレンドを事業に絡める */
+  /* ① 世の中のトレンド: 一覧を見る → ワードでバズ投稿3案(業種に無理に絡めず、文体・性格そのまま) */
   btnTrend.onclick = async () => {
     btnTrend.disabled = true; btnTrend.textContent = "トレンド取得中…"; trOut.innerHTML = "";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
@@ -2246,24 +2246,78 @@ BUILDERS.calendar = (el) => {
       const j = await fetchYahoo("trends");
       const trends = (j && j.trends) ? j.trends : [];
       if (!trends.length) { trOut.innerHTML = '<div class="err">トレンド取得失敗。少し待って再挑戦して。</div>'; return; }
-      const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
-      trOut.innerHTML = '<div class="desc" style="margin:6px 0">今の世の中のトレンド。気になるものを選んで事業に絡める:</div>';
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">今の世の中のトレンド。気になるワードで、自分の文体のままバズ投稿を作る:</div>';
       trends.slice(0,15).forEach((tw) => {
         const card = document.createElement("div");
         card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
         card.innerHTML = '<div style="font-weight:700;font-size:14px;margin-bottom:6px">🌏 '+esc(tw)+'</div>';
-        const linkBtn = transformBtn(card, "このトレンドを事業に絡める(候補3つ)", async () => {
-          const prompt =
-            `あなたは「${bizWord}」のXアカウント運用者。今話題のトレンド「${tw}」に便乗して、自分の業種に自然に繋げるX投稿を【3案】作る。\n\n` +
-            `ルール:\n- 「${tw}」に乗っかりつつ、最後は自分の業種(${bizWord})に自然に着地\n- 無理に絡めて変にならないよう、繋げ方を案ごとに変える\n- 炎上・下品はNG。各案140字以内\n` +
-            `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
-          return await callAI(prompt, false, "haiku");
-        });
+        buzzTransformBtn(card, "このワードでバズ投稿(3案)", (shuffle) => buzzPromptForTrend(tw, shuffle));
         trOut.appendChild(card);
       });
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
     btnTrend.disabled = false; btnTrend.textContent = "🌏 世の中のトレンドを見る";
   };
+
+  /* 設定済みの文体・性格を文章化(プロンプトに差し込む) */
+  function personaClause() {
+    if (CFG.origProfile && CFG.origProfile.trim()) {
+      return "\n【このアカウントの文体・性格(必ず再現)】\n" + CFG.origProfile.trim() + "\n";
+    }
+    const toneMap = { "カジュアル":"フランクでフレンドリー", "丁寧":"丁寧で落ち着いた", "ノリ重視":"テンション高めでノリのいい", "クール":"クールで大人っぽい" };
+    return "\n口調: " + (toneMap[CFG.tone] || "自然体な") + "感じ。絵文字は" + (CFG.emoji||"少なめ") + "。\n";
+  }
+
+  /* トレンドワード → 文体そのままのバズ投稿3案プロンプト(業種に無理に絡めない) */
+  function buzzPromptForTrend(tw, shuffle) {
+    return `今Xでトレンドになっている「${tw}」について、バズりそうなX投稿を【3案】作る。\n`
+      + personaClause()
+      + `\nバズらせる条件:\n`
+      + `- 1行目で必ずスクロールを止める強いフック(問いかけ/逆張り/共感/驚き/あるあるのどれか)\n`
+      + `- 「${tw}」に自分の視点・感想・ツッコミで乗っかる。事実誤認は避け、知らない固有名詞は断定しない\n`
+      + `- 業種の宣伝に無理に着地させない。あくまでこの人の素の反応・つぶやきとして自然に\n`
+      + `- リポストやいいねされやすい言い回し。炎上・下品・不謹慎はNG\n`
+      + `- 各案で違う切り口。各案140字以内\n`
+      + (shuffle ? `- 前回とは全く違うフック・角度で、新鮮な3案にする\n` : "")
+      + `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ(番号・前置き・ハッシュタグ説明など不要)。`;
+  }
+
+  /* 人気ポスト → その型を真似た文体そのままのバズ投稿3案プロンプト */
+  function buzzPromptForPost(srcText, shuffle) {
+    return `次のバズってる人気ポストの「型・フック・オチの付け方」を参考に、自分のバズ投稿を【3案】作る。\n`
+      + `参考ポスト(型だけ真似る・内容はパクらない): 「${srcText.slice(0,160)}」\n`
+      + personaClause()
+      + `\n条件:\n- 構文の妙・フックの強さ・オチの付け方だけ真似る。題材・内容は自分のオリジナルにする\n`
+      + `- この人の素の文体・性格で書く。業種の宣伝に無理に着地させない\n`
+      + `- 炎上・下品はNG。各案で違う角度。各案140字以内\n`
+      + (shuffle ? `- 前回とは全く違うパターンで新鮮な3案にする\n` : "")
+      + `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
+  }
+
+  /* バズ投稿3案を出すボタン(シャッフル付き)。promptFn(shuffle)がプロンプトを返す */
+  function buzzTransformBtn(card, label, promptFn) {
+    const btn = document.createElement("button"); btn.className = "mini cyan"; btn.textContent = label;
+    const out = document.createElement("div");
+    const run = async (shuffle) => {
+      btn.disabled = true; btn.textContent = shuffle ? "作り直し中…" : "生成中…"; out.innerHTML = "";
+      try {
+        const text = await callAI(promptFn(shuffle), false, "haiku");
+        const cands = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>5);
+        if (!cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; }
+        else {
+          /* シャッフルボタン(全案まとめて作り直し) */
+          const shufRow = document.createElement("div"); shufRow.style.cssText="margin:6px 0";
+          const shuf = document.createElement("button"); shuf.className="mini"; shuf.textContent="🔀 3案ぜんぶ作り直す";
+          shuf.onclick = () => run(true);
+          shufRow.appendChild(shuf); out.appendChild(shufRow);
+          cands.slice(0,3).forEach((c,i)=> renderTrendCard(out, c, "案"+(i+1)));
+        }
+      } catch(e) { out.innerHTML = '<div class="err">'+e.message+'</div>'; }
+      btn.disabled = false; btn.textContent = label;
+    };
+    btn.onclick = () => run(false);
+    card.appendChild(btn); card.appendChild(out);
+    return btn;
+  }
 
   /* 項目カードに「事業に絡める」ボタンを付ける共通ヘルパー。
      genFn() は AIを呼んで「===」区切りの3案テキストを返す。 */
@@ -2298,14 +2352,7 @@ BUILDERS.calendar = (el) => {
         const card = document.createElement("div");
         card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
         card.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(p.likes?'❤️ '+p.likes.toLocaleString()+'<br>':'')+esc(p.text.slice(0,90))+(p.text.length>90?'…':'')+'</div>';
-        transformBtn(card, "この型で事業版を作る(候補3つ)", async () => {
-          const prompt =
-            `あなたは「${bizWord}」のXアカウント運用者。次のバズってる人気ポストの"型・フック・オチの付け方"を参考に、自分の業種で同じようにウケそうな投稿を【3案】作る。\n\n` +
-            `参考にする人気ポスト: 「${p.text.slice(0,160)}」\n\n` +
-            `ルール:\n- 構文の妙・フック・オチだけ真似る。内容は完全に自分の業種(${bizWord})の話にする(パク리にしない)\n- 案ごとに違う角度。炎上・下品はNG。各案140字以内\n` +
-            `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
-          return await callAI(prompt, false, "haiku");
-        });
+        buzzTransformBtn(card, "この型でバズ投稿(3案)", (shuffle) => buzzPromptForPost(p.text, shuffle));
         trOut.appendChild(card);
       });
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
@@ -2327,9 +2374,10 @@ BUILDERS.calendar = (el) => {
       async function genQuoteComment(srcText, shuffle) {
         const variant = shuffle ? "\n※前回と全く違う切り口・フックで、新鮮な別パターンにすること。" : "";
         const prompt =
-          `あなたは「${bizWord}」のXアカウント運用者。次の人気ポストを引用リポストして【バズを狙う】。引用コメント(自分の一言)を作る。\n\n` +
-          `引用元ポスト: 「${srcText.slice(0,200)}」\n\n` +
-          `バズらせるコツ:\n- 引用元に「乗っかる/ツッコむ/共感する/逆を言う」など反応として面白くする\n- 自分の業種(${bizWord})に自然に繋げて、最後に興味を引く\n- 強い一言・問いかけ・あるあるネタなど、リポストやいいねされやすい形\n- 炎上狙い・下品はNG\n` +
+          `次の人気ポストを引用リポストして【バズを狙う】。引用コメント(自分の一言)を作る。\n\n` +
+          `引用元ポスト: 「${srcText.slice(0,200)}」\n` +
+          personaClause() +
+          `\nバズらせるコツ:\n- 引用元に「乗っかる/ツッコむ/共感する/逆を言う」など反応として面白くする\n- この人の素の文体・性格で書く。業種の宣伝に無理に着地させない\n- 強い一言・問いかけ・あるあるネタなど、リポストやいいねされやすい形\n- 炎上狙い・下品はNG\n` +
           `- 引用元URLは含めない(Xが自動で付ける)。コメント本文のみ\n- 100字以内\n前置き不要・コメント本文のみ出力。${variant}`;
         return (await callAI(prompt, false, "haiku")).trim();
       }
@@ -3336,9 +3384,39 @@ BUILDERS.clients = (el) => {
     await loadClients();
     listEl.innerHTML = "";
     if (!S.clients.length) listEl.innerHTML = '<div class="muted">まだ登録なし。</div>';
+    /* オート設定をまとめて取得 */
+    let autoMap = {};
+    try {
+      const { data } = await sb.from("auto_trend_config").select("screen_name,enabled");
+      (data||[]).forEach(r => autoMap[r.screen_name] = r.enabled);
+    } catch(e) {}
     S.clients.forEach((c) => {
       const d = document.createElement("div"); d.className = "row";
       d.innerHTML = '<div class="meta"><span class="pill acct">@'+esc(c.screen_name)+'</span><span class="pill st-'+c.status+'">'+(c.status==="active"?"連携中":"連携解除")+'</span></div><span class="muted">登録: '+new Date(c.created_at).toLocaleDateString("ja-JP")+"</span>";
+      /* オートトレンド投稿トグル */
+      const autoRow = document.createElement("div");
+      autoRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
+      const lbl = document.createElement("div");
+      lbl.style.cssText = "font-size:12.5px;line-height:1.4";
+      lbl.innerHTML = '🔥 オートトレンド投稿<br><span class="muted" style="font-size:11px">毎日12時に自動でトレンドのバズ投稿を3本(朝/昼/夜)</span>';
+      const sw = document.createElement("button");
+      const isOn = !!autoMap[c.screen_name];
+      const paintSw = (on) => {
+        sw.textContent = on ? "ON" : "OFF";
+        sw.style.cssText = "min-width:64px;padding:8px 14px;border-radius:20px;border:none;font-weight:800;font-size:13px;cursor:pointer;" +
+          (on ? "background:linear-gradient(135deg,#ff2d95,#a855f7);color:#fff" : "background:rgba(255,255,255,.1);color:#94a3b8");
+      };
+      paintSw(isOn);
+      sw.onclick = async () => {
+        const next = sw.textContent === "OFF";
+        sw.disabled = true;
+        const { error } = await sb.from("auto_trend_config").upsert({ screen_name: c.screen_name, enabled: next, updated_at: new Date().toISOString() });
+        sw.disabled = false;
+        if (error) { alert("保存失敗: "+error.message); return; }
+        paintSw(next);
+      };
+      autoRow.appendChild(lbl); autoRow.appendChild(sw);
+      d.appendChild(autoRow);
       listEl.appendChild(d);
     });
   }
