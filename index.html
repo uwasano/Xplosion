@@ -593,7 +593,7 @@ function defaultCfg() {
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
-    competitors: "",
+    competitors: "", hunterWatch: 0,
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
@@ -1064,6 +1064,23 @@ BUILDERS.settings = (el) => {
   const rivalNote = document.createElement("p"); rivalNote.className = "desc"; rivalNote.style.margin = "6px 0 0";
   rivalNote.textContent = "ここに登録すると、トレンド画面の「🪞バズってる投稿をマネする」「🎯バズってる投稿にリプする」がボタン一発で自動取得する(毎回入力しなくてOK)。";
   el.appendChild(rivalNote);
+
+  /* リプハンターPRO 監視回数 */
+  fld(el, "リプハンターPRO 監視回数(1日あたり)");
+  const watchChips = document.createElement("div"); watchChips.className = "chips"; el.appendChild(watchChips);
+  function drawWatchChips() {
+    watchChips.innerHTML = "";
+    [["なし",0],["1回",1],["3回",3],["5回",5]].forEach(function(pair){
+      const on = (CFG.hunterWatch || 0) === pair[1];
+      const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = pair[0];
+      b.onclick = () => { CFG.hunterWatch = pair[1]; save(); drawWatchChips(); };
+      watchChips.appendChild(b);
+    });
+  }
+  drawWatchChips();
+  const watchNote = document.createElement("p"); watchNote.className = "desc"; watchNote.style.margin = "6px 0 0";
+  watchNote.textContent = "登録した競合を1日に何回チェックして、伸びてる投稿を自動で溜めるか。回数が多いほど機会を逃さないがAPI費用が増える(目安: 競合5人で1回約7円)。トレンド画面「🎯リプハンターPRO」で溜まった投稿を確認できる。";
+  el.appendChild(watchNote);
 
   /* 店名・エリア(任意・AIに教えるか選べる) */
   fld(el, "店名・エリアをAIに教える");
@@ -1704,7 +1721,7 @@ BUILDERS.gapcheck = (el) => {
         `${S.sns}の投稿を1本作る。日付: ${gap.ds}(${gap.label}曜)。\n` +
         `このアカウントの業種・性格・文体設定に沿って、その日にふさわしい投稿を1本。\n` +
         `バズりやすい推奨投稿時刻(HH:MM)も決める。\n` +
-        (isBoat ? "競艇アカだが、無料予想は別ボタンで出すので、ここでは予想以外の通常投稿(コラム・小ネタ・煽り・日常)にする。\n" : "") +
+        (isBoat ? "競艇アカだが、これは未来の日付の投稿で、その日のレース・出走表・モーター・展示データはまだ存在しない。\n【絶対禁止】具体的なレース場名(蒲郡・尼崎・徳山など)・レース番号・艇番・選手名・連勝率・モーター情報・展示タイム・的中実績など、データに基づく具体的な予想や数値を一切書かない(まだ確定していないデータを書くのは捏造になる)。\n代わりに、データが不要な内容にする: 競艇への向き合い方・心構え、過去の一般的な振り返り、買い方のノウハウや考え方、フォロワーへの告知・あいさつ、X運用上の小ネタ。具体的なその日の予想は別の『無料予想』機能が当日データを取得して出すので、ここでは出さない。\n" : "") +
         `出力フォーマット(厳守):\n時刻: HH:MM\n本文:\n(投稿本文)\n\n前置き不要。日本語。${sc()}`;
       const text = await callAI(prompt, false);
       if (!text || !text.trim()) throw new Error("AIが空を返した。もう一回試して。");
@@ -2392,8 +2409,9 @@ BUILDERS.calendar = (el) => {
   const btnEnjou = document.createElement("button"); btnEnjou.className = "mini cyan"; btnEnjou.textContent = "🔥 炎上ニュースをみる";
   const btnMirror = document.createElement("button"); btnMirror.className = "mini"; btnMirror.textContent = "🪞 バズってる投稿をマネする";
   const btnHunter = document.createElement("button"); btnHunter.className = "mini"; btnHunter.textContent = "🎯 バズってる投稿にリプする";
+  const btnHunterPro = document.createElement("button"); btnHunterPro.className = "mini"; btnHunterPro.textContent = "🎯 リプハンターPRO(自動で溜めた投稿)";
   trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote); trBtnRow.appendChild(btnEnjou);
-  trBtnRow.appendChild(btnMirror); trBtnRow.appendChild(btnHunter);
+  trBtnRow.appendChild(btnMirror); trBtnRow.appendChild(btnHunter); trBtnRow.appendChild(btnHunterPro);
   trFld.appendChild(trBtnRow);
   const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
   trFld.appendChild(trDate);
@@ -2575,6 +2593,37 @@ BUILDERS.calendar = (el) => {
       makeHunterReplies(repBox, p);
     });
     btnHunter.disabled = false; btnHunter.textContent = "🎯 バズってる投稿にリプする";
+  };
+
+  /* 🎯 リプハンターPRO: 自動監視で溜まった伸び中投稿を表示(アカウントごと) */
+  btnHunterPro.onclick = async () => {
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    btnHunterPro.disabled = true; btnHunterPro.textContent = "溜まった投稿を確認中…"; trOut.innerHTML = "";
+    try {
+      const j = await gasFetch_("hunterList", acct.value ? { screenName: acct.value } : {});
+      const items = (j && j.items) ? j.items : [];
+      if (!items.length) {
+        trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12.5px">まだ溜まった投稿が無い。<br>リプハンターPROは競合を1日3回(9時/15時/21時)自動監視して、伸び中の投稿をここに溜める。<br><br>① 生成設定で「競合アカウント」を登録<br>② setupTriggersを実行(まだなら)<br>③ 監視時刻が過ぎると、伸びてる投稿がここに出る</div>';
+        btnHunterPro.disabled=false; btnHunterPro.textContent="🎯 リプハンターPRO(自動で溜めた投稿)"; return;
+      }
+      const byAcct = {};
+      items.forEach(it => { (byAcct[it.screen_name] = byAcct[it.screen_name] || []).push(it); });
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">自動監視で見つけた「今伸びてる投稿」。リプ生成して手動で送ると目立つ:</div>';
+      Object.keys(byAcct).forEach(sn => {
+        const h = document.createElement("div"); h.style.cssText="font-weight:700;font-size:13px;color:var(--accent);margin:12px 0 4px"; h.textContent = "▼ @"+sn+" 向け ("+byAcct[sn].length+"件)";
+        trOut.appendChild(h);
+        byAcct[sn].forEach(it => {
+          const card = document.createElement("div");
+          card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px";
+          card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(it.competitor||"")+' · ❤'+(it.likes||0)+' · 🔥伸び率'+(it.velocity||0)+'/h</div>'
+            + '<div style="font-size:13px;line-height:1.55;margin-bottom:6px;white-space:pre-wrap">'+esc((it.tweet_text||"").length>180?(it.tweet_text.slice(0,180)+"…"):(it.tweet_text||""))+'</div>';
+          const repBox = document.createElement("div"); card.appendChild(repBox);
+          trOut.appendChild(card);
+          makeHunterReplies(repBox, { text: it.tweet_text||"", url: it.tweet_url||"", _author: it.competitor||"", _qid: it.id });
+        });
+      });
+    } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    btnHunterPro.disabled = false; btnHunterPro.textContent = "🎯 リプハンターPRO(自動で溜めた投稿)";
   };
 
   /* リプハンターの個別リプ生成(3案) */
@@ -3906,7 +3955,7 @@ BUILDERS.autoqueue = (el) => {
   head(el, "オート予定", "今日オートで投稿される予定の一覧。時刻をタップすると変更できる。生成は各投稿時刻の少し前に自動で行われる。",
     ["朝に自動で今日の予定が作られる","投稿時刻が近づくと内容が生成される","時刻を変えたい時はタップして調整"]);
 
-  const KIND_LABEL = { trend: "🔥 トレンド", normal: "📝 通常投稿", yosou: "🚤 無料予想", flavor: "💨 フレーバー" };
+  const KIND_LABEL = { trend: "🔥 トレンド", normal: "📝 通常投稿", yosou: "🚤 無料予想", yokoku: "📣 レース予告", enjou: "🔥 炎上ニュース", flavor: "💨 フレーバー" };
   const STATUS_LABEL = { waiting: "待機中", processing: "生成中…", done: "生成済✓", error: "エラー" };
 
   const bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:8px;margin-bottom:10px";
@@ -4099,6 +4148,7 @@ BUILDERS.clients = (el) => {
       /* 競艇業種のみ: 予想 */
       if (/競艇|ボートレース|ボート/.test(biz)) {
         d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想", "毎日、締切が近いレースを自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
+        d.appendChild(autoFeatureRow(c.screen_name, "yokoku", "📣 オートレース予告", "明日の開催情報を取得して『明日◯◯でレース!注目選手!』の集客予告を前日夜に投稿(数字予想は出さない)", "linear-gradient(135deg,#00e5ff,#22c55e)"));
       }
       /* シーシャ業種のみ: フレーバー(店名が「噂のシーシャBar」系の時だけ。ミックスDBが専用のため) */
       if (/(噂|ウワサ|うわさ|uwasa).{0,4}(シーシャ|sisha|shisha)/i.test(biz)) {
