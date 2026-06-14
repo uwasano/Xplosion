@@ -2312,21 +2312,69 @@ BUILDERS.calendar = (el) => {
         card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
         card.innerHTML = '<div style="font-weight:700;font-size:13.5px;margin-bottom:4px;line-height:1.5">🔥 '+esc(n.title)+'</div>'
           + '<a href="'+esc(n.url)+'" target="_blank" style="font-size:11px;color:var(--accent2);word-break:break-all">'+esc(n.url)+'</a>';
-        buzzTransformBtn(card, "この炎上にコメント(3案)", (shuffle) => buzzPromptForEnjou(n.title, n.url, shuffle), false);
+        makeEnjouBtn(card, n.title, n.url);
         trOut.appendChild(card);
       });
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
     btnEnjou.disabled = false; btnEnjou.textContent = "🔥 炎上ニュースをみる";
   };
 
-  /* 炎上ニュース個別 → コメント投稿3案プロンプト(URLは決まってるので確実) */
-  function buzzPromptForEnjou(title, url, shuffle) {
+  /* 炎上コメントボタン: 記事本文を取得 → その内容を踏まえてコメント3案 */
+  function makeEnjouBtn(card, title, url) {
+    const btn = document.createElement("button"); btn.className = "mini cyan"; btn.textContent = "この炎上にコメント(3案)";
+    const out = document.createElement("div");
+    const run = async (shuffle) => {
+      btn.disabled = true; btn.textContent = shuffle ? "作り直し中…" : "記事を読んで生成中…"; out.innerHTML = "";
+      try {
+        /* まず記事本文を取得(中身を読んでから書く=事実誤認を防ぐ) */
+        let bodyText = "";
+        try { const br = await fetchYahooArg("articleBody", { url }); bodyText = (br && br.body) ? br.body : ""; } catch(e) {}
+        const prompt = buzzPromptForEnjou(title, url, bodyText, shuffle);
+        const r = await callAI(prompt, false, "sonnet", false);
+        const text = (typeof r === "string") ? r : r.text;
+        let cands = text.split(/\n?===+\n?/).map(s=>s.trim())
+          .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
+          .filter(s=>s.length>5 && !/^(承知|了解|分かりました)/i.test(s));
+        if (!cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; }
+        else {
+          out.innerHTML = "";
+          const shufRow = document.createElement("div"); shufRow.style.cssText="margin:6px 0";
+          const shuf = document.createElement("button"); shuf.className="mini"; shuf.textContent="🔀 3案ぜんぶ作り直す";
+          shuf.onclick = () => run(true); shufRow.appendChild(shuf); out.appendChild(shufRow);
+          cands.slice(0,3).forEach((c,i)=> renderTrendCard(out, c, "案"+(i+1)));
+        }
+      } catch(e) { out.innerHTML = '<div class="err">'+e.message+'</div>'; }
+      btn.disabled = false; btn.textContent = "この炎上にコメント(3案)";
+    };
+    btn.onclick = () => run(false);
+    card.appendChild(btn); card.appendChild(out);
+  }
+
+  /* GAS呼び出し(引数付き) */
+  async function fetchYahooArg(action, extra) {
+    const { data: sess } = await sb.auth.getSession();
+    if (!sess.session) throw new Error("ログインが切れた。リロードして。");
+    const res = await fetch(GAS_URL, {
+      method: "POST", headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(Object.assign({ auth: sess.session.access_token, action }, extra || {})),
+    });
+    return await res.json();
+  }
+
+  /* 炎上ニュース個別 → コメント投稿3案プロンプト(記事本文を踏まえる) */
+  function buzzPromptForEnjou(title, url, bodyText, shuffle) {
     return `次の炎上系ニュースについて、X投稿を3案作る。\n`
       + `ニュース見出し:「${title}」\n`
-      + `ニュースURL: ${url}\n`
+      + (bodyText ? `\n【記事の本文(必ずこれを読んで事実を正確に把握してから書く)】\n${bodyText}\n` : "")
+      + `\nニュースURL: ${url}\n`
       + personaClause()
-      + `\n【条件】\n`
-      + `- この炎上ニュースへの自分のリアルな本音・ツッコミ・意見を書く(友達に話すような体温のある言葉)\n`
+      + `\n【最重要・記事の内容にそのまま沿う】\n`
+      + `- 上の記事本文に書いてあることだけを踏まえてコメントする\n`
+      + `- 自分の知識・記憶・想像を足さない(誰が誰で、どこ出身で、過去がどう…等を勝手に補わない)\n`
+      + `- 記事に書いてないことは一切書かない。書いてある事実にだけ反応する\n`
+      + `\n【書き方】\n`
+      + `- この件への自分のリアルな本音・意見を書く(友達に話すような体温のある言葉)\n`
+      + `- 【検索に乗せる】記事に出てくる固有名詞(人名・大会名・作品名・番組名など)を最低1つ本文に入れる。無いと検索に乗らずインプレが伸びない\n`
       + `- あらすじ・概要の説明から入らない。説明口調・要約は禁止\n`
       + `- 誹謗中傷・特定個人への過度な攻撃・決めつけはNG。冷静で「たしかに」と思わせる視点にする\n`
       + `- 「9割の人が〜」「実は〜なの」みたいな空っぽの煽りは禁止\n`
