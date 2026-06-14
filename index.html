@@ -2189,10 +2189,10 @@ BUILDERS.calendar = (el) => {
   const trFld = document.createElement("div");
   trFld.style.cssText = "margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px";
   trFld.innerHTML = '<div style="font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin-bottom:6px">▸ 🔥 トレンド連動投稿</div>'
-    + '<p class="desc" style="margin:0 0 10px">今Xで起きてることに乗っかって投稿を作る。自分の業種に絡められそうなものだけAIが選ぶ。</p>';
+    + '<p class="desc" style="margin:0 0 10px">今Xで起きてることを見て、気に入ったものを選んで事業に絡める。引用もできる。</p>';
   const trBtnRow = document.createElement("div"); trBtnRow.style.cssText = "display:flex;flex-direction:column;gap:8px";
-  const btnTrend = document.createElement("button"); btnTrend.className = "mini cyan"; btnTrend.textContent = "🌏 世の中のトレンドで作る(候補3つ)";
-  const btnPop = document.createElement("button"); btnPop.className = "mini cyan"; btnPop.textContent = "📈 Xの人気ポスト風に作る(候補3つ)";
+  const btnTrend = document.createElement("button"); btnTrend.className = "mini cyan"; btnTrend.textContent = "🌏 世の中のトレンドを見る";
+  const btnPop = document.createElement("button"); btnPop.className = "mini cyan"; btnPop.textContent = "📈 Xの人気ポストを見る";
   const btnQuote = document.createElement("button"); btnQuote.className = "mini"; btnQuote.textContent = "💬 人気ポストを引用して作る";
   trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote);
   trFld.appendChild(trBtnRow);
@@ -2238,7 +2238,7 @@ BUILDERS.calendar = (el) => {
     host.appendChild(wrap);
   }
 
-  /* ① 世の中のトレンドで作る(候補3つ) */
+  /* ① 世の中のトレンド: まず一覧を見る → 気に入ったトレンドを事業に絡める */
   btnTrend.onclick = async () => {
     btnTrend.disabled = true; btnTrend.textContent = "トレンド取得中…"; trOut.innerHTML = "";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
@@ -2246,43 +2246,70 @@ BUILDERS.calendar = (el) => {
       const j = await fetchYahoo("trends");
       const trends = (j && j.trends) ? j.trends : [];
       if (!trends.length) { trOut.innerHTML = '<div class="err">トレンド取得失敗。少し待って再挑戦して。</div>'; return; }
-      btnTrend.textContent = "投稿を3案生成中…";
       const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
-      const prompt =
-        `あなたは「${bizWord}」のXアカウント運用者。今Xで伸びてるトレンド一覧から、自分の業種に"自然に絡められるもの"を使って、トレンド便乗のX投稿を【3案】作る。\n\n` +
-        `トレンド一覧:\n${trends.slice(0,25).map((t,i)=>(i+1)+". "+t).join("\n")}\n\n` +
-        `ルール:\n- 業種に無理なく絡められるトレンドを選ぶ。案ごとに別のトレンド/切り口にする\n- 便乗しつつ最後は自分の業種に自然に着地。炎上・下品はNG\n- 各案140字以内\n- どれも絡めるのが不自然なら、全体の冒頭に「SKIP」とだけ書く\n` +
-        `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ(番号や前置き不要)。`;
-      const text = await callAI(prompt, false, "haiku");
-      if (/^\s*SKIP/i.test(text)) { trOut.innerHTML = '<div class="muted" style="padding:10px">今のトレンドには業種に絡められそうな話題がなかった。時間を置くと変わるのでまた試して。</div>'; return; }
-      const cands = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>5);
-      trOut.innerHTML = '<div class="desc" style="margin:6px 0">気に入った案を送る:</div>';
-      cands.slice(0,3).forEach((c,i)=> renderTrendCard(trOut, c, "案"+(i+1)));
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">今の世の中のトレンド。気になるものを選んで事業に絡める:</div>';
+      trends.slice(0,15).forEach((tw) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
+        card.innerHTML = '<div style="font-weight:700;font-size:14px;margin-bottom:6px">🌏 '+esc(tw)+'</div>';
+        const linkBtn = transformBtn(card, "このトレンドを事業に絡める(候補3つ)", async () => {
+          const prompt =
+            `あなたは「${bizWord}」のXアカウント運用者。今話題のトレンド「${tw}」に便乗して、自分の業種に自然に繋げるX投稿を【3案】作る。\n\n` +
+            `ルール:\n- 「${tw}」に乗っかりつつ、最後は自分の業種(${bizWord})に自然に着地\n- 無理に絡めて変にならないよう、繋げ方を案ごとに変える\n- 炎上・下品はNG。各案140字以内\n` +
+            `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
+          return await callAI(prompt, false, "haiku");
+        });
+        trOut.appendChild(card);
+      });
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
-    btnTrend.disabled = false; btnTrend.textContent = "🌏 世の中のトレンドで作る(候補3つ)";
+    btnTrend.disabled = false; btnTrend.textContent = "🌏 世の中のトレンドを見る";
   };
 
-  /* ② Xの人気ポスト風に作る(候補3つ) — バズってる投稿の"構文・ノリ"を真似て業種版に */
+  /* 項目カードに「事業に絡める」ボタンを付ける共通ヘルパー。
+     genFn() は AIを呼んで「===」区切りの3案テキストを返す。 */
+  function transformBtn(card, label, genFn) {
+    const btn = document.createElement("button"); btn.className = "mini cyan"; btn.textContent = label;
+    const out = document.createElement("div");
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = "生成中…"; out.innerHTML = "";
+      try {
+        const text = await genFn();
+        const cands = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>5);
+        if (!cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; }
+        else cands.slice(0,3).forEach((c,i)=> renderTrendCard(out, c, "案"+(i+1)));
+      } catch(e) { out.innerHTML = '<div class="err">'+e.message+'</div>'; }
+      btn.disabled = false; btn.textContent = label;
+    };
+    card.appendChild(btn); card.appendChild(out);
+    return btn;
+  }
+
+  /* ② Xの人気ポスト: まず一覧を見る → 気に入ったポストを事業に絡める */
   btnPop.onclick = async () => {
     btnPop.disabled = true; btnPop.textContent = "人気ポスト取得中…"; trOut.innerHTML = "";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
     try {
       const j = await fetchYahoo("popular");
       const posts = (j && j.posts) ? j.posts : [];
-      if (!posts.length) { trOut.innerHTML = '<div class="err">人気ポスト取得失敗。少し待って再挑戦して。</div>'; return; }
-      btnPop.textContent = "投稿を3案生成中…";
+      if (!posts.length) { trOut.innerHTML = '<div class="err">人気ポスト取得失敗。少し待って再挑戦して。'+(j&&j.error?'<br>('+esc(j.error)+')':'')+'</div>'; return; }
       const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
-      const prompt =
-        `あなたは「${bizWord}」のXアカウント運用者。今バズってる人気ポストの"型・ノリ・フックの作り方"を参考に、自分の業種で同じようにウケそうな投稿を【3案】作る。\n\n` +
-        `バズってる人気ポスト例(内容ではなく型を参考にする):\n${posts.slice(0,8).map((p,i)=>(i+1)+". "+p.text.slice(0,80)).join("\n")}\n\n` +
-        `ルール:\n- 人気ポストの"構文の妙・フック・オチの付け方"だけ真似る。内容は自分の業種の話にする\n- パクリにならないよう題材は完全に自分の業種で作る\n- 各案で違う型を試す。炎上・下品はNG\n- 各案140字以内\n` +
-        `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
-      const text = await callAI(prompt, false, "haiku");
-      const cands = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>5);
-      trOut.innerHTML = '<div class="desc" style="margin:6px 0">バズ構文を真似た3案:</div>';
-      cands.slice(0,3).forEach((c,i)=> renderTrendCard(trOut, c, "案"+(i+1)));
+      trOut.innerHTML = '<div class="desc" style="margin:6px 0">今バズってる人気ポスト。気になるものを選んで、その型で事業版を作る:</div>';
+      posts.slice(0,8).forEach((p) => {
+        const card = document.createElement("div");
+        card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
+        card.innerHTML = '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+(p.likes?'❤️ '+p.likes.toLocaleString()+'<br>':'')+esc(p.text.slice(0,90))+(p.text.length>90?'…':'')+'</div>';
+        transformBtn(card, "この型で事業版を作る(候補3つ)", async () => {
+          const prompt =
+            `あなたは「${bizWord}」のXアカウント運用者。次のバズってる人気ポストの"型・フック・オチの付け方"を参考に、自分の業種で同じようにウケそうな投稿を【3案】作る。\n\n` +
+            `参考にする人気ポスト: 「${p.text.slice(0,160)}」\n\n` +
+            `ルール:\n- 構文の妙・フック・オチだけ真似る。内容は完全に自分の業種(${bizWord})の話にする(パク리にしない)\n- 案ごとに違う角度。炎上・下品はNG。各案140字以内\n` +
+            `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
+          return await callAI(prompt, false, "haiku");
+        });
+        trOut.appendChild(card);
+      });
     } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
-    btnPop.disabled = false; btnPop.textContent = "📈 Xの人気ポスト風に作る(候補3つ)";
+    btnPop.disabled = false; btnPop.textContent = "📈 Xの人気ポストを見る";
   };
 
   /* ③ 人気ポストを引用して作る — 人気ポスト5件、各々にバズりそうな引用コメント+シャッフル */
