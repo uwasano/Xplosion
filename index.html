@@ -4065,9 +4065,9 @@ BUILDERS.clients = (el) => {
     }
 
     /* 1つのオート機能の行(トグル+3/5/10)を作る共通ヘルパー */
-    function autoFeatureRow(screen, kind, title, sub, accentOn) {
-      const cur = (autoMap[screen] && autoMap[screen][kind]) ? autoMap[screen][kind] : { enabled: false, count: 3 };
-      let curCount = cur.count || 3;
+    function autoFeatureRow(screen, kind, title, sub, accentOn, fixedOnce) {
+      const cur = (autoMap[screen] && autoMap[screen][kind]) ? autoMap[screen][kind] : { enabled: false, count: fixedOnce ? 1 : 3 };
+      let curCount = fixedOnce ? 1 : (cur.count || 3);
       const wrap = document.createElement("div");
       wrap.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
       const top = document.createElement("div");
@@ -4094,14 +4094,21 @@ BUILDERS.clients = (el) => {
         return true;
       };
       const btns = {};
-      [1,3,5,10].forEach((n) => {
-        const b = document.createElement("button");
-        const pc = () => { b.style.cssText = "flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);font-weight:700;font-size:12.5px;cursor:pointer;" + (curCount===n ? "background:rgba(0,229,255,.18);color:var(--accent2);border-color:var(--accent2)" : "background:transparent;color:var(--muted)"); };
-        b.textContent = n+"回"; pc(); btns[n] = pc;
-        b.onclick = async () => { curCount = n; Object.values(btns).forEach(f=>f()); await save(sw.textContent==="ON", n); };
-        cntRow.appendChild(b);
-      });
-      wrap.appendChild(cntRow);
+      if (!fixedOnce) {
+        [1,3,5,10].forEach((n) => {
+          const b = document.createElement("button");
+          const pc = () => { b.style.cssText = "flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);font-weight:700;font-size:12.5px;cursor:pointer;" + (curCount===n ? "background:rgba(0,229,255,.18);color:var(--accent2);border-color:var(--accent2)" : "background:transparent;color:var(--muted)"); };
+          b.textContent = n+"回"; pc(); btns[n] = pc;
+          b.onclick = async () => { curCount = n; Object.values(btns).forEach(f=>f()); await save(sw.textContent==="ON", n); };
+          cntRow.appendChild(b);
+        });
+        wrap.appendChild(cntRow);
+      } else {
+        /* 1回固定: 回数選択は出さず、説明だけ */
+        const fx = document.createElement("div"); fx.className = "desc"; fx.style.cssText = "margin-top:8px;font-size:11.5px";
+        fx.textContent = "1日1回・21時台に自動投稿";
+        wrap.appendChild(fx);
+      }
       sw.onclick = async () => { const next = sw.textContent==="OFF"; sw.disabled=true; const ok = await save(next, curCount); sw.disabled=false; if (ok) paint(next); };
       /* サンプル確認ボタン */
       const sampleRow = document.createElement("div"); sampleRow.style.cssText = "margin-top:6px";
@@ -4148,7 +4155,7 @@ BUILDERS.clients = (el) => {
       /* 競艇業種のみ: 予想 */
       if (/競艇|ボートレース|ボート/.test(biz)) {
         d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想", "毎日、締切が近いレースを自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
-        d.appendChild(autoFeatureRow(c.screen_name, "yokoku", "📣 オートレース予告", "明日の開催情報を取得して『明日◯◯でレース!注目選手!』の集客予告を前日夜に投稿(数字予想は出さない)", "linear-gradient(135deg,#00e5ff,#22c55e)"));
+        d.appendChild(autoFeatureRow(c.screen_name, "yokoku", "📣 オート明日の予告", "明日の開催情報を取得して『明日◯◯でレース!注目選手!』の集客予告を21時台に投稿(数字予想は出さない)", "linear-gradient(135deg,#00e5ff,#22c55e)", true));
       }
       /* シーシャ業種のみ: フレーバー(店名が「噂のシーシャBar」系の時だけ。ミックスDBが専用のため) */
       if (/(噂|ウワサ|うわさ|uwasa).{0,4}(シーシャ|sisha|shisha)/i.test(biz)) {
