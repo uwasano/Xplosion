@@ -2800,10 +2800,12 @@ BUILDERS.calendar = (el) => {
       + `\n【絶対禁止・最重要】\n`
       + `- 元の投稿に書いてない事実・出来事・ニュースを勝手に作らない(捏造厳禁)。元が言ってないことは書かない\n`
       + `- 別の話題にすり替えない。元の投稿のテーマから外れない\n`
-      + `- 「ここ大事」「テストに出る」「実は〇〇が大事」「9割の人が」のような空っぽの煽り・もったいぶりは禁止\n`
+      + `- 「情報ソース貼っときました」「詳細はリンクをチェック」「詳しくはこちら👇」のような、リンクへの薄い誘導の“文章”は入れない(URLそのものは載せてOK。でも誘導の説明文は不要)\n`
+      + `- 「ここ大事」「ブックマークしとくといいよ」「テストに出る」「実は〇〇が大事」「9割の人が」「要注目」のような空っぽの煽り・もったいぶり・薄い誘導は禁止\n`
+      + `- 中身のない締めの一文(「詳しくは〜」「チェックしてね」だけ)で字数を埋めない。本文そのものに中身を持たせる\n`
       + `\n【書き方】\n`
       + `- 元の投稿のフックの強さ・話の運びは活かしつつ、自分の素の文体・性格で自然に\n`
-      + `- 元にURLや特定の固有名詞があっても、事実関係を変えない範囲で\n`
+      + `- 元の投稿にURLがあれば、そのURLは残してよい(ただし「リンク見てね」的な誘導文は付けない)\n`
       + `- 炎上・下品はNG。各案140字以内\n`
       + (shuffle ? `- 前回とは違う言い回しで新鮮な3案にする(内容・話題は元のまま)\n` : "")
       + `\n出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。前置き・案番号・説明は書かない。`;
@@ -2824,7 +2826,7 @@ BUILDERS.calendar = (el) => {
           let cands0 = text0.split(/\n?===+\n?/).map(s=>s.trim())
             .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
             .filter(s=>s.length>5 && !/^(承知|了解|分かりました)/i.test(s));
-          renderCands(cands0);
+          renderCands(cands0, true);
           btn.disabled=false; btn.textContent=label; return;
         }
         /* トレンド: Yahoo!ニュースを取得して関連ニュースを探す */
@@ -2863,10 +2865,24 @@ BUILDERS.calendar = (el) => {
       btn.disabled = false; btn.textContent = label;
     };
     /* 候補を描画する共通処理 */
-    function renderCands(cands) {
+    function renderCands(cands, stripUrls) {
       if (!cands || !cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; return; }
-      /* 本文先頭に紛れ込む「【案N】」「案N:」などの見出しを除去 */
-      cands = cands.map(c => c.replace(/^【?案\s*\d+】?[:：]?\s*\n?/,"").trim()).filter(Boolean);
+      /* 本文先頭の「【案N】」見出し除去。stripUrls=true(バズミラー等)ならURL/リンク誘導文も除去 */
+      cands = cands.map(c => {
+        let t = c.replace(/^【?案\s*\d+】?[:：]?\s*\n?/,"").trim();
+        if (stripUrls) {
+          /* URLは残す。「情報ソース貼っときました」等の薄い誘導文だけ消す */
+          t = t.split("\n").filter(line => {
+            const l = line.trim();
+            if (/情報ソース.*(貼|はり)/.test(l)) return false;
+            if (/^[👇👉⬇️🔗]*\s*詳しくは(こちら|リンク|下)[👇👉⬇️🔗\s]*$/.test(l)) return false;
+            if (/^[👇👉⬇️🔗]*\s*詳細は(リンク|こちら).*(チェック|みて|見て)[👇👉⬇️🔗\s]*$/.test(l)) return false;
+            if (/^(ソース|出典)は?(こちら|下|リンク)[👇👉⬇️🔗\s]*$/.test(l)) return false;
+            return true;
+          }).join("\n").replace(/\n{3,}/g,"\n\n").trim();
+        }
+        return t;
+      }).filter(Boolean);
       out.innerHTML = "";
       const shufRow = document.createElement("div"); shufRow.style.cssText="margin:6px 0";
       const shuf = document.createElement("button"); shuf.className="mini"; shuf.textContent="🔀 3案ぜんぶ作り直す";
