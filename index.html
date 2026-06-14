@@ -210,6 +210,22 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* 投稿日時を「○分前/○時間前/○日前/M月D日」に整形 */
+function timeAgo(createdAt) {
+  if (!createdAt) return "";
+  const d = new Date(createdAt);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  const min = Math.floor(diffMs / 60000);
+  if (min < 1) return "たった今";
+  if (min < 60) return min + "分前";
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return hr + "時間前";
+  const day = Math.floor(hr / 24);
+  if (day < 7) return day + "日前";
+  return (d.getMonth() + 1) + "月" + d.getDate() + "日";
+}
+
 /* ============================================================
  * 噂のシーシャBar ミックスAIエンジン(仕様書準拠・数値/相性/禁止は確定値)
  * ============================================================ */
@@ -2553,7 +2569,7 @@ BUILDERS.calendar = (el) => {
     posts.slice(0,8).forEach((p) => {
       const card = document.createElement("div");
       card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
-      card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+'</div>'
+      card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+(p.createdAt?' · '+timeAgo(p.createdAt):'')+'</div>'
         + '<div style="font-size:13px;line-height:1.5;margin-bottom:4px;white-space:pre-wrap">'+esc(p.text.slice(0,140))+(p.text.length>140?'…':'')+'</div>';
       buzzTransformBtn(card, "この型でバズ投稿(3案)", (shuffle) => buzzPromptForPost(p.text, shuffle));
       trOut.appendChild(card);
@@ -2586,7 +2602,7 @@ BUILDERS.calendar = (el) => {
     posts.slice(0,8).forEach((p) => {
       const card = document.createElement("div");
       card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px";
-      card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+' 💬'+(p.replies||0)+'</div>'
+      card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+' 💬'+(p.replies||0)+(p.createdAt?' · '+timeAgo(p.createdAt):'')+'</div>'
         + '<div style="font-size:13px;line-height:1.55;margin-bottom:6px;white-space:pre-wrap">'+esc(p.text.length>180?p.text.slice(0,180)+"…":p.text)+'</div>';
       const repBox = document.createElement("div"); card.appendChild(repBox);
       trOut.appendChild(card);
@@ -2775,18 +2791,23 @@ BUILDERS.calendar = (el) => {
 
   /* 人気ポスト → その型を真似た文体そのままのバズ投稿3案プロンプト */
   function buzzPromptForPost(srcText, shuffle) {
-    return `次のバズってる人気ポストの「型・フック・オチの付け方」を参考に、自分の投稿を【3案】作る。\n`
-      + `参考ポスト(型だけ真似る・内容はパクらない): 「${srcText.slice(0,160)}」\n`
+    const biz = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "";
+    const bizLine = biz
+      ? `\n【あなたの事業】「${biz}」。3案すべてこの事業に関係する、具体的で中身のある投稿にする。Web制作・マーケなど無関係な業種の話は絶対に書かない。\n`
+      : `\n【注意】事業設定が未入力。当たり障りのない一般的な内容ではなく、具体的で実体験に基づく投稿にする。\n`;
+    return `次のバズってる人気ポストがなぜ伸びたか(フックの作り方・話の運び・読後感)を分析し、その“伸ばし方”だけを参考に、自分の投稿を【3案】作る。\n`
+      + `参考ポスト(これは別人の別業種の投稿。内容・話題は一切パクらず、伸ばし方の構造だけ参考にする): 「${srcText.slice(0,160)}」\n`
+      + bizLine
       + personaClause()
-      + `\n【絶対に書いてはいけないNG表現】\n`
-      + `- 「9割の人が〜」「ほぼ誰も気づいてない」「実は〜なの」のような中身のない煽り\n`
-      + `- 「なぜなら〜」で理由を濁して具体を書かない穴埋め文\n`
-      + `- 「フォローしとくと損しない」みたいな薄いフォロー誘導\n`
-      + `\n条件:\n- 構文の妙・フックの強さ・オチの付け方だけ真似る。題材・内容は自分のオリジナルで具体的に\n`
-      + `- 読んだ人が「わかる」と思える中身のある投稿。この人の素の文体・性格で書く\n`
-      + `- 業種の宣伝に無理に着地させない。炎上・下品はNG。各案140字以内\n`
-      + (shuffle ? `- 前回とは全く違うパターンで新鮮な3案にする\n` : "")
-      + `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。`;
+      + `\n【最重要・これをやったら失敗】\n`
+      + `- 参考ポストの話題(パチスロ・新台など)をそのまま使うのは禁止。あくまで自分の事業「${biz||"自分の事業"}」の話題で書く\n`
+      + `- 「ここ大事だからね」「ここテストに出るよ」「実は〇〇が大事」「9割の人が」「ほぼ誰も気づいてない」のような、中身のない空っぽの煽り・もったいぶりは全部禁止\n`
+      + `- 「〇〇」と伏せて具体を書かない穴埋め文は禁止。必ず具体的な中身を書く\n`
+      + `\n条件:\n- 読んだ人が「わかる」「なるほど」と思える、具体的で中身のある投稿にする\n`
+      + `- この人の素の文体・性格で書く。自分の事業の実体験・本音ベースで\n`
+      + `- 炎上・下品はNG。各案140字以内\n`
+      + (shuffle ? `- 前回とは全く違う切り口で新鮮な3案にする\n` : "")
+      + `出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。前置き・案番号・説明は書かない。`;
   }
 
   /* バズ投稿3案を出すボタン(シャッフル付き)。promptFn(shuffle)がプロンプトを返す。
@@ -2845,6 +2866,8 @@ BUILDERS.calendar = (el) => {
     /* 候補を描画する共通処理 */
     function renderCands(cands) {
       if (!cands || !cands.length) { out.innerHTML = '<div class="muted" style="padding:6px">うまく作れんかった。もう一回試して。</div>'; return; }
+      /* 本文先頭に紛れ込む「【案N】」「案N:」などの見出しを除去 */
+      cands = cands.map(c => c.replace(/^【?案\s*\d+】?[:：]?\s*\n?/,"").trim()).filter(Boolean);
       out.innerHTML = "";
       const shufRow = document.createElement("div"); shufRow.style.cssText="margin:6px 0";
       const shuf = document.createElement("button"); shuf.className="mini"; shuf.textContent="🔀 3案ぜんぶ作り直す";
@@ -2925,7 +2948,7 @@ BUILDERS.calendar = (el) => {
       posts.slice(0,8).forEach((p) => {
         const card = document.createElement("div");
         card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
-        card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">'+(p.author?'@'+esc(p.author)+' · ':'')+'❤️ '+(p.likes||0).toLocaleString()+(p.retweets?' 🔁'+p.retweets:'')+'</div>'
+        card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">'+(p.author?'@'+esc(p.author)+' · ':'')+'❤️ '+(p.likes||0).toLocaleString()+(p.retweets?' 🔁'+p.retweets:'')+(p.createdAt?' · '+timeAgo(p.createdAt):'')+'</div>'
           + '<div style="font-size:13px;line-height:1.5;margin-bottom:4px;white-space:pre-wrap">'+esc(p.text.slice(0,140))+(p.text.length>140?'…':'')+'</div>';
         buzzTransformBtn(card, "この型でバズ投稿(3案)", (shuffle) => buzzPromptForPost(p.text, shuffle));
         trOut.appendChild(card);
