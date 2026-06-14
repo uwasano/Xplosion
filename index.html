@@ -3498,7 +3498,7 @@ BUILDERS.clients = (el) => {
         return true;
       };
       const btns = {};
-      [3,5,10].forEach((n) => {
+      [1,3,5,10].forEach((n) => {
         const b = document.createElement("button");
         const pc = () => { b.style.cssText = "flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);font-weight:700;font-size:12.5px;cursor:pointer;" + (curCount===n ? "background:rgba(0,229,255,.18);color:var(--accent2);border-color:var(--accent2)" : "background:transparent;color:var(--muted)"); };
         b.textContent = n+"回"; pc(); btns[n] = pc;
@@ -3528,7 +3528,8 @@ BUILDERS.clients = (el) => {
           box.textContent = (j && j.text) ? j.text : "(生成できず)";
           sampleOut.appendChild(box);
           const note = document.createElement("p"); note.className="desc"; note.style.margin="4px 0 0";
-          note.textContent = "※これはサンプル。実際のオート投稿はこの調子で毎回違う内容が作られる。表現がおかしければ生成設定の文体・性格を調整して。";
+          const threadNote = (j && j.threadCount && j.threadCount > 1) ? "🧵" + j.threadCount + "本のスレッドで投稿される。" : "";
+          note.textContent = threadNote + "※これはサンプル。実際のオート投稿はこの調子で毎回違う内容が作られる。表現がおかしければ生成設定の文体・性格を調整して。";
           sampleOut.appendChild(note);
         } catch(e) { sampleOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
         sampleBtn.disabled = false; sampleBtn.textContent = "👀 投稿内容のサンプルを見る";
