@@ -348,36 +348,47 @@ function shPickScene(category){
 
 
 /* おすすめミックスを投稿文にする(噂のシーシャBar用)
-   scene指定があればそのシチュエーションに寄せる */
+   scene指定があればそのシチュエーションに寄せる。Haikuで高速生成・性格はCFGから */
 async function shMixPostText(audience, sceneObj){
-  /* シーンが来たらその客層に寄せる */
   const aud = sceneObj ? sceneObj.aud : (audience||"おまかせ");
   const picks = shGenerate(aud, 1);
   if (!picks.length) return null;
   const m = picks[0];
   const haigou = m.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ");
   const sweet=Math.round(shAvg(m.combo,0)), sour=Math.round(shAvg(m.combo,1)), cool=Math.round(shAvg(m.combo,2)), heavy=Math.round(shAvg(m.combo,3));
-  /* 吸いごたえ = 重さ+香りベース(シーシャ用語) */
-  const kick = Math.round((shAvg(m.combo,3) + shAvg(m.combo,3))/2);
-  const star = (v) => "★".repeat(Math.max(1,Math.min(6,Math.round(v*6/10)))) + "☆".repeat(6-Math.max(1,Math.min(6,Math.round(v*6/10))));
+  const star = (v) => { const f=Math.max(1,Math.min(6,Math.round(v*6/10))); return "★".repeat(f)+"☆".repeat(6-f); };
   const osusume = m.sc>=90?6:(m.sc>=85?5:4);
   const gekioshi = m.ss>=3?6:(m.ss>=2?5:(m.ss>=1?4:3));
-  const sceneLine = sceneObj ? `こんなあなたにオススメ → 「${sceneObj.scene}」\n` : "";
+  /* 性格・文体をCFGから引っ張る */
+  let persona = "";
+  if (CFG.origProfile && CFG.origProfile.trim()) {
+    persona = "\n【この店長の文体・性格(必ず再現)】\n" + CFG.origProfile + "\n";
+  } else {
+    const toneMap = { "カジュアル":"フランクでフレンドリー", "丁寧":"丁寧で落ち着いた", "ノリ重視":"テンション高めでノリのいい", "クール":"クールで大人っぽい" };
+    persona = "\n口調: " + (toneMap[CFG.tone] || "自然体な") + "感じ。絵文字は" + (CFG.emoji||"少なめ") + "。\n";
+  }
+  /* 星評価ブロック(これは固定で末尾に付ける。AIには本文だけ書かせる) */
+  const starBlock =
+    (sceneObj ? "こんなあなたに "+star(8)+"\n" : "") +
+    "オススメ度 "+star(osusume*10/6)+"\n激推し度 "+star(gekioshi*10/6)+"\n" +
+    "甘さ "+star(sweet)+" / 酸味 "+star(sour)+"\n清涼感 "+star(cool)+" / 吸いごたえ "+star(heavy);
   const prompt =
-    `あなたは金沢・片町「噂のシーシャBar」の店長。おすすめミックスを紹介するX投稿を1本書く。\n` +
-    `ミックス名: ${shMixName(m.combo)}\n配合: ${haigou}\n` +
-    (sceneObj ? `今回の切り口(シチュエーション): 「${sceneObj.scene}」な気分の人に向けて書く\n` : "") +
-    `\n【投稿に必ず入れる要素】\n` +
-    `1行目: フック(${sceneObj?`「${sceneObj.scene}」に共感する一言から始める`:"目を引く一言"})\n` +
-    `・ミックス名と配合(フレーバー名は正式名称で正確に。略さない)\n` +
-    `・味の説明(甘さ・酸味・清涼感・煙の印象などをシーシャの言葉で。「飲みごたえ」は誤り、「吸いごたえ」「キック」「煙の濃さ」を使う)\n` +
-    `・下記の★評価をそのまま本文に含める:\n` +
-    (sceneObj?`　こんなあなたにオススメ ${star(8)}\n`:"") +
-    `　オススメ度 ${star(osusume*10/6)}\n　激推し度 ${star(gekioshi*10/6)}\n` +
-    `　甘さ ${star(sweet)} / 酸味 ${star(sour)} / 清涼感 ${star(cool)} / 吸いごたえ ${star(heavy)}\n` +
-    `\nルール: 来店したくなる締め。140〜200字程度(星評価ぶん長くてOK)。ハッシュタグ0〜2個。前置き不要・投稿本文のみ。${sc()}`;
-  const text = await callAI(prompt, false);
-  return (text && text.trim()) ? text.trim() : null;
+    `金沢・片町のシーシャ店の店長として、おすすめミックスを紹介する短いX投稿の「本文だけ」を書く。\n` +
+    persona +
+    (sceneObj ? `\nこの投稿の切り口:「${sceneObj.scene}」な気分・状況の人に語りかける。共感する一言から自然に始める。\n` : "") +
+    `\nミックス: ${shMixName(m.combo)}\n配合: ${haigou}\n味: 甘さ${sweet}/酸味${sour}/清涼${cool}/吸いごたえ${heavy}(10段階)\n` +
+    `\n書き方の注意(重要):\n` +
+    `- AIっぽい・広告っぽい文章にしない。店長が実際にXでつぶやくようなリアルなノリでOK\n` +
+    `- 「〜な夜に寄り添う」「登場」みたいなテンプレ広告表現は使わない\n` +
+    `- フレーバー名は正式名称で正確に(略さない)。配合(銘柄と比率)は本文に1行入れる\n` +
+    `- 「飲みごたえ」は誤り。シーシャなので「吸いごたえ」「煙」「キック」を使う\n` +
+    `- 100〜130字程度。ハッシュタグは付けても1個\n` +
+    `- 星評価は書かなくていい(こちらで後ろに付ける)\n` +
+    `本文のみ出力・前置き禁止。`;
+  /* Haikuで高速生成 */
+  const text = await callAI(prompt, false, "haiku");
+  if (!text || !text.trim()) return null;
+  return text.trim() + "\n\n" + starBlock;
 }
 
 
@@ -535,14 +546,14 @@ async function kvSet(key, value) {
 }
 
 /* ============ AI呼び出し(GAS中継) ============ */
-async function callAI(prompt, useSearch) {
+async function callAI(prompt, useSearch, model) {
   const { data } = await sb.auth.getSession();
   if (!data.session) throw new Error("ログインが切れた。リロードして。");
   const doFetch = async (p) => {
     const res = await fetch(GAS_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ auth: data.session.access_token, prompt: p, useSearch: !!useSearch }),
+      body: JSON.stringify({ auth: data.session.access_token, prompt: p, useSearch: !!useSearch, model: model || null }),
     });
     const j = await res.json();
     if (j.error) throw new Error(j.error);
@@ -1054,11 +1065,85 @@ BUILDERS.settings = (el) => {
     const genRow = document.createElement("div"); genRow.style.cssText="display:flex;gap:8px;margin-top:10px;align-items:center;flex-wrap:wrap";
     const genB = document.createElement("button"); genB.className="mini cyan"; genB.textContent="この客層で生成";
     genRow.appendChild(genB);
+    const editB = document.createElement("button"); editB.className="mini"; editB.textContent="📦 在庫を編集";
+    genRow.appendChild(editB);
     const DB = shishaDB();
     const nB = Object.keys(DB).length, nF = Object.values(DB).reduce((s,o)=>s+Object.keys(o).length,0);
     const inv = document.createElement("span"); inv.style.cssText="font-size:11px;color:var(--muted)"; inv.textContent = "在庫: "+nB+"ブランド / "+nF+"フレーバー";
     genRow.appendChild(inv);
     mixBox.appendChild(genRow);
+
+    /* 在庫編集パネル */
+    const editPanel = document.createElement("div"); editPanel.style.display = "none"; mixBox.appendChild(editPanel);
+    editB.onclick = () => {
+      if (editPanel.style.display === "none") { editPanel.style.display = "block"; editB.textContent = "📦 在庫編集を閉じる"; drawInventory(); }
+      else { editPanel.style.display = "none"; editB.textContent = "📦 在庫を編集"; }
+    };
+
+    function drawInventory() {
+      const db = shishaDB();
+      editPanel.innerHTML = "";
+      const note = document.createElement("p"); note.className="desc"; note.style.margin="8px 0";
+      note.textContent = "実際の在庫に合わせて編集。削除したフレーバーはミックス生成に使われなくなる。新規追加は数値を後で調整推奨。";
+      editPanel.appendChild(note);
+      /* デフォルトに戻すボタン */
+      const resetB = document.createElement("button"); resetB.className="mini"; resetB.style.marginBottom="8px";
+      resetB.textContent="初期在庫(97種)に戻す";
+      resetB.onclick = async () => {
+        if (!confirm("在庫をデフォルト97種に戻す?編集内容は消える。")) return;
+        CFG.mixDB = null; await save(); drawInventory(); drawMix();
+      };
+      editPanel.appendChild(resetB);
+
+      Object.keys(db).forEach((brand) => {
+        const bcard = document.createElement("div");
+        bcard.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px";
+        const bh = document.createElement("div"); bh.style.cssText="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px";
+        bh.innerHTML = '<span style="font-weight:700;font-size:13px;font-family:var(--mono)">'+esc(brand)+'</span>';
+        const delBrand = document.createElement("button"); delBrand.className="mini"; delBrand.style.cssText="padding:2px 8px;font-size:11px"; delBrand.textContent="ブランド削除";
+        delBrand.onclick = async () => {
+          if (!confirm(brand+" を丸ごと削除する?")) return;
+          const ndb = JSON.parse(JSON.stringify(shishaDB())); delete ndb[brand]; CFG.mixDB = ndb; await save(); drawInventory(); drawMix();
+        };
+        bh.appendChild(delBrand); bcard.appendChild(bh);
+        /* フレーバーチップ */
+        const chips = document.createElement("div"); chips.style.cssText="display:flex;flex-wrap:wrap;gap:5px";
+        Object.keys(db[brand]).forEach((fl) => {
+          const chip = document.createElement("span");
+          chip.style.cssText = "display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:14px;padding:3px 6px 3px 10px;font-size:12px";
+          chip.textContent = fl;
+          const x = document.createElement("button"); x.textContent="×"; x.style.cssText="border:none;background:none;color:var(--bad);cursor:pointer;font-size:14px;padding:0 2px;line-height:1";
+          x.onclick = async () => {
+            const ndb = JSON.parse(JSON.stringify(shishaDB())); delete ndb[brand][fl];
+            if (Object.keys(ndb[brand]).length===0) delete ndb[brand];
+            CFG.mixDB = ndb; await save(); drawInventory(); drawMix();
+          };
+          chip.appendChild(x); chips.appendChild(chip);
+        });
+        bcard.appendChild(chips);
+        /* フレーバー追加 */
+        const addRow = document.createElement("div"); addRow.style.cssText="display:flex;gap:5px;margin-top:6px";
+        const addIn = document.createElement("input"); addIn.placeholder="フレーバー名を追加"; addIn.style.cssText="font-size:12px;padding:5px 8px";
+        const addBtn = document.createElement("button"); addBtn.className="mini cyan"; addBtn.style.cssText="padding:4px 10px;font-size:12px;flex:0 0 auto"; addBtn.textContent="追加";
+        addBtn.onclick = async () => {
+          const name = addIn.value.trim(); if (!name) return;
+          const ndb = JSON.parse(JSON.stringify(shishaDB()));
+          ndb[brand][name] = [5,2,0,3,8,5]; /* 仕様書のデフォルト数値 */
+          CFG.mixDB = ndb; await save(); drawInventory(); drawMix();
+        };
+        addRow.appendChild(addIn); addRow.appendChild(addBtn); bcard.appendChild(addRow);
+        editPanel.appendChild(bcard);
+      });
+      /* ブランド追加 */
+      const newBrandRow = document.createElement("div"); newBrandRow.style.cssText="display:flex;gap:5px;margin-top:8px";
+      const nbIn = document.createElement("input"); nbIn.placeholder="新ブランド名"; nbIn.style.cssText="font-size:12px;padding:6px 8px";
+      const nbBtn = document.createElement("button"); nbBtn.className="mini cyan"; nbBtn.style.cssText="flex:0 0 auto"; nbBtn.textContent="ブランド追加";
+      nbBtn.onclick = async () => {
+        const b = nbIn.value.trim(); if (!b) return;
+        const ndb = JSON.parse(JSON.stringify(shishaDB())); if (!ndb[b]) ndb[b] = {}; CFG.mixDB = ndb; await save(); drawInventory(); drawMix();
+      };
+      newBrandRow.appendChild(nbIn); newBrandRow.appendChild(nbBtn); editPanel.appendChild(newBrandRow);
+    }
 
     const mixOut = document.createElement("div"); mixBox.appendChild(mixOut);
     genB.onclick = () => {
