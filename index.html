@@ -819,7 +819,10 @@ async function enter() {
 
 async function loadClients() {
   const { data } = await sb.from("clients").select("*").order("created_at");
-  S.clients = data || [];
+  /* screen_nameで重複排除(念のため・描画2重防止) */
+  const seen = {}; const uniq = [];
+  (data || []).forEach(c => { if (!seen[c.screen_name]) { seen[c.screen_name] = 1; uniq.push(c); } });
+  S.clients = uniq;
 }
 
 /* ============ ヘッダーUI ============ */
@@ -3446,10 +3449,10 @@ BUILDERS.clients = (el) => {
   head(el, "クライアント管理", "連携済みアカウントの一覧。新規追加は認証リンクを相手に送って「許可」を押してもらうだけ。キーの受け渡し不要。",
     ["「認証リンクをコピー」を押す","LINE等でクライアントに送る","相手が許可したら一覧に自動で出る(更新ボタン)"]);
   const listEl = document.createElement("div"); el.appendChild(listEl);
+  let drawGen = 0;
   async function draw() {
+    const myGen = ++drawGen;
     await loadClients();
-    listEl.innerHTML = "";
-    if (!S.clients.length) listEl.innerHTML = '<div class="muted">まだ登録なし。</div>';
     /* オート設定(全種類)をまとめて取得: {screen_name: {kind: {enabled,count}}} */
     let autoMap = {};
     try {
@@ -3535,6 +3538,8 @@ BUILDERS.clients = (el) => {
       return wrap;
     }
 
+    const frag = document.createElement("div");
+    if (!S.clients.length) frag.innerHTML = '<div class="muted">まだ登録なし。</div>';
     S.clients.forEach((c) => {
       const d = document.createElement("div"); d.className = "row";
       d.innerHTML = '<div class="meta"><span class="pill acct">@'+esc(c.screen_name)+'</span><span class="pill st-'+c.status+'">'+(c.status==="active"?"連携中":"連携解除")+'</span></div><span class="muted">登録: '+new Date(c.created_at).toLocaleDateString("ja-JP")+"</span>";
@@ -3550,8 +3555,12 @@ BUILDERS.clients = (el) => {
       if (/(噂|ウワサ|うわさ|uwasa).{0,4}(シーシャ|sisha|shisha)/i.test(biz)) {
         d.appendChild(autoFeatureRow(c.screen_name, "flavor", "💨 オートおすすめフレーバー", "毎日、おすすめミックスをバラバラの時間に自動投稿", "linear-gradient(135deg,#22c55e,#06b6d4)"));
       }
-      listEl.appendChild(d);
+      frag.appendChild(d);
     });
+    /* 自分より後に開始されたdrawがあれば、この結果は捨てる(多重実行で重複しないように) */
+    if (myGen !== drawGen) return;
+    listEl.innerHTML = "";
+    listEl.appendChild(frag);
   }
   draw();
   const cp = document.createElement("button"); cp.className = "btn btn-ghost"; cp.textContent = "認証リンクをコピー(新規クライアント用)"; el.appendChild(cp);
