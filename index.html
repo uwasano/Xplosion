@@ -2500,6 +2500,11 @@ BUILDERS.calendar = (el) => {
       const { error } = await saveScheduledPost(rec);
       if (error) { send.disabled=false; alert(error.message); return; }
       send.textContent = thread ? "送った✓(🧵URL別)" : "送った✓";
+      /* 投稿した題材を記録(次回以降の被り防止)。本文先頭を題材として残す */
+      try {
+        const topic = mainText.replace(/\n+/g," ").replace(/https?:\/\/\S+/g,"").trim().slice(0,40);
+        if (topic) await gasFetch_("logTopic", { screen_name: acct.value, kind: "manual", topic });
+      } catch(e) {}
     };
     acts.appendChild(send);
     host.appendChild(wrap);
@@ -2564,6 +2569,11 @@ BUILDERS.calendar = (el) => {
       } catch(e) {}
     }
     if (!posts.length) { trOut.innerHTML += '<div class="muted" style="padding:8px">日本語ポストが取れんかった。ユーザー名を確認して。</div>'; btnMirror.disabled=false; btnMirror.textContent="🪞 バズってる投稿をマネする"; return; }
+    /* 過去にこのアカで投稿した題材を取得(被り防止) */
+    let pastTopics = [];
+    if (acct.value) {
+      try { const pt = await gasFetch_("pastTopics", { screen_name: acct.value }); pastTopics = (pt && pt.topics) ? pt.topics : []; } catch(e) {}
+    }
     posts.sort((a,b)=>(b.likes||0)-(a.likes||0));
     trOut.innerHTML = '<div class="desc" style="margin:6px 0">競合の伸びてるポスト('+list.map(n=>"@"+n).join(" ")+')。気になる型を選んで、自分の事業版を作る:</div>';
     posts.slice(0,8).forEach((p) => {
@@ -2571,7 +2581,7 @@ BUILDERS.calendar = (el) => {
       card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px";
       card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(p._author)+' · ❤'+(p.likes||0)+(p.createdAt?' · '+timeAgo(p.createdAt):'')+'</div>'
         + '<div style="font-size:13px;line-height:1.5;margin-bottom:4px;white-space:pre-wrap">'+esc(p.text.slice(0,140))+(p.text.length>140?'…':'')+'</div>';
-      buzzTransformBtn(card, "この型でバズ投稿(3案)", (shuffle) => buzzPromptForPost(p.text, shuffle));
+      buzzTransformBtn(card, "この型でバズ投稿(3案)", (shuffle, hist) => buzzPromptForPost(p.text, shuffle, hist), false, null, pastTopics);
       trOut.appendChild(card);
     });
     btnMirror.disabled = false; btnMirror.textContent = "🪞 バズってる投稿をマネする";
@@ -2790,9 +2800,13 @@ BUILDERS.calendar = (el) => {
   }
 
   /* 人気ポスト → その型を真似た文体そのままのバズ投稿3案プロンプト */
-  function buzzPromptForPost(srcText, shuffle) {
+  function buzzPromptForPost(srcText, shuffle, history) {
+    const avoid = (history && history.length)
+      ? `\n【このアカウントが過去に投稿した題材(これらと"題材・ネタ"が被らないようにする。同じ話を繰り返さない)】\n` + history.slice(-30).map((h,i)=>`${i+1}. ${h.replace(/\n/g," ").slice(0,40)}`).join("\n") + "\n※元のバズ投稿の話題が、上の過去題材と丸かぶりなら、別の角度・側面から書くか、扱い方を変えて重複感を避ける。\n"
+      : "";
     return `次のバズってる投稿を、自分の言葉・文体で書き直す(リライトする)。【3案】作る。\n`
       + `\n【元のバズ投稿】\n「${srcText.slice(0,220)}」\n`
+      + avoid
       + personaClause()
       + `\n【やること】\n`
       + `- 元の投稿が言っている内容・話題・主張をそのまま活かして、表現と言い回しだけ自分の文体に変える\n`
@@ -2808,24 +2822,27 @@ BUILDERS.calendar = (el) => {
       + `- 元の投稿にURLがあれば、そのURLは残してよい(ただし「リンク見てね」的な誘導文は付けない)\n`
       + `- 炎上・下品はNG。各案140字以内\n`
       + (shuffle ? `- 前回とは違う言い回しで新鮮な3案にする(内容・話題は元のまま)\n` : "")
+      + `- 3案は互いに書き出し・言い回し・締め方を変える。同じパターンを3つ並べない\n`
       + `\n出力形式(厳守): 3案を「===」だけの行で区切る。各案は本文のみ。前置き・案番号・説明は書かない。`;
   }
 
   /* バズ投稿3案を出すボタン(シャッフル付き)。promptFn(shuffle)がプロンプトを返す。
      useSearch=true でWeb検索して内容確認(トレンド用)。 */
-  function buzzTransformBtn(card, label, promptFn, useSearch, trendWord) {
+  function buzzTransformBtn(card, label, promptFn, useSearch, trendWord, initialHistory) {
     const btn = document.createElement("button"); btn.className = "mini cyan"; btn.textContent = label;
     const out = document.createElement("div");
+    let history = (initialHistory && initialHistory.length) ? initialHistory.slice(-60) : [];
     const run = async (shuffle) => {
       btn.disabled = true; btn.textContent = shuffle ? "作り直し中…" : (useSearch ? "ニュースと照合中…" : "生成中…"); out.innerHTML = "";
       try {
         if (!(useSearch && trendWord)) {
-          /* トレンド以外(型まね等)は従来通り */
-          const r0 = await callAI(promptFn(shuffle), false, "haiku", false);
+          /* トレンド以外(型まね等)は従来通り。過去候補を渡して被らせない */
+          const r0 = await callAI(promptFn(shuffle, history), false, "haiku", false);
           const text0 = (typeof r0 === "string") ? r0 : r0.text;
           let cands0 = text0.split(/\n?===+\n?/).map(s=>s.trim())
             .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
             .filter(s=>s.length>5 && !/^(承知|了解|分かりました)/i.test(s));
+          history = history.concat(cands0).slice(-12); /* 直近12件を記憶 */
           renderCands(cands0, true);
           btn.disabled=false; btn.textContent=label; return;
         }
