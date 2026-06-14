@@ -2230,6 +2230,18 @@ BUILDERS.calendar = (el) => {
     };
     const upd = () => { const n = xLen(box.value); cnt.textContent = n+"字"+(n>140?" ⚠140字超。短くするのがおすすめ(URLは23字換算)":" (URLは23字換算)"); };
     box.oninput = upd; upd(); wrap.appendChild(cnt);
+    /* URLが含まれる時だけ「URLをツリー2つ目で投稿」オプションを出す */
+    let urlToThread = false;
+    const hasUrl = () => /https?:\/\//.test(box.value);
+    const urlOptWrap = document.createElement("label");
+    urlOptWrap.style.cssText = "display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin:2px 0 6px;cursor:pointer";
+    const urlChk = document.createElement("input"); urlChk.type = "checkbox";
+    urlChk.onchange = () => { urlToThread = urlChk.checked; };
+    urlOptWrap.appendChild(urlChk);
+    urlOptWrap.appendChild(document.createTextNode("URLをツリー2つ目(リプ)で投稿する(本文を140字フル使える)"));
+    const refreshUrlOpt = () => { urlOptWrap.style.display = hasUrl() ? "flex" : "none"; };
+    refreshUrlOpt(); box.addEventListener("input", refreshUrlOpt);
+    wrap.appendChild(urlOptWrap);
     const acts = document.createElement("div"); acts.className="acts"; wrap.appendChild(acts);
     const send = document.createElement("button"); send.className="mini primary"; send.textContent="これを予約管理に送る";
     send.onclick = async () => {
@@ -2238,9 +2250,21 @@ BUILDERS.calendar = (el) => {
       let when;
       if (trDate.value) { const [dp,tp]=trDate.value.split("T"); const [y,mo,da]=dp.split("-").map(Number); const [h,mi]=tp.split(":").map(Number); when=new Date(y,mo-1,da,h,mi,0,0); }
       else { when = new Date(Date.now()+10*60000); }
-      const { error } = await saveScheduledPost({ screen_name: acct.value, text: box.value.trim(), scheduled_at: when.toISOString(), status: "draft" });
+      let mainText = box.value.trim();
+      let thread = null;
+      if (urlToThread && hasUrl()) {
+        const m = mainText.match(/(https?:\/\/\S+)\s*$/);
+        if (m) {
+          const url = m[1];
+          mainText = mainText.replace(/\n*\s*https?:\/\/\S+\s*$/, "").trim();
+          thread = [mainText, url]; /* 1本目=本文, 2本目=URL */
+        }
+      }
+      const rec = { screen_name: acct.value, text: mainText, scheduled_at: when.toISOString(), status: "draft" };
+      if (thread) rec.thread = thread;
+      const { error } = await saveScheduledPost(rec);
       if (error) { send.disabled=false; alert(error.message); return; }
-      send.textContent = "送った✓";
+      send.textContent = thread ? "送った✓(🧵URL別)" : "送った✓";
     };
     acts.appendChild(send);
     host.appendChild(wrap);
@@ -3426,111 +3450,106 @@ BUILDERS.clients = (el) => {
     await loadClients();
     listEl.innerHTML = "";
     if (!S.clients.length) listEl.innerHTML = '<div class="muted">まだ登録なし。</div>';
-    /* オート設定をまとめて取得 */
+    /* オート設定(全種類)をまとめて取得: {screen_name: {kind: {enabled,count}}} */
     let autoMap = {};
     try {
-      const { data } = await sb.from("auto_trend_config").select("screen_name,enabled");
-      (data||[]).forEach(r => autoMap[r.screen_name] = r.enabled);
+      const { data } = await sb.from("auto_config").select("screen_name,kind,enabled,count");
+      (data||[]).forEach(r => { (autoMap[r.screen_name] = autoMap[r.screen_name] || {})[r.kind] = r; });
     } catch(e) {}
-    /* オート予想設定をまとめて取得 */
-    let yosouMap = {};
-    try {
-      const { data } = await sb.from("auto_yosou_config").select("screen_name,enabled,count");
-      (data||[]).forEach(r => yosouMap[r.screen_name] = r);
-    } catch(e) {}
-    /* 各アカウントの業種(競艇判定用)を生成設定から取得 */
+    /* 各アカウントの業種を取得(競艇/シーシャ判定用) */
     let bizMap = {};
     for (const c of S.clients) {
       try {
         const cfg = await kvGet("gen_config:" + c.screen_name, null);
-        bizMap[c.screen_name] = (cfg && cfg.bizType) ? cfg.bizType : "";
+        bizMap[c.screen_name] = (cfg ? ((cfg.bizType||"") + " " + (cfg.bizName||"")) : "");
       } catch(e) { bizMap[c.screen_name] = ""; }
     }
+
+    /* 1つのオート機能の行(トグル+3/5/10)を作る共通ヘルパー */
+    function autoFeatureRow(screen, kind, title, sub, accentOn) {
+      const cur = (autoMap[screen] && autoMap[screen][kind]) ? autoMap[screen][kind] : { enabled: false, count: 3 };
+      let curCount = cur.count || 3;
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
+      const top = document.createElement("div");
+      top.style.cssText = "display:flex;align-items:center;justify-content:space-between";
+      const lbl = document.createElement("div");
+      lbl.style.cssText = "font-size:12.5px;line-height:1.4";
+      lbl.innerHTML = title + '<br><span class="muted" style="font-size:11px">' + sub + '</span>';
+      const sw = document.createElement("button");
+      const paint = (on) => {
+        sw.textContent = on ? "ON" : "OFF";
+        sw.style.cssText = "min-width:64px;padding:8px 14px;border-radius:20px;border:none;font-weight:800;font-size:13px;cursor:pointer;" +
+          (on ? "background:"+accentOn+";color:#fff" : "background:rgba(255,255,255,.1);color:#94a3b8");
+      };
+      paint(!!cur.enabled);
+      top.appendChild(lbl); top.appendChild(sw); wrap.appendChild(top);
+      /* 3/5/10 */
+      const cntRow = document.createElement("div");
+      cntRow.style.cssText = "display:flex;gap:6px;margin-top:8px";
+      const cl = document.createElement("span"); cl.className="desc"; cl.style.cssText="align-self:center;margin-right:4px"; cl.textContent="1日の回数:";
+      cntRow.appendChild(cl);
+      const save = async (enabled, count) => {
+        const { error } = await sb.from("auto_config").upsert({ screen_name: screen, kind, enabled, count, updated_at: new Date().toISOString() }, { onConflict: "screen_name,kind" });
+        if (error) { alert("保存失敗: "+error.message); return false; }
+        return true;
+      };
+      const btns = {};
+      [3,5,10].forEach((n) => {
+        const b = document.createElement("button");
+        const pc = () => { b.style.cssText = "flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);font-weight:700;font-size:12.5px;cursor:pointer;" + (curCount===n ? "background:rgba(0,229,255,.18);color:var(--accent2);border-color:var(--accent2)" : "background:transparent;color:var(--muted)"); };
+        b.textContent = n+"回"; pc(); btns[n] = pc;
+        b.onclick = async () => { curCount = n; Object.values(btns).forEach(f=>f()); await save(sw.textContent==="ON", n); };
+        cntRow.appendChild(b);
+      });
+      wrap.appendChild(cntRow);
+      sw.onclick = async () => { const next = sw.textContent==="OFF"; sw.disabled=true; const ok = await save(next, curCount); sw.disabled=false; if (ok) paint(next); };
+      /* サンプル確認ボタン */
+      const sampleRow = document.createElement("div"); sampleRow.style.cssText = "margin-top:6px";
+      const sampleBtn = document.createElement("button"); sampleBtn.className = "mini";
+      sampleBtn.textContent = "👀 投稿内容のサンプルを見る";
+      sampleBtn.style.cssText = "width:100%;padding:7px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--accent2);font-size:12.5px;font-weight:700;cursor:pointer";
+      const sampleOut = document.createElement("div");
+      sampleBtn.onclick = async () => {
+        sampleBtn.disabled = true; sampleBtn.textContent = "生成中…"; sampleOut.innerHTML = "";
+        try {
+          const { data: sess } = await sb.auth.getSession();
+          if (!sess.session) throw new Error("ログインが切れた。リロードして。");
+          const res = await fetch(GAS_URL, {
+            method: "POST", headers: { "Content-Type": "text/plain" },
+            body: JSON.stringify({ auth: sess.session.access_token, action: "autoSample", screen_name: screen, kind }),
+          });
+          const j = await res.json();
+          const box = document.createElement("div");
+          box.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:6px;font-size:13px;line-height:1.6;white-space:pre-wrap";
+          box.textContent = (j && j.text) ? j.text : "(生成できず)";
+          sampleOut.appendChild(box);
+          const note = document.createElement("p"); note.className="desc"; note.style.margin="4px 0 0";
+          note.textContent = "※これはサンプル。実際のオート投稿はこの調子で毎回違う内容が作られる。表現がおかしければ生成設定の文体・性格を調整して。";
+          sampleOut.appendChild(note);
+        } catch(e) { sampleOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+        sampleBtn.disabled = false; sampleBtn.textContent = "👀 投稿内容のサンプルを見る";
+      };
+      sampleRow.appendChild(sampleBtn); sampleRow.appendChild(sampleOut);
+      wrap.appendChild(sampleRow);
+      return wrap;
+    }
+
     S.clients.forEach((c) => {
       const d = document.createElement("div"); d.className = "row";
       d.innerHTML = '<div class="meta"><span class="pill acct">@'+esc(c.screen_name)+'</span><span class="pill st-'+c.status+'">'+(c.status==="active"?"連携中":"連携解除")+'</span></div><span class="muted">登録: '+new Date(c.created_at).toLocaleDateString("ja-JP")+"</span>";
-      /* オートトレンド投稿トグル */
-      const autoRow = document.createElement("div");
-      autoRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
-      const lbl = document.createElement("div");
-      lbl.style.cssText = "font-size:12.5px;line-height:1.4";
-      lbl.innerHTML = '🔥 オートトレンド投稿<br><span class="muted" style="font-size:11px">毎日12時に自動でトレンドのバズ投稿を3本(朝/昼/夜)</span>';
-      const sw = document.createElement("button");
-      const isOn = !!autoMap[c.screen_name];
-      const paintSw = (on) => {
-        sw.textContent = on ? "ON" : "OFF";
-        sw.style.cssText = "min-width:64px;padding:8px 14px;border-radius:20px;border:none;font-weight:800;font-size:13px;cursor:pointer;" +
-          (on ? "background:linear-gradient(135deg,#ff2d95,#a855f7);color:#fff" : "background:rgba(255,255,255,.1);color:#94a3b8");
-      };
-      paintSw(isOn);
-      sw.onclick = async () => {
-        const next = sw.textContent === "OFF";
-        sw.disabled = true;
-        const { error } = await sb.from("auto_trend_config").upsert({ screen_name: c.screen_name, enabled: next, updated_at: new Date().toISOString() });
-        sw.disabled = false;
-        if (error) { alert("保存失敗: "+error.message); return; }
-        paintSw(next);
-      };
-      autoRow.appendChild(lbl); autoRow.appendChild(sw);
-      d.appendChild(autoRow);
-
-      /* 競艇業種のアカウントだけ: オート無料予想 */
-      if (/競艇|ボートレース|ボート/.test(bizMap[c.screen_name] || "")) {
-        const yCfg = yosouMap[c.screen_name] || { enabled: false, count: 3 };
-        const yRow = document.createElement("div");
-        yRow.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
-        const yTop = document.createElement("div");
-        yTop.style.cssText = "display:flex;align-items:center;justify-content:space-between";
-        const yLbl = document.createElement("div");
-        yLbl.style.cssText = "font-size:12.5px;line-height:1.4";
-        yLbl.innerHTML = '🚤 オート無料予想<br><span class="muted" style="font-size:11px">毎日、締切が近いレースを自動で予想して締切15分前に投稿</span>';
-        const ySw = document.createElement("button");
-        const paintY = (on) => {
-          ySw.textContent = on ? "ON" : "OFF";
-          ySw.style.cssText = "min-width:64px;padding:8px 14px;border-radius:20px;border:none;font-weight:800;font-size:13px;cursor:pointer;" +
-            (on ? "background:linear-gradient(135deg,#00e5ff,#a855f7);color:#06121a" : "background:rgba(255,255,255,.1);color:#94a3b8");
-        };
-        paintY(!!yCfg.enabled);
-        yTop.appendChild(yLbl); yTop.appendChild(ySw);
-        yRow.appendChild(yTop);
-        /* 本数選択(3/5/10) */
-        const cntRow = document.createElement("div");
-        cntRow.style.cssText = "display:flex;gap:6px;margin-top:8px";
-        const cntLbl = document.createElement("span"); cntLbl.className="desc"; cntLbl.style.cssText="align-self:center;margin-right:4px"; cntLbl.textContent="1日の本数:";
-        cntRow.appendChild(cntLbl);
-        let curCount = yCfg.count || 3;
-        const cntBtns = {};
-        const saveYosou = async (enabled, count) => {
-          const { error } = await sb.from("auto_yosou_config").upsert({ screen_name: c.screen_name, enabled, count, updated_at: new Date().toISOString() });
-          if (error) { alert("保存失敗: "+error.message); return false; }
-          return true;
-        };
-        [3,5,10].forEach((n) => {
-          const b = document.createElement("button"); b.className="mini"; b.textContent = n+"予想";
-          const paintCnt = () => {
-            b.style.cssText = "flex:1;padding:7px;border-radius:8px;border:1px solid var(--border);font-weight:700;font-size:12.5px;cursor:pointer;" +
-              (curCount===n ? "background:rgba(0,229,255,.18);color:var(--accent2);border-color:var(--accent2)" : "background:transparent;color:var(--muted)");
-          };
-          paintCnt();
-          cntBtns[n] = { b, paintCnt };
-          b.onclick = async () => {
-            curCount = n;
-            Object.values(cntBtns).forEach(x=>x.paintCnt());
-            await saveYosou(ySw.textContent==="ON", n);
-          };
-          cntRow.appendChild(b);
-        });
-        yRow.appendChild(cntRow);
-        ySw.onclick = async () => {
-          const next = ySw.textContent === "OFF";
-          ySw.disabled = true;
-          const ok = await saveYosou(next, curCount);
-          ySw.disabled = false;
-          if (ok) paintY(next);
-        };
-        d.appendChild(yRow);
+      const biz = bizMap[c.screen_name] || "";
+      /* 全アカウント共通: トレンド・通常 */
+      d.appendChild(autoFeatureRow(c.screen_name, "trend", "🔥 オートトレンド投稿", "毎日、今のトレンドからバズ投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#ff2d95,#a855f7)"));
+      d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
+      /* 競艇業種のみ: 予想 */
+      if (/競艇|ボートレース|ボート/.test(biz)) {
+        d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想", "毎日、締切が近いレースを自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
       }
-
+      /* シーシャ業種のみ: フレーバー(店名が「噂のシーシャBar」系の時だけ。ミックスDBが専用のため) */
+      if (/(噂|ウワサ|うわさ|uwasa).{0,4}(シーシャ|sisha|shisha)/i.test(biz)) {
+        d.appendChild(autoFeatureRow(c.screen_name, "flavor", "💨 オートおすすめフレーバー", "毎日、おすすめミックスをバラバラの時間に自動投稿", "linear-gradient(135deg,#22c55e,#06b6d4)"));
+      }
       listEl.appendChild(d);
     });
   }
