@@ -169,8 +169,36 @@
     <div class="hud" id="content"></div>
     <button class="btn btn-ghost" id="logoutBtn">ログアウト</button>
   </div>
+  <div id="miniModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:24px">
+    <div style="max-width:380px;width:100%;background:linear-gradient(160deg,#1a1530,#1f1438);border:1px solid rgba(255,45,149,.4);border-radius:18px;padding:24px;box-shadow:0 0 40px rgba(255,45,149,.3)">
+      <div id="miniModalIcon" style="font-size:34px;text-align:center;margin-bottom:8px">⚠️</div>
+      <div id="miniModalTitle" style="font-weight:800;font-size:17px;text-align:center;margin-bottom:8px;color:#fff"></div>
+      <div id="miniModalBody" style="font-size:14px;line-height:1.6;text-align:center;color:#cbd5e1;margin-bottom:18px"></div>
+      <div id="miniModalActs" style="display:flex;gap:10px"></div>
+    </div>
+  </div>
 </div>
 
+<script>
+/* ミニモーダル: title, body, [{label, primary, fn}] のボタン群を出す */
+function showMiniModal(title, body, actions, icon) {
+  const m = document.getElementById("miniModal");
+  document.getElementById("miniModalIcon").textContent = icon || "⚠️";
+  document.getElementById("miniModalTitle").textContent = title;
+  document.getElementById("miniModalBody").textContent = body;
+  const acts = document.getElementById("miniModalActs");
+  acts.innerHTML = "";
+  (actions || [{ label: "OK", primary: true }]).forEach((a) => {
+    const b = document.createElement("button");
+    b.textContent = a.label;
+    b.style.cssText = "flex:1;padding:12px;border-radius:12px;border:none;font-weight:800;font-size:14px;cursor:pointer;" +
+      (a.primary ? "background:linear-gradient(135deg,#ff2d95,#a855f7);color:#fff" : "background:rgba(255,255,255,.08);color:#cbd5e1;border:1px solid rgba(255,255,255,.15)");
+    b.onclick = () => { m.style.display = "none"; if (a.fn) a.fn(); };
+    acts.appendChild(b);
+  });
+  m.style.display = "flex";
+}
+</script>
 <script>
 /* ============ CONFIG(ここを書き換える) ============ */
 const SUPABASE_URL = "https://hwoltvzmsznprsbyrbaj.supabase.co";
@@ -2157,6 +2185,86 @@ BUILDERS.calendar = (el) => {
   const addOut = document.createElement("div"); addFld.appendChild(addOut);
   el.appendChild(addFld);
 
+  /* === 🔥 トレンド投稿(Yahoo!リアルタイム検索の今のトレンドを業種に絡めて生成・Haiku) === */
+  const trFld = document.createElement("div");
+  trFld.style.cssText = "margin-top:16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px";
+  trFld.innerHTML = '<div style="font-size:10.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin-bottom:6px">▸ 🔥 トレンド投稿</div>'
+    + '<p class="desc" style="margin:0 0 10px">今Xで伸びてる話題から、自分の業種に絡められそうなものだけAIが選んで投稿を作る(絡められなければ無理に作らない)。</p>';
+  const trBtn = document.createElement("button"); trBtn.className = "mini cyan"; trBtn.textContent = "🔥 今のトレンドで作る";
+  trFld.appendChild(trBtn);
+  const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
+  trFld.appendChild(trDate);
+  const trOut = document.createElement("div"); trFld.appendChild(trOut);
+  el.appendChild(trFld);
+
+  trBtn.onclick = async () => {
+    trBtn.disabled = true; trBtn.textContent = "トレンド取得中…";
+    trOut.innerHTML = "";
+    if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
+    try {
+      /* GAS経由でYahoo!リアルタイム検索のトレンドを取得 */
+      const { data: sess } = await sb.auth.getSession();
+      if (!sess.session) throw new Error("ログインが切れた。リロードして。");
+      const res = await fetch(GAS_URL, {
+        method: "POST", headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ auth: sess.session.access_token, action: "trends" }),
+      });
+      const j = await res.json();
+      const trends = (j && j.trends) ? j.trends : [];
+      if (!trends.length) { trOut.innerHTML = '<div class="err">トレンドが取得できんかった。少し待って再挑戦して。</div>'; trBtn.disabled=false; trBtn.textContent="🔥 今のトレンドで作る"; return; }
+      trBtn.textContent = "投稿を生成中…";
+      /* AIに、業種に絡められるトレンドを選ばせて投稿を作らせる(Haiku) */
+      const bizWord = (CFG.bizType && CFG.bizType.trim()) ? CFG.bizType.trim() : "この事業";
+      const prompt =
+        `あなたは「${bizWord}」のXアカウント運用者。今Xで伸びてるトレンドワード一覧から、自分の業種に"自然に絡められるもの"を選んで、トレンド便乗のX投稿を1本作る。\n\n` +
+        `トレンド一覧:\n${trends.slice(0,25).map((t,i)=>(i+1)+". "+t).join("\n")}\n\n` +
+        `ルール:\n` +
+        `- 自分の業種に無理なく絡められるトレンドだけ選ぶ。1つでもあれば使う\n` +
+        `- どれも絡めるのが不自然なら、出力の冒頭に「SKIP」とだけ書く(無理に作らない)\n` +
+        `- 絡める場合: そのトレンドに便乗しつつ、最後は自分の業種・店に自然に着地させる\n` +
+        `- 炎上狙いはしない。便乗してても下品・不謹慎にしない\n` +
+        `- 140字以内。前置き不要・投稿本文のみ\n` +
+        `- 選んだトレンドが分かるよう、本文の最後の行に [使用:〇〇] と書く(これは後で消す)`;
+      let text = await callAI(prompt, false, "haiku");
+      /* SKIP判定 */
+      if (/^\s*SKIP/i.test(text)) {
+        trOut.innerHTML = '<div class="muted" style="padding:10px">今のトレンドには、この業種に自然に絡められそうな話題がなかった。時間を置くとトレンドは変わるので、また試して。</div>';
+        trBtn.disabled=false; trBtn.textContent="🔥 今のトレンドで作る"; return;
+      }
+      /* [使用:〇〇] を抜き出して本文から除去 */
+      let usedTrend = "";
+      const um = text.match(/\[使用:([^\]]+)\]/);
+      if (um) { usedTrend = um[1].trim(); text = text.replace(/\[使用:[^\]]+\]/g, "").trim(); }
+      /* 表示(編集可) */
+      trOut.innerHTML = "";
+      if (usedTrend) { const tag = document.createElement("div"); tag.style.cssText="font-size:11.5px;color:var(--accent);margin:8px 0 4px"; tag.textContent="🔥 便乗トレンド: "+usedTrend; trOut.appendChild(tag); }
+      const box = document.createElement("textarea"); box.rows = 5; box.value = text;
+      box.style.cssText = "width:100%;font-size:13.5px;line-height:1.7";
+      trOut.appendChild(box);
+      const cnt = document.createElement("p"); cnt.className="desc"; cnt.style.margin="4px 0 8px";
+      const upd = () => { cnt.textContent = box.value.length+"字"+(box.value.length>140?" ⚠140字超(送信時に自動スレッド分割)":""); };
+      box.oninput = upd; upd(); trOut.appendChild(cnt);
+      const acts = document.createElement("div"); acts.className="acts"; trOut.appendChild(acts);
+      const re = document.createElement("button"); re.className="mini"; re.textContent="🔀 作り直し";
+      re.onclick = () => { trBtn.click(); };
+      acts.appendChild(re);
+      const send = document.createElement("button"); send.className="mini primary"; send.textContent="予約管理に送る";
+      send.onclick = async () => {
+        if (!acct.value) { trOut.innerHTML += '<div class="err">クライアント未登録</div>'; return; }
+        send.disabled = true;
+        /* 投稿時刻: 指定があればそれ、なければ今から10分後 */
+        let when;
+        if (trDate.value) { const [dp,tp]=trDate.value.split("T"); const [y,mo,da]=dp.split("-").map(Number); const [h,mi]=tp.split(":").map(Number); when=new Date(y,mo-1,da,h,mi,0,0); }
+        else { when = new Date(Date.now()+10*60000); }
+        const { error } = await saveScheduledPost({ screen_name: acct.value, text: box.value.trim(), scheduled_at: when.toISOString(), status: "draft" });
+        if (error) { send.disabled=false; trOut.innerHTML += '<div class="err">'+error.message+'</div>'; return; }
+        send.textContent = "送った✓";
+      };
+      acts.appendChild(send);
+    } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
+    trBtn.disabled = false; trBtn.textContent = "🔥 今のトレンドで作る";
+  };
+
   addBtn.onclick = async () => {
     if (!addDay.value) { return; }
     addBtn.disabled = true; addBtn.textContent = "生成中…";
@@ -2965,7 +3073,9 @@ BUILDERS.schedule = (el) => {
   function postRow(p, actions) {
     const d = document.createElement("div"); d.className = "row";
     const threadCount = (p.thread && p.thread.length) ? p.thread.length : 0;
+    const isPast = p.status === "draft" && new Date(p.scheduled_at).getTime() <= Date.now();
     d.innerHTML = '<div class="meta"><span class="pill time">'+hhmm(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span>" +
+      (isPast?'<span class="pill" style="background:rgba(239,68,68,.18);color:#f87171;border:1px solid rgba(239,68,68,.4)">⏰ 時間切れ</span>':"") +
       (p.media_url?'<span class="pill genre">🖼 画像</span>':"") +
       (threadCount?'<span class="pill genre">🧵 '+(threadCount+1)+'連投</span>':"") + "</div>" +
       "<pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
@@ -3027,6 +3137,23 @@ BUILDERS.schedule = (el) => {
       const bulkRow = document.createElement("div"); bulkRow.className = "acts";
       const goAll = document.createElement("button"); goAll.className = "mini primary"; goAll.textContent = "全部GO(" + drafts.length + "件を一括確定)";
       goAll.onclick = async () => {
+        const now = Date.now();
+        const past = drafts.filter((p) => new Date(p.scheduled_at).getTime() <= now);
+        const future = drafts.filter((p) => new Date(p.scheduled_at).getTime() > now);
+        if (past.length && !future.length) {
+          showMiniModal("投稿時間を超えています", past.length + "件すべて投稿予定時刻を過ぎています。時刻を編集してからGOしてください。", [{ label: "OK", primary: true }], "⏰");
+          return;
+        }
+        if (past.length) {
+          showMiniModal("一部が時間切れです", "時刻を過ぎた" + past.length + "件は確定できません。先に進む" + future.length + "件だけ確定しますか?", [
+            { label: "やめる" },
+            { label: future.length + "件を確定", primary: true, fn: async () => {
+              for (const p of future) await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id);
+              activeSub = "pending"; load();
+            } },
+          ], "⏰");
+          return;
+        }
         await sb.from("scheduled_posts").update({ status: "pending" }).eq("status", "draft");
         activeSub = "pending"; load();
       };
@@ -3039,7 +3166,16 @@ BUILDERS.schedule = (el) => {
       bulkRow.appendChild(goAll); bulkRow.appendChild(delAll);
       draftEl.appendChild(bulkRow);
       renderList(draftEl, drafts, (p) => [
-        { label: "GO", primary: true, fn: async () => { await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id); load(); } },
+        { label: "GO", primary: true, fn: async () => {
+          if (new Date(p.scheduled_at).getTime() <= Date.now()) {
+            showMiniModal("投稿時間を超えています", "この投稿は予定時刻を過ぎています。「編集」で投稿時刻をやり直してください。", [
+              { label: "閉じる" },
+              { label: "時刻を編集", primary: true, fn: () => editPost(p) },
+            ], "⏰");
+            return;
+          }
+          await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id); load();
+        } },
         { label: "編集", fn: () => editPost(p) },
         { label: "キャンセル", fn: async () => { await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
       ]);
