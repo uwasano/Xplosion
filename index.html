@@ -338,12 +338,39 @@ const SHISHA_SCENE_AUD = {
   "仕事":"重め","休日":"フルーツ系","深夜":"紅茶系","ご褒美":"スイーツ系","友達":"フルーツ系",
   "男性ウケ":"男性人気","女性ウケ":"女性人気","エモ":"紅茶系","旅行":"初心者","出張":"重め","金沢":"おまかせ","一人旅":"紅茶系",
 };
-/* ランダムにシーンを1つ選ぶ(カテゴリ指定可) */
-function shPickScene(category){
+/* ランダムにシーンを1つ選ぶ。dateStr(YYYY-MM-DD)を渡すと、その日に矛盾しない
+   シチュエーションだけから選ぶ(給料日は25日前後だけ、等) */
+function shPickScene(category, dateStr){
+  /* 日付依存シーンの判定。dがその投稿日のDateで、trueなら使える */
+  const d = dateStr ? new Date(dateStr+"T12:00:00") : new Date();
+  const dom = d.getDate();         // 日(1-31)
+  const dow = d.getDay();          // 0=日…6=土
+  const lastDay = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+  /* 日付依存シーン → その日に合うかの判定 */
+  const DATE_RULES = {
+    "給料日":          () => dom>=24 && dom<=27,        // 25日前後
+    "ボーナスが入った": () => (d.getMonth()===5||d.getMonth()===11) && dom>=8 && dom<=20, // 6月/12月中旬
+    "有給の前日":      () => dow===4 || dow===5,        // 週後半に寄せる
+    "給料日前なのに来てしまった": () => dom>=18 && dom<=24, // 給料日直前
+    "出張最終日":      () => dow===4 || dow===5,        // 週後半
+    "明日帰る":        () => dow===5 || dow===6 || dow===0, // 週末に寄せる
+    "明日の仕事を忘れたい": () => dow===5 || dow===6,    // 金土の夜
+    "金沢最後の夜":    () => dow===5 || dow===6 || dow===0,
+    "記念日":          () => false, // 任意日には出さない(店が把握できないので自動からは除外)
+    "誕生日":          () => false, // 同上
+  };
+  /* 候補シーンを集める(日付依存はルールに合う時だけ採用) */
   const cats = category ? [category] : Object.keys(SHISHA_SCENES);
-  const cat = cats[Math.floor(Math.random()*cats.length)];
-  const arr = SHISHA_SCENES[cat];
-  return { category: cat, scene: arr[Math.floor(Math.random()*arr.length)], aud: SHISHA_SCENE_AUD[cat]||"おまかせ" };
+  const pool = [];
+  cats.forEach((cat) => {
+    SHISHA_SCENES[cat].forEach((scene) => {
+      const rule = DATE_RULES[scene];
+      if (rule && !rule()) return; // 日付に合わないシーンは除外
+      pool.push({ category: cat, scene, aud: SHISHA_SCENE_AUD[cat]||"おまかせ" });
+    });
+  });
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random()*pool.length)];
 }
 
 
@@ -367,7 +394,7 @@ async function shMixPostText(audience, sceneObj){
     const toneMap = { "カジュアル":"フランクでフレンドリー", "丁寧":"丁寧で落ち着いた", "ノリ重視":"テンション高めでノリのいい", "クール":"クールで大人っぽい" };
     persona = "\n口調: " + (toneMap[CFG.tone] || "自然体な") + "感じ。絵文字は" + (CFG.emoji||"少なめ") + "。\n";
   }
-  /* 星評価ブロック(これは固定で末尾に付ける。AIには本文だけ書かせる) */
+  /* 星評価ブロック(固定で付ける) */
   const starBlock =
     (sceneObj ? "こんなあなたに "+star(8)+"\n" : "") +
     "オススメ度 "+star(osusume*10/6)+"\n激推し度 "+star(gekioshi*10/6)+"\n" +
@@ -388,7 +415,16 @@ async function shMixPostText(audience, sceneObj){
   /* Haikuで高速生成 */
   const text = await callAI(prompt, false, "haiku");
   if (!text || !text.trim()) return null;
-  return text.trim() + "\n\n" + starBlock;
+  const body = text.trim();
+  /* 味の補足説明(2本目に入れる) */
+  const flavorNote = "🌿味の詳細\n" + shMixName(m.combo) + "\n" + haigou;
+  const second = flavorNote + "\n\n" + starBlock;
+  /* 1本目+2本目を結合した時に140字以内なら1本、超えるならスレッド */
+  const combined = body + "\n\n" + starBlock;
+  if (combined.length <= 140) {
+    return { thread: [combined] };
+  }
+  return { thread: [body, second] };
 }
 
 
@@ -1466,11 +1502,11 @@ BUILDERS.gapcheck = (el) => {
       const isBoat = /競艇|ボートレース|ボート/.test(CFG.bizType || "");
       /* 噂のシーシャBar: 頻度に応じてミックス紹介投稿にする */
       if (isUwasaShisha(account, CFG.bizName) && CFG.mixOn && Math.random()*100 < (CFG.mixFreq||0)) {
-        const sc2 = shPickScene();
-        const mixText = await shMixPostText(null, sc2);
-        if (mixText) {
+        const sc2 = shPickScene(null, gap.ds);
+        const r = await shMixPostText(null, sc2);
+        if (r && r.thread) {
           btn.disabled = false; btn.textContent = o;
-          showDraftPreview(account, gap, mixText, "20:00", btn);
+          showDraftPreview(account, gap, r.thread[0], "20:00", btn, r.thread.length>1?r.thread.slice(1):null);
           return;
         }
       }
@@ -1497,7 +1533,7 @@ BUILDERS.gapcheck = (el) => {
   }
 
   /* 生成した本文をその場に出して、予約管理へ送る/作り直すを選ばせる */
-  function showDraftPreview(account, gap, bodyTxt, h, srcBtn) {
+  function showDraftPreview(account, gap, bodyTxt, h, srcBtn, threadRest) {
     /* 既存のプレビューがあれば消す */
     const existing = document.getElementById("gapPreview");
     if (existing) existing.remove();
@@ -1506,7 +1542,7 @@ BUILDERS.gapcheck = (el) => {
     card.style.cssText = "background:var(--card);border:1px solid var(--accent);border-radius:12px;padding:14px;margin:12px 0;box-shadow:0 0 20px rgba(255,45,149,.15)";
     const ttl = document.createElement("div");
     ttl.style.cssText = "font-weight:700;font-size:14px;margin-bottom:8px";
-    ttl.innerHTML = '<span style="color:var(--accent)">@'+esc(account)+'</span> '+gap.md+'('+gap.label+') の投稿案';
+    ttl.innerHTML = '<span style="color:var(--accent)">@'+esc(account)+'</span> '+gap.md+'('+gap.label+') の投稿案'+(threadRest&&threadRest.length?' 🧵スレッド':'');
     card.appendChild(ttl);
     /* 時刻 */
     const tRow = document.createElement("div");
@@ -1516,31 +1552,44 @@ BUILDERS.gapcheck = (el) => {
     tIn.style.cssText = "padding:6px 10px;font-family:var(--mono);width:auto";
     tRow.appendChild(tLbl); tRow.appendChild(tIn);
     card.appendChild(tRow);
-    /* 本文(編集可) */
+    /* 1本目本文(編集可) */
     const body = document.createElement("textarea");
-    body.rows = 7; body.value = bodyTxt;
+    body.rows = 6; body.value = bodyTxt;
     body.style.cssText = "width:100%;font-size:13.5px;line-height:1.6";
     card.appendChild(body);
     const cnt = document.createElement("p"); cnt.className = "desc"; cnt.style.margin = "4px 0 8px";
-    const updCnt = () => { cnt.textContent = body.value.length + "字" + (S.sns==="X" && body.value.length>140 ? " ⚠140字超" : ""); };
+    const updCnt = () => { cnt.textContent = "1本目 "+body.value.length + "字" + (S.sns==="X" && body.value.length>140 ? " ⚠140字超" : ""); };
     body.oninput = updCnt; updCnt();
+    /* スレッド2本目以降(編集可) */
+    const threadAreas = [];
+    if (threadRest && threadRest.length) {
+      threadRest.forEach((t2, i) => {
+        const lbl = document.createElement("p"); lbl.className="desc"; lbl.style.margin="6px 0 2px"; lbl.textContent = "🧵 "+(i+2)+"本目(リプ)";
+        card.appendChild(lbl);
+        const ta2 = document.createElement("textarea"); ta2.rows = 5; ta2.value = t2;
+        ta2.style.cssText = "width:100%;font-size:13px;line-height:1.6";
+        card.appendChild(ta2); threadAreas.push(ta2);
+      });
+    }
     /* ボタン: 送る / 作り直す */
     const acts = document.createElement("div");
-    acts.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+    acts.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px";
     const sendBtn = document.createElement("button");
     sendBtn.className = "btn"; sendBtn.style.cssText = "margin:0;flex:1;min-width:140px;background:linear-gradient(135deg,#10b981,#059669)";
     sendBtn.textContent = "✅ 予約管理へ送る";
     sendBtn.onclick = async () => {
       sendBtn.disabled = true; sendBtn.textContent = "送信中…";
       try {
+        const threadVals = threadAreas.map(t=>t.value.trim()).filter(Boolean);
         const { error } = await sb.from("scheduled_posts").insert({
           screen_name: account,
           text: body.value.trim(),
           scheduled_at: new Date(gap.ds + "T" + (tIn.value||"12:00") + ":00").toISOString(),
           status: "draft",
+          thread: threadVals.length ? threadVals : null,
         });
         if (error) throw new Error(error.message);
-        card.innerHTML = '<div style="text-align:center;color:#10b981;font-weight:700;padding:8px">✓ '+gap.md+' を予約管理に送った!</div>';
+        card.innerHTML = '<div style="text-align:center;color:#10b981;font-weight:700;padding:8px">✓ '+gap.md+' を予約管理に送った!'+(threadVals.length?' (🧵'+(threadVals.length+1)+'連投)':'')+'</div>';
         if (srcBtn) { srcBtn.textContent = "✓ "+gap.md+" 作成済"; srcBtn.style.background = "linear-gradient(135deg,#10b981,#059669)"; srcBtn.disabled = true; }
       } catch (e) { sendBtn.disabled = false; sendBtn.textContent = "✅ 予約管理へ送る"; alert("送信失敗: " + e.message); }
     };
@@ -2054,6 +2103,8 @@ BUILDERS.calendar = (el) => {
       /* 時刻(h)が空の日を補完。曜日や順番で散らす */
       const defaultTimes = S.sns === "X" ? ["21:00","22:00","12:00","20:00","23:00","19:00","21:30"] : ["20:00","21:00","12:00","19:00"];
       filtered.forEach((p, i) => {
+        /* 全角コロン・空白を正規化 */
+        if (p.h) p.h = String(p.h).replace(/：/g, ":").replace(/\s/g, "").trim();
         if (!p.h || !/^\d{1,2}:\d{2}$/.test(p.h)) { p.h = defaultTimes[i % defaultTimes.length]; }
       });
       /* 週間は完成文(x)をそのまま反映 */
@@ -2067,11 +2118,16 @@ BUILDERS.calendar = (el) => {
           const idxs = filtered.map((_,i)=>i).sort(()=>Math.random()-0.5).slice(0, want);
           gen.textContent = "ミックス生成中…";
           for (const ix of idxs) {
-            const sc2 = shPickScene();
-            const mixText = await shMixPostText(null, sc2);
-            if (mixText) {
-              filtered[ix]._text = mixText;
-              filtered[ix].t = "ミックス("+sc2.scene+")"; filtered[ix].y = "ミックス"; filtered[ix].g = "シーシャミックス";
+            /* この投稿の日付を渡してシーンを噛み合わせる */
+            const pd = planDate(filtered[ix]);
+            const ds = pd.getFullYear()+"-"+String(pd.getMonth()+1).padStart(2,"0")+"-"+String(pd.getDate()).padStart(2,"0");
+            const sc2 = shPickScene(null, ds);
+            const r = await shMixPostText(null, sc2);
+            if (r && r.thread) {
+              filtered[ix]._text = r.thread[0];
+              filtered[ix]._thread = r.thread; /* スレッド全体を保持 */
+              filtered[ix].t = "ミックス("+(sc2?sc2.scene:"おすすめ")+")"+(r.thread.length>1?" 🧵":""); filtered[ix].y = "ミックス"; filtered[ix].g = "シーシャミックス";
+              if (!filtered[ix].h || !/^\d{1,2}:\d{2}$/.test(filtered[ix].h)) filtered[ix].h = "21:00";
             }
           }
         }
@@ -2110,6 +2166,7 @@ BUILDERS.calendar = (el) => {
         if (!acct.value) { out.err("クライアント未登録。先に認証リンクから登録して。"); return; }
         const rows = plan.filter((p) => p._text).map((p) => ({
           screen_name: acct.value, text: p._text, scheduled_at: planDate(p).toISOString(), status: "draft",
+          thread: (p._thread && p._thread.length > 1) ? p._thread.slice(1) : null,
         }));
         if (!rows.length) { out.err("完成した投稿文がまだない。"); return; }
         bulk.disabled = true;
@@ -2183,11 +2240,13 @@ BUILDERS.calendar = (el) => {
     try {
       /* 噂のシーシャBar: 頻度に応じてミックス紹介投稿に差し替え */
       if (isUwasaShisha(acct.value, CFG.bizName) && CFG.mixOn && Math.random()*100 < (CFG.mixFreq||0)) {
-        const sc2 = shPickScene();
-        const mixText = await shMixPostText(null, sc2);
-        if (mixText) {
-          p._text = mixText;
-          p.t = "ミックス("+sc2.scene+")"; p.y = "ミックス"; p.g = "シーシャミックス";
+        const pd = planDate(p);
+        const ds = pd.getFullYear()+"-"+String(pd.getMonth()+1).padStart(2,"0")+"-"+String(pd.getDate()).padStart(2,"0");
+        const sc2 = shPickScene(null, ds);
+        const r = await shMixPostText(null, sc2);
+        if (r && r.thread) {
+          p._text = r.thread[0]; p._thread = r.thread;
+          p.t = "ミックス("+(sc2?sc2.scene:"おすすめ")+")"+(r.thread.length>1?" 🧵":""); p.y = "ミックス"; p.g = "シーシャミックス";
           if (!p.h || !/^\d{1,2}:\d{2}$/.test(p.h)) p.h = "21:00";
           return;
         }
@@ -2331,6 +2390,7 @@ BUILDERS.calendar = (el) => {
         sd.disabled = true;
         const { error } = await sb.from("scheduled_posts").insert({
           screen_name: acct.value, text: p._text, scheduled_at: planDate(p).toISOString(), status: "draft",
+          thread: (p._thread && p._thread.length > 1) ? p._thread.slice(1) : null,
         });
         if (error) { out.err("送信エラー: " + error.message); sd.disabled = false; return; }
         sd.textContent = "送った✓";
