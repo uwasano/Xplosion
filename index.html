@@ -464,6 +464,40 @@ function shPickScene(category, dateStr){
   return pool[Math.floor(Math.random()*pool.length)];
 }
 
+/* ============================================================
+ * 日本のイベントカレンダー(全アカウント共通)
+ * 投稿日がイベント期間(事前告知〜当日〜期間中)に入っていれば、
+ * そのイベントを話題ヒントとして返す。強制ではなく、呼び出し側で
+ * 確率的に一部の投稿にだけ混ぜる。
+ * ============================================================ */
+const JP_EVENTS = [
+  /* name: イベント名 / pre: 何日前から事前告知 / 判定はmatch(month,day)で行う */
+  { name: "ゴールデンウィーク", hint: "GW・大型連休。連休中の営業/休業、連休の夜の過ごし方を絡める", match: (m,d)=> (m===4&&d>=26)||(m===5&&d<=6) },
+  { name: "母の日", hint: "5月第2日曜。感謝・家族をテーマに", match: (m,d,dow,wk)=> m===5&&wk===2&&dow===0 || (m===5&&d>=6&&d<=14) },
+  { name: "梅雨", hint: "じめじめした雨の季節。雨の日の過ごし方・室内で楽しむ話題", match: (m,d)=> (m===6&&d>=10)||(m===7&&d<=20) },
+  { name: "七夕", hint: "7月7日。願い事・夏の風物詩", match: (m,d)=> m===7&&d>=4&&d<=7 },
+  { name: "お盆", hint: "お盆・夏季休暇。帰省・連休中の営業/休業、夏の夜の過ごし方", match: (m,d)=> m===8&&d>=10&&d<=16 },
+  { name: "夏休み・真夏", hint: "真夏・夏休みシーズン。暑い夜・夏らしい爽やかな話題", match: (m,d)=> (m===7&&d>=21)||(m===8&&d>=1&&d<=31) },
+  { name: "ハロウィン", hint: "10月31日。仮装・イベント・パーティーの夜", match: (m,d)=> m===10&&d>=25&&d<=31 },
+  { name: "クリスマス", hint: "12月24〜25日。クリスマス・聖夜の特別な夜、デート・パーティー", match: (m,d)=> m===12&&d>=18&&d<=25 },
+  { name: "年末", hint: "年末・仕事納め。今年お疲れ様・年末の営業案内", match: (m,d)=> m===12&&d>=26&&d<=31 },
+  { name: "年始・お正月", hint: "お正月・新年。あけましておめでとう・新年の営業開始", match: (m,d)=> m===1&&d>=1&&d<=7 },
+  { name: "成人の日", hint: "1月第2月曜。成人式・新成人をお祝い", match: (m,d,dow,wk)=> m===1&&wk===2&&dow===1 || (m===1&&d>=8&&d<=14) },
+  { name: "バレンタイン", hint: "2月14日。チョコ・甘い・恋愛・特別な夜", match: (m,d)=> m===2&&d>=8&&d<=14 },
+  { name: "ホワイトデー", hint: "3月14日。お返し・甘い・感謝", match: (m,d)=> m===3&&d>=10&&d<=14 },
+  { name: "春・桜シーズン", hint: "桜・お花見・新生活シーズン。春の夜・新しい出会い", match: (m,d)=> (m===3&&d>=20)||(m===4&&d<=10) },
+  { name: "ハッピーニューイヤー前夜", hint: "大晦日・カウントダウン。年越しの夜", match: (m,d)=> m===12&&d>=30 },
+];
+/* 投稿日(dateStr=YYYY-MM-DD)に当てはまるイベントを返す。なければnull */
+function pickJpEvent(dateStr){
+  const d = dateStr ? new Date(dateStr+"T12:00:00") : new Date();
+  const m = d.getMonth()+1, day = d.getDate(), dow = d.getDay();
+  const wk = Math.floor((day-1)/7)+1; /* 第何週か */
+  const hits = JP_EVENTS.filter(e => { try { return e.match(m, day, dow, wk); } catch(_){ return false; } });
+  if (!hits.length) return null;
+  return hits[Math.floor(Math.random()*hits.length)];
+}
+
 
 /* おすすめミックスを投稿文にする(噂のシーシャBar用)
    scene指定があればそのシチュエーションに寄せる。Haikuで高速生成・性格はCFGから */
@@ -712,12 +746,17 @@ async function callAI(prompt, useSearch, model) {
 function bannedTopicsFor(bizType) {
   const b = bizType;
   const isBoat = /競艇|ボート|レース|公営競技|舟券/.test(b);
+  const isShisha = /シーシャ|シーシャ|水たばこ|水タバコ|フーカー|hookah|shisha/i.test(b);
   const LISTS = {
     boat: ["万舟","舟券","競艇","ボートレース","回収率","本命","穴狙い","3連単","レース","出走","選手","モーター","予想"],
+    shisha: ["シーシャ","水たばこ","水タバコ","フレーバー","フーカー","ミックス","チャコール","ボウル","煙"],
   };
-  /* 競艇系アカウントなら競艇ワードは許可、それ以外の業種では競艇ワードを禁止 */
-  if (isBoat) return [];
-  return LISTS.boat;
+  let banned = [];
+  /* 競艇系アカウントでなければ競艇ワードを禁止 */
+  if (!isBoat) banned = banned.concat(LISTS.boat);
+  /* シーシャ系アカウントでなければシーシャワードを禁止 */
+  if (!isShisha) banned = banned.concat(LISTS.shisha);
+  return banned;
 }
 
 /* ============ ログイン ============ */
@@ -2198,11 +2237,24 @@ BUILDERS.calendar = (el) => {
     const timeRule = S.sns === "X"
       ? "Xの伸びやすい時間帯(通勤7-8時/昼12時/夜21-23時/深夜0-1時)を踏まえ、内容と客層に合う時間。夜営業の店の告知は夜〜深夜が強い"
       : "Instagramの伸びやすい時間帯(昼12時前後/夜20-22時)を踏まえる";
+    /* 生成期間に該当する日本のイベントを集める(重複除外) */
+    const evSet = {};
+    for (let k = 1; k <= days; k++) {
+      const dd = new Date(today); dd.setDate(dd.getDate() + k);
+      const dstr = dd.getFullYear()+"-"+String(dd.getMonth()+1).padStart(2,"0")+"-"+String(dd.getDate()).padStart(2,"0");
+      const e = pickJpEvent(dstr);
+      if (e) evSet[e.name] = e.hint;
+    }
+    const evNames = Object.keys(evSet);
+    const evClause = evNames.length
+      ? `\n\n【時季のイベント】この期間は次の時季に当たる: ${evNames.map(n=>n+"("+evSet[n]+")").join(" / ")}。\nこれらを"一部の日だけ"自然に絡めてよい(毎日イベントネタにしない。全体の3〜4割程度に留め、露骨な宣伝にしない)。絡める場合も必ずこのアカウントの業種・事業の範囲内で扱い、業種外の話題は持ち込まない。絡めない日は通常の話題でよい。`
+      : "";
     try {
       const text = await callAI(
         `今日は${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日。${S.sns}アカウント用に、明日から${days}日分の投稿計画を作れ。1日1投稿。` +
         (CFG.closedDays && CFG.closedDays.length ? `\n\n【定休日】${CFG.closedDays.join("・")}曜は定休日。その曜日には来店を促す営業告知を入れず、休業のお知らせや「明日から営業」等の定休日に合った内容にする。` : "") +
-        `\n\n話題は事業内容(業種・店舗情報)に沿って自然に散らす。告知・豆知識・体験談・共感ネタなどをバランス良く配分し、店舗系の告知は週末に厚く。\n\n入れたいネタ・予定:\n${events.value||"特になし(業種に合うおまかせで)"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。\n\n` +
+        `\n\n話題は事業内容(業種・店舗情報)に沿って自然に散らす。告知・豆知識・体験談・共感ネタなどをバランス良く配分し、店舗系の告知は週末に厚く。\n\n入れたいネタ・予定:\n${events.value||"特になし(業種に合うおまかせで)"}\n\nバズ狙いと告知をバランス良く。投稿時間は${timeRule}。` +
+        evClause + `\n\n` +
         (span.value === "週間"
           ? `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"話題カテゴリ","h":"21:00","t":"テーマ","y":"投稿の型","x":"完成した投稿文(${fmt})"}] 7要素。${sc()}`
           : `JSON配列のみ出力(マークダウン記法・前置き禁止): [{"d":"6/13","w":"土","g":"話題カテゴリ","h":"21:00","t":"テーマ(15字以内)","y":"型(6字以内)"}] ${days}要素。完成文は不要。`)
@@ -2379,7 +2431,15 @@ BUILDERS.calendar = (el) => {
       const noMix = shishaOn
         ? "\n【禁止】具体的なフレーバーの配合比やおすすめミックスの紹介は書かない(別機能が担当)。代わりに店の雰囲気・豆知識・季節・営業案内・共感ネタなどで書く。"
         : "";
-      const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${variant}${noMix}${sc()}`);
+      /* 日本のイベントが近い日は、一部の投稿(約45%)にだけイベント要素を混ぜる(毎日同じネタにならないよう確率的) */
+      let evHint = "";
+      const pd2 = planDate(p);
+      const ds2 = pd2.getFullYear()+"-"+String(pd2.getMonth()+1).padStart(2,"0")+"-"+String(pd2.getDate()).padStart(2,"0");
+      const ev = pickJpEvent(ds2);
+      if (ev && Math.random() < 0.45) {
+        evHint = "\n【時季のヒント】今は「"+ev.name+"」の時季。"+ev.hint+"。ただし必ずこのアカウントの業種・事業の範囲内で絡めること(業種外の話題は持ち込まない)。自然に絡められそうなら投稿に織り込む(無理なら無視してよい。露骨な宣伝にしない)。";
+      }
+      const text = await callAI(`${S.sns}投稿を1本書け。\n日付: ${p.d}(${p.w}) ${p.h||""}投稿予定 / ジャンル: ${p.g||""} / テーマ: ${p.t} / 型: ${p.y}\n${S.sns==="X"?"140字以内。":"キャプション形式・ハッシュタグ5個。"}投稿文のみ出力。前置き禁止。${variant}${noMix}${evHint}${sc()}`);
       p._text = text.trim();
     } catch (e) { out.err(e.message); }
   }
