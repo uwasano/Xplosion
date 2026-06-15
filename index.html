@@ -1708,6 +1708,14 @@ BUILDERS.radar = (el) => {
       /* ② 検索+判定 */
       const sr = await gasFetch_("radarSearch", { industry: biz, area, service: biz, queries: lastQueries, excludes, period, limit, screen_name: acct.value });
       const items = (sr && sr.items) ? sr.items : [];
+      if (!items.length && sr && sr.debug) {
+        const dbg = sr.debug;
+        let msg = "見込み客が見つからんかった。<br><br>";
+        if (!dbg.searched) msg += "🔍 検索ヒット0件。ワードが特殊すぎるか、その時間に呟きが少ない。<b>期間を3日/7日に広げる</b>か、欲望を増やして再挑戦してな。";
+        else msg += "🔍 "+dbg.searched+"件ヒットしたけど、AI判定で見込み度が基準に届かんかった("+(dbg.judged||0)+"件が候補)。期間を広げる/別の欲望を足すと精度上がる。";
+        out.innerHTML = '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7">'+msg+'<br><br><span class="muted">検索ワード: '+lastQueries.map(q=>esc(q)).join(" / ")+'</span></div>';
+        return;
+      }
       renderResults(items);
     } catch(e) { out.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
   }
@@ -2526,25 +2534,53 @@ BUILDERS.calendar = (el) => {
   el.appendChild(yosouFld);
 
   statsBtn.onclick = async () => {
-    statsBtn.disabled = true; statsBtn.textContent = "集計中…"; yosouOut.innerHTML = "";
-    try {
-      const acc = acct.value || null;
-      const j = await gasFetch_("predStats", { screen_name: acc || undefined, days: 30 });
-      const stats = (j && j.stats) ? j.stats : [];
-      const NAME = { popular:"人気順シンプル", score:"直前スコア厳選" };
-      if (!stats.length) {
-        yosouOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12.5px">まだ確定した予想結果がない。<br>予想を投稿して、レース結果が出た後(夕方〜夜)に集計される。自動比較モードにしとくと両ロジックの成績が貯まる。</div>';
-      } else {
-        let h = '<div class="card" style="padding:12px;margin-top:8px"><div style="font-weight:700;margin-bottom:8px">📊 直近30日のロジック成績</div>';
+    yosouOut.innerHTML = "";
+    /* 期間切り替えタブ */
+    const tabRow = document.createElement("div"); tabRow.style.cssText = "display:flex;gap:8px;margin-top:10px";
+    const periods = [["週間",7],["月間",30]];
+    let curDays = 7;
+    const tabBtns = [];
+    const statBox = document.createElement("div"); 
+    periods.forEach(([lbl,dys]) => {
+      const b = document.createElement("button"); b.className = "mini";
+      const paint = () => { b.style.cssText = "flex:1;padding:8px;border-radius:8px;font-weight:700;" + (curDays===dys?"background:rgba(0,229,255,.18);color:var(--accent2);border:1px solid var(--accent2)":"background:transparent;color:var(--muted);border:1px solid var(--border)"); };
+      b.textContent = lbl + "(" + (dys===7?"7日":"30日") + ")"; paint();
+      b.onclick = () => { curDays = dys; tabBtns.forEach(x=>x.paint()); renderStats(dys); };
+      tabBtns.push({b,paint}); tabRow.appendChild(b);
+    });
+    yosouOut.appendChild(tabRow);
+    yosouOut.appendChild(statBox);
+
+    async function renderStats(days) {
+      statBox.innerHTML = '<div class="muted" style="padding:10px">集計中…</div>';
+      try {
+        const acc = acct.value || null;
+        const j = await gasFetch_("predStats", { screen_name: acc || undefined, days });
+        const stats = (j && j.stats) ? j.stats : [];
+        const NAME = { popular:"人気順シンプル", score:"直前スコア厳選" };
+        const periodLabel = days===7 ? "週間(7日)" : "月間(30日)";
+        const fmt = (iso) => { if(!iso) return "—"; const d=new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+        if (!stats.length) {
+          statBox.innerHTML = '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7;margin-top:8px">'+periodLabel+'はまだ確定した予想結果がない。<br>'
+            + '結果待ち(未確定): <b>'+(j.pending||0)+'件</b><br>'
+            + '🔍 結果確認の最終実行: <b>'+fmt(j.lastCheck)+'</b><br><br>'
+            + '予想を投稿してレース結果が出た後、1日6回(13〜0時)自動で的中をチェックする。人気順・直前スコアの両オートをONにすると比較データが貯まる。</div>';
+          return;
+        }
+        let h = '<div class="card" style="padding:12px;margin-top:8px"><div style="font-weight:700;margin-bottom:8px">📊 '+periodLabel+'のロジック成績</div>';
         stats.forEach(s => {
           h += '<div style="border-top:1px solid var(--border);padding:8px 0"><div style="font-weight:700;color:var(--accent2)">'+(NAME[s.logic]||s.logic)+'</div>'
             + '<div style="font-size:13px;margin-top:2px">的中率 <b>'+s.hitRate+'%</b>　回収率 <b style="color:'+(s.roi>=100?"#33cc88":"#ff8866")+'">'+s.roi+'%</b>　<span class="muted">('+s.hits+'/'+s.races+'レース)</span></div></div>';
         });
+        h += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-size:11.5px" class="muted">'
+          + '🔍 結果確認の最終実行: <b style="color:var(--ink)">'+fmt(j.lastCheck)+'</b><br>'
+          + '結果待ち(未確定): '+(j.pending||0)+'件'+((j.gaveUp||0)?' / 確認できず打ち切り: '+j.gaveUp+'件':'')+'<br>'
+          + '※結果は1日6回(13〜0時)自動で確認・監視。</div>';
         h += '<div class="desc" style="margin-top:8px;font-size:11px">回収率100%超えが勝ち。レース数が増えるほど信頼できる。100〜300レース貯まったら勝ってる方をデフォルトに。</div></div>';
-        yosouOut.innerHTML = h;
-      }
-    } catch(e){ yosouOut.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
-    statsBtn.disabled = false; statsBtn.textContent = "📊 成績";
+        statBox.innerHTML = h;
+      } catch(e){ statBox.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
+    }
+    renderStats(7);
   };
 
   /* 競艇/ボート業種の時だけ無料予想を表示。アカウント切替のたびに呼ぶ */
