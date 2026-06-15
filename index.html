@@ -2248,7 +2248,7 @@ BUILDERS.outreach = (el) => {
   fld(el, "投稿の本文(任意・貼るとより刺さるリプに)");
   const bodyIn = ta(el, 4, "その投稿の本文をコピペ(空でもOK)");
   fld(el, "トーン");
-  const toneRef = chipsSingle(el, ["丁寧(敬語)","フレンドリー","ノリ重視","専門家っぽく"], "丁寧(敬語)");
+  const toneRef = chipsSingle(el, ["丁寧","共感","タメ口","ツッコミ"], "丁寧");
   fld(el, "作るもの");
   const kindRef = chipsSingle(el, ["リプ(返信で絡む)","引用RT(拡散狙い)","DM誘導(LINEへ)"], "リプ(返信で絡む)");
   fld(el, "誘導先LINE(DM誘導の時だけ使う・任意)");
@@ -2335,9 +2335,13 @@ BUILDERS.outreach = (el) => {
       const tone = toneRef.value;
       const kind = kindRef.value;
       const lineUrl = lineIn.value.trim();
-      const toneRule = tone.indexOf("敬語") >= 0
-        ? "必ず敬語(です・ます調)で、礼儀正しく書く。タメ口や馴れ馴れしい表現は使わない。"
-        : (tone === "ノリ重視" ? "砕けた口語でテンポよく。" : (tone === "専門家っぽく" ? "落ち着いた専門家の語り口で。" : "親しみやすい自然な口調で。"));
+      const TONE_RULE = {
+        "丁寧": "敬語(です・ます調)で丁寧に。落ち着いた大人の言葉づかい。馴れ馴れしくしない。",
+        "共感": "相手の気持ちに寄り添い、共感を示す。優しく柔らかい言葉。",
+        "タメ口": "フランクなタメ口。ただし失礼・馴れ馴れしすぎはNG。親しみやすく。",
+        "ツッコミ": "軽妙なツッコミ・ユーモアを一言。相手を不快にさせない範囲で、クスッとさせる。",
+      };
+      const toneRule = (TONE_RULE[tone] || TONE_RULE["丁寧"]) + " 1つの文の中で敬語とタメ口を混ぜず、このトーンで最初から最後まで統一する。";
       const ctx = body
         ? `絡む投稿の本文:\n${body}\n\n`
         : `絡む相手: @${user} の投稿(本文は不明なので、競艇/地域系の一般的な内容と想定)\n\n`;
@@ -2375,9 +2379,10 @@ BUILDERS.outreach = (el) => {
           ctx +
           `トーンは「${tone}」。${toneRule} リプ案を3つ作る。\n` +
           `営業リプの鉄則:\n` +
-          `- 媚びない・宣伝くさくない。まず相手の投稿に共感や付加価値(豆知識・気の利いた一言)を返す\n` +
-          `- 専門性や個性がさりげなく伝わる(競艇なら予想の鋭さ、店なら地域愛やユーモア)\n` +
-          `- リプ欄の他人が「このアカ気になる」と思う絶妙な存在感。露骨な「フォローして」「予想見て」は禁止\n` +
+          `- まず相手の投稿に共感や付加価値(豆知識・気の利いた一言)を返す。いきなり自分の話をしない\n` +
+          `- 媚びない・宣伝くさくない。専門性や個性がさりげなく伝わる(競艇なら予想の鋭さ、店なら地域愛やユーモア)\n` +
+          `- 「フォローして」「予想見て」「フォローしとくと損ない」等の自分への誘導は絶対禁止。リプ欄で嫌われる\n` +
+          `- 敬語とタメ口を混ぜない。指定トーンで統一\n` +
           `- 短く自然に(40〜60字)。絵文字は1個まで。敵を作らない\n` +
           `出力は【案1】【案2】【案3】の見出しを付けて各案を改行で区切る。前置き不要。日本語。${sc()}`;
       }
@@ -2945,16 +2950,26 @@ BUILDERS.calendar = (el) => {
   async function makeHunterReplies(host, p) {
     const hbtn = document.createElement("button"); hbtn.className="mini cyan"; hbtn.textContent="この投稿にリプ(3案)";
     const hOut = document.createElement("div");
+    let curTone = "丁寧";
     const run = async (shuffle) => {
       hbtn.disabled = true; hbtn.textContent = shuffle ? "作り直し中…" : "リプ生成中…"; hOut.innerHTML = "";
       try {
-        const r = await callAI(hunterReplyPrompt(p.text, shuffle), false, "haiku", false);
+        const r = await callAI(hunterReplyPrompt(p.text, shuffle, curTone), false, "haiku", false);
         const text = (typeof r === "string") ? r : r.text;
         let reps = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>2 && !/^(承知|了解)/.test(s));
         if (!reps.length) { hOut.innerHTML='<div class="muted" style="padding:6px">作れんかった。もう一回。</div>'; }
         else {
           hOut.innerHTML = "";
-          const sh=document.createElement("button"); sh.className="mini"; sh.textContent="🔀 作り直す"; sh.style.cssText="margin:6px 0"; sh.onclick=()=>run(true); hOut.appendChild(sh);
+          /* トーン選択チップ */
+          const toneRow=document.createElement("div"); toneRow.style.cssText="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0";
+          ["丁寧","共感","タメ口","ツッコミ"].forEach(tn=>{
+            const c=document.createElement("button"); c.className="mini"; c.textContent=tn;
+            c.style.cssText = "padding:5px 10px;border-radius:14px;font-size:12px;"+(curTone===tn?"background:rgba(0,229,255,.18);color:var(--accent2);border:1px solid var(--accent2)":"background:transparent;border:1px solid var(--border)");
+            c.onclick=()=>{ curTone=tn; run(false); };
+            toneRow.appendChild(c);
+          });
+          hOut.appendChild(toneRow);
+          const sh=document.createElement("button"); sh.className="mini"; sh.textContent="🔀 同じトーンで作り直す"; sh.style.cssText="margin:4px 0"; sh.onclick=()=>run(true); hOut.appendChild(sh);
           reps.slice(0,3).forEach(rep => {
             const w=document.createElement("div"); w.style.cssText="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px";
             const tx=document.createElement("div"); tx.style.cssText="font-size:13px;line-height:1.5;white-space:pre-wrap"; tx.textContent=rep; w.appendChild(tx);
@@ -2971,17 +2986,26 @@ BUILDERS.calendar = (el) => {
     host.appendChild(hbtn); host.appendChild(hOut);
   }
 
-  function hunterReplyPrompt(postText, shuffle) {
-    return `次のXのポストに対する「リプライ」を3案作る。これは競合のフォロワー(=自分の見込み客)の目に留まって、自分に興味を持ってもらうのが狙い。\n`
+  function hunterReplyPrompt(postText, shuffle, tone) {
+    const TONE_RULE = {
+      "丁寧": "敬語で丁寧に。落ち着いた大人の言葉づかい。馴れ馴れしくしない。",
+      "共感": "相手の気持ちに寄り添い、共感を示す。優しく柔らかい言葉。",
+      "タメ口": "フランクなタメ口。ただし失礼・馴れ馴れしすぎはNG。親しみやすく。",
+      "ツッコミ": "軽妙なツッコミ・ユーモアを一言。相手を不快にさせない範囲で、クスッとさせる。",
+    };
+    const rule = TONE_RULE[tone] || TONE_RULE["丁寧"];
+    return `次のXのポストに対する「リプライ」を3案作る。これは投稿を見てる人の目に留まって、自分に興味を持ってもらうのが狙い。\n`
       + `\n【相手のポスト】\n${postText}\n`
-      + personaClause()
-      + `\n【リプの狙いと書き方】\n`
-      + `- このポストを見てる人(その業界に興味がある人)に「お、この人わかってるな」と思わせる\n`
-      + `- 自分の体験・知識・気の利いた視点を、さらっと自然に添える\n`
-      + `- 宣伝・売り込み・リンクは絶対NG(リプ欄で嫌われる&スパム判定)。あくまで自然な会話\n`
-      + `- 投稿主や他のリプを否定・論破しない。感じよく、でも埋もれない一言\n`
-      + `- テンプレ褒め(「素敵です!」だけ等)はNG。中身のある具体的なリプ\n`
-      + `- 設定された文体・性格そのまま。1案40〜80字、絵文字は控えめ\n`
+      + `\n【トーン:「${tone||"丁寧"}」】${rule}\n`
+      + `\n【絶対ルール・文体の統一】\n`
+      + `- 1つのリプの中で敬語とタメ口を混ぜない。指定トーンで最初から最後まで統一する\n`
+      + `- 「フォローしとくと損ないよ」「フォローしてね」等の“自分をフォローさせる誘導”は絶対NG。押し付けがましく嫌われる\n`
+      + `- 宣伝・売り込み・リンク・自分語りのオチは禁止。あくまで相手の投稿への自然な反応\n`
+      + `\n【書き方】\n`
+      + `- まず相手の投稿内容にちゃんと反応する(相手への配慮が最優先)。いきなり自分の話をしない\n`
+      + `- そのポストを見てる人に「お、この人いいこと言うな」と思わせる、中身のある一言\n`
+      + `- テンプレ褒め(「素敵です!」だけ等)や、無関係な持論はNG\n`
+      + `- 設定された性格は活かしつつ、上の指定トーンを最優先。1案40〜80字、絵文字は0〜1個\n`
       + (shuffle ? `- 前回と違う角度で\n` : "")
       + `\n出力形式(厳守): 前置きなし。3案を「===」だけの行で区切って本文のみ。`;
   }
