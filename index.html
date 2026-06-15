@@ -1702,7 +1702,18 @@ BUILDERS.radar = (el) => {
       /* ① クエリ生成 */
       const qr = await gasFetch_("radarQueries", { industry: biz, area, desires, strength, period });
       lastQueries = (qr && qr.queries) ? qr.queries : [];
-      if (!lastQueries.length) { out.innerHTML = '<div class="err">検索ワードが作れんかった。欲望を選んで再挑戦して。</div>'; return; }
+      if (!lastQueries.length) {
+        /* 原因切り分け用: GASが実際に返した中身をそのまま見せる */
+        let dump = '';
+        try { dump = JSON.stringify(qr); } catch(_) { dump = String(qr); }
+        out.innerHTML = '<div class="err" style="padding:12px;font-size:12px;line-height:1.7">'
+          + '検索ワードが作れんかった。<br><br>'
+          + '<b>送信した業種:</b> ' + esc(biz || '(空)') + '<br>'
+          + '<b>送信した欲望:</b> ' + esc(desires.join(' / ') || '(空)') + '<br>'
+          + '<b>GASからの返り:</b><br><span style="font-family:monospace;word-break:break-all">' + esc(dump.slice(0,800)) + '</span>'
+          + '</div>';
+        return;
+      }
       out.innerHTML = '<div class="card" style="padding:10px;margin-bottom:10px;font-size:12.5px">🔍 検索ワード: ' + lastQueries.map(q=>esc(q)).join(" / ") + '</div><div class="muted" style="padding:10px">② Xを検索して見込み客をAI判定中…(30秒ほど)</div>';
 
       /* ② 検索+判定 */
