@@ -609,7 +609,7 @@ function defaultCfg() {
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
-    competitors: "", hunterWatch: 0, yosouLogic: "popular",
+    competitors: "", hunterWatch: 0, yosouLogic: "compare",
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
@@ -1098,32 +1098,6 @@ BUILDERS.settings = (el) => {
   const watchNote = document.createElement("p"); watchNote.className = "desc"; watchNote.style.margin = "6px 0 0";
   watchNote.textContent = "登録した競合を1日に何回チェックして、伸びてる投稿を自動で溜めるか。回数が多いほど機会を逃さないがAPI費用が増える(目安: 競合5人で1回約7円)。トレンド画面「🎯リプハンターPRO」で溜まった投稿を確認できる。";
   el.appendChild(watchNote);
-
-  /* 競艇の無料予想ロジック(競艇業種の時だけ) */
-  if (/競艇|ボート/.test(CFG.bizType || "")) {
-    fld(el, "🚤 無料予想のロジック");
-    const logicWrap = document.createElement("div"); el.appendChild(logicWrap);
-    const LOGICS = [
-      ["popular", "人気順シンプル", "3連単オッズの人気トップ6＋大穴1点。今までのロジック。シンプルで安定。"],
-      ["score", "直前スコア厳選", "締切直前の展示タイム・展示ST・部品交換・気象から各艇を採点し、人気上位20点から本命6点を厳選。的中率重視。"],
-      ["compare", "自動比較モード", "両方のロジックで毎回こっそり結果を記録し、的中率・回収率を集計。投稿は直前スコア版を使う。どっちが強いかデータで決める。"],
-    ];
-    function drawLogic() {
-      logicWrap.innerHTML = "";
-      LOGICS.forEach(([val, title, desc]) => {
-        const on = (CFG.yosouLogic || "popular") === val;
-        const card = document.createElement("div");
-        card.style.cssText = "border:1px solid " + (on?"var(--accent2)":"var(--border)") + ";border-radius:10px;padding:10px;margin-top:6px;cursor:pointer;background:" + (on?"rgba(0,229,255,.10)":"transparent");
-        card.innerHTML = '<div style="font-weight:700;font-size:13.5px;color:'+(on?"var(--accent2)":"var(--ink)")+'">'+(on?"◉":"○")+" "+title+'</div><div class="desc" style="margin-top:3px;font-size:11.5px">'+desc+'</div>';
-        card.onclick = ()=>{ CFG.yosouLogic = val; save(); drawLogic(); };
-        logicWrap.appendChild(card);
-      });
-    }
-    drawLogic();
-    const logicNote = document.createElement("p"); logicNote.className="desc"; logicNote.style.margin="6px 0 0"; logicNote.style.fontSize="11.5px";
-    logicNote.textContent = "迷ったら「自動比較モード」。1〜2ヶ月でどっちが勝つかデータが出る。成績はカレンダーの🚤無料予想ボタンの下に表示。";
-    el.appendChild(logicNote);
-  }
 
   /* 店名・エリア(任意・AIに教えるか選べる) */
   fld(el, "店名・エリアをAIに教える");
@@ -2541,10 +2515,12 @@ BUILDERS.calendar = (el) => {
   const yosouFld = document.createElement("div");
   yosouFld.style.cssText = "margin-top:12px";
   yosouFld.style.display = "none"; // 既定は非表示。判定で出す
-  const btnRow = document.createElement("div"); btnRow.className = "acts"; yosouFld.appendChild(btnRow);
-  const todayBtn = document.createElement("button"); todayBtn.className = "btn"; todayBtn.style.margin = "0"; todayBtn.textContent = "🚤 今日の無料予想";
+  const btnRow = document.createElement("div"); btnRow.style.cssText = "display:flex;flex-direction:column;gap:8px"; yosouFld.appendChild(btnRow);
+  const todayBtn = document.createElement("button"); todayBtn.className = "btn"; todayBtn.style.cssText = "margin:0"; todayBtn.textContent = "🚤 人気順で今日の予想";
   btnRow.appendChild(todayBtn);
-  const statsBtn = document.createElement("button"); statsBtn.className = "mini"; statsBtn.textContent = "📊 ロジック成績";
+  const scoreBtn = document.createElement("button"); scoreBtn.className = "btn"; scoreBtn.style.cssText = "margin:0;background:linear-gradient(135deg,#00e5ff,#22c55e)"; scoreBtn.textContent = "🎯 直前スコアで今日の予想";
+  btnRow.appendChild(scoreBtn);
+  const statsBtn = document.createElement("button"); statsBtn.className = "mini"; statsBtn.textContent = "📊 ロジック的中率を比較する";
   btnRow.appendChild(statsBtn);
   const yosouOut = document.createElement("div"); yosouFld.appendChild(yosouOut);
   el.appendChild(yosouFld);
@@ -2568,7 +2544,7 @@ BUILDERS.calendar = (el) => {
         yosouOut.innerHTML = h;
       }
     } catch(e){ yosouOut.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
-    statsBtn.disabled = false; statsBtn.textContent = "📊 ロジック成績";
+    statsBtn.disabled = false; statsBtn.textContent = "📊 成績";
   };
 
   /* 競艇/ボート業種の時だけ無料予想を表示。アカウント切替のたびに呼ぶ */
@@ -2585,7 +2561,7 @@ BUILDERS.calendar = (el) => {
   })();
 
   {
-    const runYosou = async (btn, label) => {
+    const runYosou = async (btn, label, logic) => {
       btn.disabled = true; const orig = btn.textContent; btn.textContent = "生成中…(検索)";
       if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
       /* 念のため再判定: 競艇業種でなければ中止 */
@@ -2596,6 +2572,7 @@ BUILDERS.calendar = (el) => {
       const p = {
         d: (base.getMonth()+1) + "/" + base.getDate(), w: WD[base.getDay()],
         h: "11:00", g: "", t: label + "の無料予想", y: "予想",
+        _logicReq: logic || "popular",
       };
       try {
         await genYosou(p, label);
@@ -2614,6 +2591,12 @@ BUILDERS.calendar = (el) => {
           yosouOut.appendChild(ebox);
           btn.disabled = false; btn.textContent = orig;
           return;
+        }
+        const LOGIC_NAME = { popular:"人気順シンプル", score:"直前スコア厳選" };
+        if (p._logic && LOGIC_NAME[p._logic]) {
+          const badge = document.createElement("div"); badge.style.cssText = "margin-top:10px;font-size:12px;color:var(--accent2)";
+          badge.textContent = "🧠 使用ロジック: " + LOGIC_NAME[p._logic] + (((CFG.yosouLogic||"compare")==="compare") ? "(自動比較中・両方の成績を記録)" : "");
+          yosouOut.appendChild(badge);
         }
         const box = document.createElement("div");
         box.style.cssText = "font-size:13.5px;line-height:1.7;white-space:pre-wrap;background:rgba(0,229,255,.04);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:10px";
@@ -2666,7 +2649,8 @@ BUILDERS.calendar = (el) => {
       } catch (e) { yosouOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
       btn.disabled = false; btn.textContent = orig;
     };
-    todayBtn.onclick = () => runYosou(todayBtn, "本日");
+    todayBtn.onclick = () => runYosou(todayBtn, "本日", "popular");
+    scoreBtn.onclick = () => runYosou(scoreBtn, "本日", "score");
   }
 
   /* 特定日に1本だけ追加(空いた日の穴埋め用) */
@@ -3646,99 +3630,58 @@ BUILDERS.calendar = (el) => {
         return "" + base.getFullYear() + String(base.getMonth()+1).padStart(2,"0") + String(base.getDate()).padStart(2,"0");
       })();
 
-      /* STEP A: GASで締切が近い実レースを取得(Load failed対策で2回までリトライ) */
-      const callPick = async () => {
+      /* 設定中のロジック(compareなら表示はscore)。CFGは呼び出し前にloadCfgForで読まれている */
+      const acctCfg = JSON.parse(JSON.stringify(CFG || {}));
+
+      const callGen = async () => {
         const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 60000); // 60秒で打ち切り
+        const timer = setTimeout(() => ctrl.abort(), 90000);
         try {
           const r = await fetch(GAS_URL, {
             method: "POST", headers: { "Content-Type": "text/plain" }, signal: ctrl.signal,
             body: JSON.stringify({
-              auth: sess.session.access_token, action: "pickBoatRace",
+              auth: sess.session.access_token, action: "yosouGen",
               hd: yyyymmdd,
               minMinutes: label === "明日" ? -100000 : 15,
-              maxMinutes: label === "明日" ? 100000 : 20,
+              maxMinutes: label === "明日" ? 100000 : 600,
               exclude: (window._recentRaces || []),
+              acctCfg: acctCfg,
+              logic: p._logicReq || "popular",
             }),
           });
           return await r.json();
         } finally { clearTimeout(timer); }
       };
       let race;
-      try { race = await callPick(); }
+      try { race = await callGen(); }
       catch (e1) {
         await new Promise(r => setTimeout(r, 1500));
-        try { race = await callPick(); }
+        try { race = await callGen(); }
         catch (e2) { p._text=""; p._deadline=""; p._deadlineUnknown=true; p._raceErr="通信失敗(Load failed)。電波を確認してもう一度押して。"; p.t=label+"の無料予想(通信失敗)"; return; }
       }
       if (race.error) {
-        p._text = "";
-        p._deadline = "";
-        p._deadlineUnknown = true;
-        p._raceErr = "レース取得失敗: " + race.error + (race.code?" (code:"+race.code+")":"") + (race.detail?" / "+race.detail:"") + (race.checked!==undefined?" / 確認"+race.checked+"件":"");
+        p._text = ""; p._deadline = ""; p._deadlineUnknown = true;
+        p._raceErr = "レース取得失敗: " + race.error + (race.detail?" / "+race.detail:"");
         p.t = label + "の無料予想(取得失敗)";
         return;
       }
-      /* 使ったレースを記録(次回除外。直近5件まで保持) */
+      /* 使ったレースを記録(次回除外) */
       window._recentRaces = window._recentRaces || [];
       window._recentRaces.push(race.jcd + "-" + race.rno);
       if (window._recentRaces.length > 5) window._recentRaces.shift();
 
-      /* STEP B: 取得した実データでClaudeに予想本文を作らせる */
-      /* 3連単: 人気トップ6をシャッフル + 大穴(100倍あたり)1点 = 計7点 */
-      let formationText = "";
-      let buyLines = null;
-      const tri = race.trifecta || []; // [{combo,odds}] オッズ昇順
-      if (tri.length >= 6) {
-        /* 人気トップ6を取り出してシャッフル */
-        const top6 = tri.slice(0, 6).map(c => c.combo);
-        for (let i = top6.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [top6[i], top6[j]] = [top6[j], top6[i]];
-        }
-        /* 大穴: オッズ80〜150倍あたりの候補からランダムで1点。無ければ最も高オッズ寄りから */
-        const ana = tri.filter(c => c.odds >= 80 && c.odds <= 150);
-        let anaPick;
-        if (ana.length) anaPick = ana[Math.floor(Math.random() * ana.length)];
-        else {
-          /* 帯に無ければ100倍に最も近い1点 */
-          anaPick = tri.reduce((best, c) =>
-            Math.abs(c.odds - 100) < Math.abs(best.odds - 100) ? c : best, tri[tri.length-1]);
-        }
-        const lines = top6.slice();
-        lines.push("🎯大穴：" + anaPick.combo + "（" + anaPick.odds + "倍）");
-        buyLines = lines;
-        formationText = "\n\n【買い目・この7行をこのまま使う】\n" +
-          buyLines.join("\n") +
-          "\n※上6点=3連単オッズ人気トップ6を並べ替えたもの。最後の1点=100倍前後の大穴。番号・順番・大穴表記すべてこのまま本文に書き、勝手に変えない。";
-      }
-
-      const prompt =
-        `次は${race.venue}${race.rno}R(締切${race.deadline})の実際の出走表・直前情報。これを根拠に無料予想の投稿本文を作れ。\n\n` +
-        `【出走表】\n${(race.racelistText||"").slice(0,3500)}\n\n【直前情報】\n${(race.beforeText||"").slice(0,2500)}\n` +
-        formationText + `\n\n` +
-        `出力は投稿本文のみ(JSON不要・前置き不要)。フォーマット:\n` +
-        `1行目は必ず「${dateWord}の無料予想を1レース公開」と書く(出走表に別の日付や「〇日目」表記があっても無視し、必ず「${dateWord}」とする)。\n空行\n【${race.venue}${race.rno}R】\n` +
-        (buyLines
-          ? buyLines.join("\n") + "\n"
-          : "X-X-X\nX-X-X\nX-X-X\nX-X-X\nX-X-X\nX-X-X\n🎯大穴：X-X-X\n") +
-        `空行\n展開予想を1〜2行(出走表・直前情報の根拠を添える)\n「回収率重視の厳選予想」「結果はあとで報告します」的な締め\n\n` +
-        (buyLines
-          ? `ルール: 買い目は上記【買い目】の7行を、番号・順番・大穴表記すべてそのまま本文に書く。展開予想の表現は毎回新鮮に。注意書き・免責文(自己責任・参考まで等)は入れない。${sc()}`
-          : `ルール: 買い目は3連単6点(人気どころ)+大穴1点の計7点を縦に並べる。最後の大穴は100倍前後の高オッズ。表現は毎回新鮮に。注意書き・免責文は入れない。${sc()}`);
-      const text = await callAI(prompt, false);
-
-      p._text = text.trim();
+      let text = (race.text || "").trim();
+      /* 1行目を「本日/明日の無料予想を1レース公開」に正規化 */
+      text = text.replace(/^.*無料予想.*公開.*$/m, dateWord + "の無料予想を1レース公開");
+      p._text = text;
       p._venue = race.venue + race.rno + "R";
+      p._logic = race.logic || "";
       p._deadline = race.deadline || "";
       p._deadlineUnknown = !(race.deadline && /^\d{1,2}:\d{2}$/.test(race.deadline));
       p._raceErr = "";
 
-      if (label === "明日") {
-        /* 明日の予想は前夜(今日の21時)に告知 */
-        p.h = "21:00"; p._postToday = true;
-      } else if (!p._deadlineUnknown) {
-        /* 今日の予想は締切15分前 */
+      if (label === "明日") { p.h = "21:00"; p._postToday = true; }
+      else if (!p._deadlineUnknown) {
         const [hh, mm] = race.deadline.split(":").map(Number);
         let total = hh * 60 + mm - 15; if (total < 0) total = hh * 60 + mm;
         p.h = String(Math.floor(total/60)).padStart(2,"0") + ":" + String(total%60).padStart(2,"0");
@@ -4285,7 +4228,7 @@ BUILDERS.autoqueue = (el) => {
   head(el, "オート予定", "今日オートで投稿される予定の一覧。時刻をタップすると変更できる。生成は各投稿時刻の少し前に自動で行われる。",
     ["朝に自動で今日の予定が作られる","投稿時刻が近づくと内容が生成される","時刻を変えたい時はタップして調整"]);
 
-  const KIND_LABEL = { trend: "🔥 トレンド", normal: "📝 通常投稿", yosou: "🚤 無料予想", yokoku: "📣 レース予告", enjou: "🔥 炎上ニュース", flavor: "💨 フレーバー" };
+  const KIND_LABEL = { trend: "🔥 トレンド", normal: "📝 通常投稿", yosou: "🚤 無料予想(人気順)", yosou_score: "🎯 無料予想(直前スコア)", yokoku: "📣 レース予告", enjou: "🔥 炎上ニュース", flavor: "💨 フレーバー" };
   const STATUS_LABEL = { waiting: "待機中", processing: "生成中…", done: "生成済✓", error: "エラー" };
 
   const bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:8px;margin-bottom:10px";
@@ -4484,7 +4427,8 @@ BUILDERS.clients = (el) => {
       d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
       /* 競艇業種のみ: 予想 */
       if (/競艇|ボートレース|ボート/.test(biz)) {
-        d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想", "毎日、締切が近いレースを自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
+        d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想(人気順)", "毎日、締切が近いレースを人気順ロジックで自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
+        d.appendChild(autoFeatureRow(c.screen_name, "yosou_score", "🎯 オート無料予想(直前スコア)", "締切直前の展示・ST・気象でスコアリングして本命6点を厳選し締切15分前に投稿。人気順と両方ONにすれば成績比較できる", "linear-gradient(135deg,#00e5ff,#22c55e)"));
         d.appendChild(autoFeatureRow(c.screen_name, "yokoku", "📣 オート明日の予告", "明日の開催情報を取得して『明日◯◯でレース!注目選手!』の集客予告を21時台に投稿(数字予想は出さない)", "linear-gradient(135deg,#00e5ff,#22c55e)", true));
       }
       /* シーシャ業種のみ: フレーバー(店名が「噂のシーシャBar」系の時だけ。ミックスDBが専用のため) */
