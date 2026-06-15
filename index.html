@@ -2182,6 +2182,12 @@ BUILDERS.unfollow = (el) => {
   note.innerHTML = "⚠️ <b>凍結対策</b>: Xは短時間の大量解除をスパム判定することがある。このツールは<b>1日30件まで</b>に制限してる。それでも一気にやりすぎず、数日に分けるのが安全。";
   el.appendChild(note);
 
+  fld(el, "対象アカウント(Xのみ)");
+  const acct = document.createElement("select"); acct.style.cssText = "width:100%;padding:10px;border-radius:8px;font-size:14px"; el.appendChild(acct);
+  S.clients.filter((c)=>c.status==="active").forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; acct.appendChild(o); });
+  if (!acct.options.length) { const o=document.createElement("option"); o.textContent="(クライアント未登録)"; o.value=""; acct.appendChild(o); }
+  acct.value = S.activeAccount;
+
   const goBtn = document.createElement("button"); goBtn.className = "mini primary"; goBtn.textContent = "🧹 非フォローバックを抽出";
   goBtn.style.cssText = "width:100%"; el.appendChild(goBtn);
   const statusEl = document.createElement("div"); statusEl.style.cssText="margin-top:8px"; el.appendChild(statusEl);
