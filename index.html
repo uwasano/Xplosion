@@ -1584,7 +1584,7 @@ BUILDERS.trend = (el) => aiTab(el, {
 /* 業種ごとの欲望テンプレ(ONになりやすい初期候補。AIでも追加生成できる) */
 const RADAR_DESIRES = {
   shisha: ["暇つぶししたい","癒されたい","オシャレな場所に行きたい","誰かと話したい","デート成功したい","非日常を味わいたい","二軒目を探してる","まだ帰りたくない"],
-  kyotei: ["負けを取り返したい","当てたい","予想が欲しい","人に勝ちたい","一発狙いたい","暇つぶししたい"],
+  kyotei: ["買い目を決めたい","点数を絞りたい","展示の見方を知りたい","予想を参考にしたい","今日のレースを楽しみたい","初心者でも分かる情報がほしい"],
   generic: ["今すぐ解決したい","おすすめを知りたい","近くで探してる","誰かに相談したい","失敗したくない","お得に済ませたい"],
 };
 /* 除外フィルター(人物タイプ。AI判定で弾く) */
@@ -1706,24 +1706,46 @@ BUILDERS.radar = (el) => {
       out.innerHTML = '<div class="card" style="padding:10px;margin-bottom:10px;font-size:12.5px">🔍 検索ワード: ' + lastQueries.map(q=>esc(q)).join(" / ") + '</div><div class="muted" style="padding:10px">② Xを検索して見込み客をAI判定中…(30秒ほど)</div>';
 
       /* ② 検索+判定 */
-      const sr = await gasFetch_("radarSearch", { industry: biz, area, service: biz, queries: lastQueries, excludes, period, limit, screen_name: acct.value });
+      const sr = await gasFetch_("radarSearch", { industry: biz, area, service: biz, queries: lastQueries, excludes, period, limit, screen_name: acct.value, minScore: 30 });
       const items = (sr && sr.items) ? sr.items : [];
-      if (!items.length && sr && sr.debug) {
-        const dbg = sr.debug;
-        let msg = "見込み客が見つからんかった。<br><br>";
-        if (!dbg.searched) msg += "🔍 検索ヒット0件。ワードが特殊すぎるか、その時間に呟きが少ない。<b>期間を3日/7日に広げる</b>か、欲望を増やして再挑戦してな。";
-        else msg += "🔍 "+dbg.searched+"件ヒットしたけど、AI判定で見込み度が基準に届かんかった("+(dbg.judged||0)+"件が候補)。期間を広げる/別の欲望を足すと精度上がる。";
-        out.innerHTML = '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7">'+msg+'<br><br><span class="muted">検索ワード: '+lastQueries.map(q=>esc(q)).join(" / ")+'</span></div>';
+      if (!items.length) {
+        const dbg = (sr && sr.debug) ? sr.debug : {};
+        let lines = "今回は表示条件を満たす見込み客が見つからんかった。<br><br>";
+        lines += '<div style="font-size:12px;line-height:1.8;font-family:monospace">'
+          + '生成クエリ: ' + (dbg.generated||0) + '件<br>'
+          + 'X取得: ' + (dbg.fetched||0) + '件<br>'
+          + '重複除外後: ' + (dbg.deduped||0) + '件<br>'
+          + '期間内: ' + (dbg.inPeriod||0) + '件<br>'
+          + '一次除外後: ' + (dbg.afterSpam||0) + '件<br>'
+          + 'AI判定対象: ' + (dbg.judgeTarget||0) + '件<br>'
+          + 'AI判定通過: ' + (dbg.judged||0) + '件<br>'
+          + '30点以上: ' + (dbg.shown||0) + '件'
+          + '</div><br>';
+        /* どこで消えたかで対策を出し分け */
+        if (!dbg.fetched) lines += '👉 X検索が0件。<b>期間を3日/7日に広げる</b>か、狙う欲望を増やして再挑戦してな。クエリが特殊すぎる可能性も。';
+        else if (!dbg.afterSpam) lines += '👉 取れたけど一次除外で全部消えた。業者・愚痴・攻撃的投稿ばかりやったかも。欲望や客層を変えてみて。';
+        else if (!dbg.judged) lines += '👉 投稿は取れたけどAIが見込み客と判定せんかった。別の欲望・客層を足すと精度上がる。';
+        else lines += '👉 候補はあったけど30点未満やった。欲望や客層を見直して再挑戦してな。';
+        /* 各クエリのヒット数も出す(どのクエリが弱いか分かる) */
+        if (dbg.perQuery && dbg.perQuery.length) {
+          lines += '<br><br><span class="muted" style="font-size:11px">クエリ別ヒット数:<br>'
+            + dbg.perQuery.map(p=>esc(p.query)+' → '+p.got+'件'+(p.err?' ('+esc(p.err)+')':'')).join('<br>')
+            + '</span>';
+        }
+        out.innerHTML = '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7">'+lines+'</div>';
         return;
       }
-      renderResults(items);
+      renderResults(items, sr.debug);
     } catch(e) { out.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
   }
 
-  function renderResults(items) {
+  function renderResults(items, dbg) {
     out.innerHTML = "";
     const head2 = document.createElement("div"); head2.className = "desc"; head2.style.margin = "6px 0";
-    head2.innerHTML = '🔍 ' + lastQueries.map(q=>esc(q)).join(" / ") + '<br>見込み度の高い順。リプ案をコピーしてXで送る(送信は手動):';
+    let summary = '🔍 ' + lastQueries.map(q=>esc(q)).join(" / ");
+    if (dbg) summary += '<br><span style="font-size:11px;color:var(--muted)">取得'+(dbg.fetched||0)+'→重複除外'+(dbg.deduped||0)+'→期間内'+(dbg.inPeriod||0)+'→除外後'+(dbg.afterSpam||0)+'→判定'+(dbg.judged||0)+'→表示'+(dbg.shown||0)+'</span>';
+    summary += '<br>見込み度の高い順。リプ案をコピーしてXで送る(送信は手動):';
+    head2.innerHTML = summary;
     out.appendChild(head2);
     if (!items.length) { out.innerHTML += '<div class="muted" style="padding:10px">見込み客が見つからんかった。期間を広げる/欲望を増やす/強度を上げて再挑戦してな。</div>'; return; }
     items.forEach(it => out.appendChild(radarCard(it)));
