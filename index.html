@@ -1796,7 +1796,11 @@ BUILDERS.radar = (el) => {
     openB.onclick = ()=>{ if(it.tweet_url) window.open(it.tweet_url,"_blank"); };
     const saveB = document.createElement("button"); saveB.className="mini cyan"; saveB.textContent="⭐ 見込み客リストに追加";
     saveB.onclick = async ()=>{ saveB.disabled=true; saveB.textContent="保存中…";
-      try { await gasFetch_("radarSave", { row: Object.assign({ screen_name: acct.value, status:"new" }, radarRowFor(it)) }); saveB.textContent="✓ 保存した"; }
+      try {
+        const r = await gasFetch_("radarSave", { row: Object.assign({ screen_name: acct.value, status:"new" }, radarRowFor(it)) });
+        if (r && r.ok) { saveB.textContent="✓ 保存した"; }
+        else { saveB.textContent="⭐ 追加"; saveB.disabled=false; alert("保存できんかった: " + ((r && r.error) ? r.error : "原因不明")); }
+      }
       catch(e){ saveB.textContent="⭐ 追加"; saveB.disabled=false; alert(e.message); } };
     const hideB = document.createElement("button"); hideB.className="mini"; hideB.textContent="✕ 非表示";
     hideB.onclick = ()=>{ card.style.display="none"; };
