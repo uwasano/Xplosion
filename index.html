@@ -920,16 +920,16 @@ function renderTop() {
 const TABS = [
   { id:"settings", num:"00", label:"⚙ 生成設定" },
   { id:"calendar", num:"01", label:"カレンダー" },
-  { id:"competitor", num:"03", label:"競合分析" },
-  { id:"radar", num:"📡", label:"見込み客レーダー" },
-  { id:"unfollow", num:"🧹", label:"フォロー整理" },
-  { id:"outreach", num:"07+", label:"🎯営業リプ" },
-  { id:"gapcheck", num:"📭", label:"書き漏れ" },
-  { id:"followers", num:"09", label:"推移記録" },
-  { id:"report", num:"10", label:"週報" },
-  { id:"schedule", num:"12", label:"予約管理" },
-  { id:"autoqueue", num:"⏰", label:"オート予定" },
-  { id:"clients", num:"13", label:"クライアント" },
+  { id:"competitor", num:"02", label:"競合分析" },
+  { id:"radar", num:"03", label:"📡 見込み客レーダー" },
+  { id:"unfollow", num:"04", label:"🧹 フォロー整理" },
+  { id:"outreach", num:"05", label:"🎯 営業リプ" },
+  { id:"gapcheck", num:"06", label:"📭 書き漏れ" },
+  { id:"followers", num:"07", label:"推移記録" },
+  { id:"report", num:"08", label:"週報" },
+  { id:"schedule", num:"09", label:"予約管理" },
+  { id:"autoqueue", num:"10", label:"⏰ オート予定" },
+  { id:"clients", num:"11", label:"クライアント" },
 ];
 function renderNav() {
   $("nav").innerHTML = "";
@@ -4114,42 +4114,27 @@ BUILDERS.calendar = (el) => {
 
 /* ---- 09 推移記録 ---- */
 BUILDERS.followers = (el) => {
-  const METRICS = { X: ["フォロワー","インプ(日)"], Instagram: ["フォロワー","リーチ(日)"] };
   head(el, "フォロワー推移の記録",
-    `毎日の数字を入れるだけで増減・ペース・目標到達予測を自動計算。${S.sns}の数字だけ表示(右上で切替)。同日は上書き。`,
-    [`${S.sns}のアプリでフォロワー数を見る`,"数字を入れて「記録」","目標を設定すると「いつ届くか」も予測"]);
+    "記録したいXアカウントを入れて「📡 記録」を押すだけ。今のフォロワー数を自動取得して記録し、増減・ペース・目標到達予測・競合比較まで出す。毎日5時に自動記録も走る。",
+    ["記録するアカウントを入れる(or クイック選択)", "「📡 記録」を押す(競合も一緒に取得)", "グラフ・競合比較・目標予測が育つ"]);
 
-  /* 対象アカウント選択(アカ別に記録を分ける) */
-  let recAcct = S.activeAccount || "_default_";
-  const actives = S.clients.filter((c)=>c.status==="active" && c.screen_name !== "_test_" && !/^_test/.test(c.screen_name));
+  const actives = S.clients.filter((c) => c.status === "active" && !/^_test/.test(c.screen_name));
+
+  /* 記録するアカウント(Xユーザー名) */
+  fld(el, "記録するアカウント(Xユーザー名・@なし)");
+  const acctRow = document.createElement("div"); acctRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap"; el.appendChild(acctRow);
+  const nameIn = document.createElement("input"); nameIn.placeholder = "例: uwasa1206"; nameIn.style.cssText = "flex:1;min-width:150px";
+  nameIn.value = (S.activeAccount && S.activeAccount !== "_default_") ? S.activeAccount : "";
+  const recBtn = document.createElement("button"); recBtn.className = "mini primary"; recBtn.style.flex = "0 0 auto"; recBtn.textContent = "📡 記録";
+  acctRow.appendChild(nameIn); acctRow.appendChild(recBtn);
   if (actives.length) {
-    fld(el, "どのアカウントの記録?");
-    const asel = document.createElement("select");
-    const od = document.createElement("option"); od.value="_default_"; od.textContent="共通(既定)"; asel.appendChild(od);
-    actives.forEach((c)=>{ const o=document.createElement("option"); o.value=c.screen_name; o.textContent="@"+c.screen_name; asel.appendChild(o); });
-    asel.value = recAcct;
-    asel.onchange = async () => { recAcct = asel.value; await reload(); };
-    el.appendChild(asel);
+    const quick = document.createElement("div"); quick.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"; el.appendChild(quick);
+    actives.forEach((c) => { const q = document.createElement("button"); q.className = "chip"; q.textContent = "@" + c.screen_name; q.onclick = () => { nameIn.value = c.screen_name; reload(); }; quick.appendChild(q); });
   }
-
-  fld(el, "記録する指標");
-  const metric = chipsSingle(el, METRICS[S.sns], METRICS[S.sns][0]);
-  fld(el, "今日の数値");
-  const rowEl = document.createElement("div"); rowEl.style.cssText = "display:flex;gap:10px"; el.appendChild(rowEl);
-  const num = document.createElement("input"); num.type = "number"; num.placeholder = "1234"; rowEl.appendChild(num);
-  const rec = document.createElement("button"); rec.className = "mini primary"; rec.style.flex = "0 0 80px"; rec.textContent = "記録"; rowEl.appendChild(rec);
   const msg = document.createElement("div"); msg.className = "okmsg"; el.appendChild(msg);
-
-  /* 📡 Xから自動取得(＋毎日5時に自動記録) */
-  fld(el, "Xから自動取得");
-  const autoRow = document.createElement("div"); autoRow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap"; el.appendChild(autoRow);
-  const autoName = document.createElement("input"); autoName.placeholder = "Xユーザー名(@なし)"; autoName.style.cssText = "flex:1;min-width:140px";
-  if (recAcct && recAcct !== "_default_") autoName.value = recAcct;
-  const autoBtn = document.createElement("button"); autoBtn.className = "mini cyan"; autoBtn.style.flex = "0 0 auto"; autoBtn.textContent = "📡 今すぐ取得";
-  autoRow.appendChild(autoName); autoRow.appendChild(autoBtn);
-  const autoNote = document.createElement("p"); autoNote.className = "desc"; autoNote.style.cssText = "margin:6px 0 0;font-size:11.5px";
-  autoNote.innerHTML = "ユーザー名を入れて押すと、今のフォロワー数をAPIで取得して記録(＋登録した競合も一緒に)。<b>毎日5時に自動記録</b>もされる(初回だけGASエディタで <code>setupTriggers</code> を1回実行して有効化)。";
-  el.appendChild(autoNote);
+  const note = document.createElement("p"); note.className = "desc"; note.style.cssText = "margin:6px 0 0;font-size:11.5px";
+  note.innerHTML = "押すと今のフォロワー数をAPIで取得して記録(＋登録した競合も一緒に)。<b>毎日5時に自動記録</b>もされる(初回だけGASエディタで <code>setupTriggers</code> を1回実行)。";
+  el.appendChild(note);
 
   const statsEl = document.createElement("div"); el.appendChild(statsEl);
   const compEl = document.createElement("div"); el.appendChild(compEl);
@@ -4159,11 +4144,11 @@ BUILDERS.followers = (el) => {
   const histEl = document.createElement("div"); el.appendChild(histEl);
 
   let records = [], goals = {};
-  /* アカ別の保存キー。_default_は従来キー(既存データ互換)、それ以外は followers:アカ名 */
-  const recKey = () => recAcct === "_default_" ? "followers" : "followers:" + recAcct;
-  const goalKey = () => recAcct === "_default_" ? "goals" : "goals:" + recAcct;
+  const target = () => (nameIn.value || "").replace(/^@/, "").trim();
+  const recKey = () => target() ? "followers:" + target() : "followers";
+  const goalKey = () => target() ? "goals:" + target() : "goals";
   const key = (m) => S.sns + ":" + m;
-  const fmtJP = (d) => parseInt(d.slice(5,7)) + "/" + parseInt(d.slice(8,10));
+  const fmtJP = (d) => parseInt(d.slice(5, 7)) + "/" + parseInt(d.slice(8, 10));
 
   async function reload() {
     records = await kvGet(recKey(), []);
@@ -4173,101 +4158,52 @@ BUILDERS.followers = (el) => {
   }
   reload();
 
-  rec.onclick = async () => {
-    const n = parseInt(num.value); if (isNaN(n)) return;
-    const today = new Date().toISOString().slice(0, 10);
-    records = records.filter((r) => !(r.date === today && r.platform === key(metric.value)));
-    records.push({ date: today, platform: key(metric.value), count: n });
-    records.sort((a,b)=>a.date.localeCompare(b.date));
-    await kvSet(recKey(), records);
-    num.value = ""; msg.textContent = fmtJP(today) + " の" + metric.value + "を " + n.toLocaleString() + " で記録した";
-    setTimeout(()=>msg.textContent="",2500);
-    drawAll();
-  };
-
-  autoBtn.onclick = async () => {
-    const nm = (autoName.value || "").replace(/^@/, "").trim();
+  recBtn.onclick = async () => {
+    const nm = target();
     if (!nm) { alert("Xユーザー名を入れてな"); return; }
-    autoBtn.disabled = true; autoBtn.textContent = "取得中…";
+    recBtn.disabled = true; recBtn.textContent = "取得中…";
     try {
       const cfg = await kvGet("gen_config:" + nm, null);
-      const comps = cfg && cfg.competitors ? String(cfg.competitors).split(/[,、\n\s]+/).map((s)=>s.replace(/^@/,"").trim()).filter(Boolean) : [];
+      const comps = cfg && cfg.competitors ? String(cfg.competitors).split(/[,、\n\s]+/).map((s) => s.replace(/^@/, "").trim()).filter(Boolean) : [];
       const r = await gasFetch_("followerSnapshotNow", { screen_name: nm, competitors: comps, platform: S.sns });
-      const ok = r && r.results ? r.results.filter((x)=>x.ok) : [];
-      msg.textContent = ok.length ? ("取得OK: " + ok.map((x)=>"@"+x.screen_name+" "+Number(x.count).toLocaleString()).join(" / ")) : "取得失敗。ユーザー名を確認してな。";
-      setTimeout(()=>{ msg.textContent=""; }, 4000);
-      recAcct = nm;
+      const ok = r && r.results ? r.results.filter((x) => x.ok) : [];
+      msg.textContent = ok.length ? ("記録OK: " + ok.map((x) => "@" + x.screen_name + " " + Number(x.count).toLocaleString()).join(" / ")) : "取得失敗。ユーザー名を確認してな。";
+      setTimeout(() => { msg.textContent = ""; }, 4000);
       await reload();
     } catch (e) { msg.textContent = "エラー: " + (e && e.message ? e.message : e); }
-    autoBtn.disabled = false; autoBtn.textContent = "📡 今すぐ取得";
+    recBtn.disabled = false; recBtn.textContent = "📡 記録";
   };
+  nameIn.onchange = () => reload();
 
-  function diff7(recs) {
-    const fs = (recs||[]).filter((r)=>r.platform===key("フォロワー")).sort((a,b)=>a.date.localeCompare(b.date));
-    if (!fs.length) return null;
-    const last = fs[fs.length-1];
-    const cutoff = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
-    const base = fs.filter((r)=>r.date<=cutoff).pop() || fs[0];
-    return { now: last.count, diff: base.date===last.date ? null : last.count-base.count };
-  }
-
-  async function drawCompare() {
-    compEl.innerHTML = "";
-    const tname = (recAcct && recAcct !== "_default_") ? recAcct.replace(/^@/,"") : (autoName.value||"").replace(/^@/,"").trim();
-    if (!tname) return;
-    const cfg = await kvGet("gen_config:" + tname, null);
-    const comps = cfg && cfg.competitors ? String(cfg.competitors).split(/[,、\n\s]+/).map((s)=>s.replace(/^@/,"").trim()).filter(Boolean) : [];
-    if (!comps.length) return;
-    const meRecs = await kvGet("followers:" + tname, []);
-    const rows = [["@"+tname+"(自分)", diff7(meRecs), true]];
-    for (const c of comps) { rows.push(["@"+c, diff7(await kvGet("followers:"+c, [])), false]); }
-    fld(compEl, "競合との比較(直近7日のフォロワー増減)");
-    const tbl = document.createElement("div"); tbl.style.cssText = "display:flex;flex-direction:column;gap:6px";
-    rows.forEach(([name, d, me]) => {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:"+(me?"rgba(255,46,126,.08)":"var(--surface2)")+";border:1px solid var(--border);font-size:13px";
-      const now = d && d.now != null ? d.now.toLocaleString() : "—";
-      const dd = d && d.diff != null ? ((d.diff>=0?"+":"")+d.diff.toLocaleString()) : "記録待ち";
-      const dcol = d && d.diff != null ? (d.diff>=0?"var(--ok)":"var(--bad)") : "var(--muted)";
-      row.innerHTML = '<span style="font-weight:'+(me?"800":"600")+'">'+esc(name)+'</span>'
-        + '<span style="display:flex;gap:12px;align-items:center"><b style="font-family:var(--mono)">'+now+'</b>'
-        + '<span style="font-family:var(--mono);color:'+dcol+';min-width:70px;text-align:right">'+dd+'/7日</span></span>';
-      tbl.appendChild(row);
-    });
-    compEl.appendChild(tbl);
-    const note = document.createElement("p"); note.className="desc"; note.style.cssText="margin:6px 0 0;font-size:11px";
-    note.textContent = "競合のデータは「今すぐ取得」or 毎日5時の自動記録で溜まる。記録が増えるほど比較が正確になる。";
-    compEl.appendChild(note);
-  }
-
+  function fSeries() { return records.filter((r) => r.platform === key("フォロワー")).sort((a, b) => a.date.localeCompare(b.date)); }
   function drawAll() { drawStats(); drawGoal(); drawChart(); drawAI(); drawHist(); }
 
   function calcStats() {
     const fs = fSeries(); if (!fs.length) return null;
-    const last = fs[fs.length-1];
-    const prev = fs.length>1 ? fs[fs.length-2] : null;
+    const last = fs[fs.length - 1];
+    const prev = fs.length > 1 ? fs[fs.length - 2] : null;
     const since = (days) => {
-      const cutoff = new Date(Date.now()-days*86400000).toISOString().slice(0,10);
-      const base = fs.filter((r)=>r.date<=cutoff).pop() || fs[0];
+      const cutoff = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+      const base = fs.filter((r) => r.date <= cutoff).pop() || fs[0];
       if (base.date === last.date) return null;
-      const dd = Math.max(1, Math.round((new Date(last.date)-new Date(base.date))/86400000));
-      return { diff: last.count-base.count, perDay: (last.count-base.count)/dd };
+      const dd = Math.max(1, Math.round((new Date(last.date) - new Date(base.date)) / 86400000));
+      return { diff: last.count - base.count, perDay: (last.count - base.count) / dd };
     };
-    return { last, prevDiff: prev ? last.count-prev.count : null, w: since(7), m: since(30) };
+    return { last, prevDiff: prev ? last.count - prev.count : null, w: since(7), m: since(30) };
   }
-  const sign = (n) => (n>=0?"+":"")+Math.round(n).toLocaleString();
-  const dc = (n) => n>=0 ? "var(--ok)" : "var(--bad)";
+  const sign = (n) => (n >= 0 ? "+" : "") + Math.round(n).toLocaleString();
+  const dc = (n) => n >= 0 ? "var(--ok)" : "var(--bad)";
 
   function drawStats() {
     const st = calcStats(); statsEl.innerHTML = "";
     if (!st) return;
     const w = document.createElement("div"); w.style.cssText = "display:flex;gap:8px;margin-top:18px"; statsEl.appendChild(w);
-    [["NOW", st.last.count.toLocaleString(), st.prevDiff!==null?"前回 "+sign(st.prevDiff):"", st.prevDiff!==null?dc(st.prevDiff):""],
-     ["7 DAYS", st.w?sign(st.w.diff):"—", st.w?(st.w.perDay>=0?"+":"")+st.w.perDay.toFixed(1)+"/日":"記録待ち", st.w?dc(st.w.diff):""],
-     ["30 DAYS", st.m?sign(st.m.diff):"—", st.m?(st.m.perDay>=0?"+":"")+st.m.perDay.toFixed(1)+"/日":"記録待ち", st.m?dc(st.m.diff):""]
-    ].forEach(([l,v,s,c]) => {
+    [["NOW", st.last.count.toLocaleString(), st.prevDiff !== null ? "前回 " + sign(st.prevDiff) : "", st.prevDiff !== null ? dc(st.prevDiff) : ""],
+     ["7 DAYS", st.w ? sign(st.w.diff) : "—", st.w ? (st.w.perDay >= 0 ? "+" : "") + st.w.perDay.toFixed(1) + "/日" : "記録待ち", st.w ? dc(st.w.diff) : ""],
+     ["30 DAYS", st.m ? sign(st.m.diff) : "—", st.m ? (st.m.perDay >= 0 ? "+" : "") + st.m.perDay.toFixed(1) + "/日" : "記録待ち", st.m ? dc(st.m.diff) : ""]
+    ].forEach(([l, v, s, c]) => {
       const d = document.createElement("div"); d.className = "stat";
-      d.innerHTML = '<div class="l">'+l+'</div><div class="v">'+esc(v)+'</div>'+(s?'<div class="s" style="color:'+(c||"var(--muted)")+'">'+esc(s)+"</div>":"");
+      d.innerHTML = '<div class="l">' + l + '</div><div class="v">' + esc(v) + '</div>' + (s ? '<div class="s" style="color:' + (c || "var(--muted)") + '">' + esc(s) + "</div>" : "");
       w.appendChild(d);
     });
   }
@@ -4282,13 +4218,11 @@ BUILDERS.followers = (el) => {
       if (st && st.w && st.w.perDay > 0) {
         const remain = goal - st.last.count;
         if (remain <= 0) fc = { done: true };
-        else { const days = Math.ceil(remain/st.w.perDay); const d = new Date(Date.now()+days*86400000);
-          fc = { days, date: (d.getMonth()+1)+"/"+d.getDate(), remain }; }
+        else { const days = Math.ceil(remain / st.w.perDay); const d = new Date(Date.now() + days * 86400000); fc = { days, date: (d.getMonth() + 1) + "/" + d.getDate(), remain }; }
       }
       const d = document.createElement("div"); d.className = "row"; d.style.borderLeft = "3px solid var(--ok)";
       d.innerHTML = '<b style="color:var(--ok);font-family:var(--mono)">' + goal.toLocaleString() + "</b> " +
-        (fc ? (fc.done ? "— 達成済み🎉" : "まで残り <b>"+fc.remain.toLocaleString()+"</b>。今のペースなら <b style='color:var(--accent2)'>約"+fc.days+"日後("+fc.date+")</b> に到達")
-            : "— 7日分くらい記録が貯まると予測が出る") +
+        (fc ? (fc.done ? "— 達成済み🎉" : "まで残り <b>" + fc.remain.toLocaleString() + "</b>。今のペースなら <b style='color:var(--accent2)'>約" + fc.days + "日後(" + fc.date + ")</b> に到達") : "— 7日分くらい記録が貯まると予測が出る") +
         ' <button class="mini" style="float:right;flex:none;padding:4px 8px;font-size:11px">変更</button>';
       d.querySelector("button").onclick = async () => { delete goals[S.sns]; await kvSet(goalKey(), goals); drawGoal(); drawChart(); };
       goalEl.appendChild(d);
@@ -4303,32 +4237,32 @@ BUILDERS.followers = (el) => {
   function drawChart() {
     chartEl.innerHTML = "";
     const pts = fSeries(); if (pts.length < 2) return;
-    const W=340,H=190,PL=46,PR=12,PT=14,PB=26;
+    const W = 340, H = 190, PL = 46, PR = 12, PT = 14, PB = 26;
     const goal = goals[S.sns];
-    const mn = Math.min(...pts.map((r)=>r.count)), mx = Math.max(...pts.map((r)=>r.count));
-    const pad = Math.max(1, Math.round((mx-mn)*.1));
-    const lo = mn-pad, hi = mx+pad, sp = hi-lo||1;
-    const x = (i) => PL + (i/(pts.length-1))*(W-PL-PR);
-    const y = (c) => PT + (1-(c-lo)/sp)*(H-PT-PB);
-    const fmtV = (v) => v>=10000 ? (v/10000).toFixed(1)+"万" : v.toLocaleString();
+    const mn = Math.min(...pts.map((r) => r.count)), mx = Math.max(...pts.map((r) => r.count));
+    const pad = Math.max(1, Math.round((mx - mn) * .1));
+    const lo = mn - pad, hi = mx + pad, sp = hi - lo || 1;
+    const x = (i) => PL + (i / (pts.length - 1)) * (W - PL - PR);
+    const y = (c) => PT + (1 - (c - lo) / sp) * (H - PT - PB);
+    const fmtV = (v) => v >= 10000 ? (v / 10000).toFixed(1) + "万" : v.toLocaleString();
     let svg = '<div class="fld" style="font-size:10px;font-weight:800;letter-spacing:.2em;color:var(--accent2);font-family:var(--mono);margin:16px 0 8px">FOLLOWER GRAPH</div>' +
-      '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;background:var(--surface2);border-radius:12px;border:1px solid var(--border)">';
-    [lo, lo+sp/2, hi].map(Math.round).forEach((v) => {
-      svg += '<line x1="'+PL+'" x2="'+(W-PR)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#1D2A47" stroke-dasharray="3 4"/>' +
-        '<text x="'+(PL-6)+'" y="'+(y(v)+3.5)+'" text-anchor="end" font-size="9.5" fill="#7E8BA8" font-family="Menlo">'+fmtV(v)+"</text>";
+      '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;background:var(--surface2);border-radius:12px;border:1px solid var(--border)">';
+    [lo, lo + sp / 2, hi].map(Math.round).forEach((v) => {
+      svg += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#1D2A47" stroke-dasharray="3 4"/>' +
+        '<text x="' + (PL - 6) + '" y="' + (y(v) + 3.5) + '" text-anchor="end" font-size="9.5" fill="#7E8BA8" font-family="Menlo">' + fmtV(v) + "</text>";
     });
-    if (goal && goal>=lo && goal<=hi) {
-      svg += '<line x1="'+PL+'" x2="'+(W-PR)+'" y1="'+y(goal)+'" y2="'+y(goal)+'" stroke="#3DFFA8" stroke-width="1.5" stroke-dasharray="5 4"/>' +
-        '<text x="'+(W-PR)+'" y="'+(y(goal)-4)+'" text-anchor="end" font-size="9.5" fill="#3DFFA8" font-weight="700">目標 '+goal.toLocaleString()+"</text>";
+    if (goal && goal >= lo && goal <= hi) {
+      svg += '<line x1="' + PL + '" x2="' + (W - PR) + '" y1="' + y(goal) + '" y2="' + y(goal) + '" stroke="#3DFFA8" stroke-width="1.5" stroke-dasharray="5 4"/>' +
+        '<text x="' + (W - PR) + '" y="' + (y(goal) - 4) + '" text-anchor="end" font-size="9.5" fill="#3DFFA8" font-weight="700">目標 ' + goal.toLocaleString() + "</text>";
     }
-    const line = pts.map((r,i)=>(i?"L":"M")+x(i)+","+y(r.count)).join(" ");
-    svg += '<path d="'+line+' L'+x(pts.length-1)+','+(H-PB)+' L'+PL+','+(H-PB)+' Z" fill="rgba(255,46,126,.1)"/>' +
-      '<path d="'+line+'" fill="none" stroke="#FF2E7E" stroke-width="2.5" stroke-linejoin="round"/>';
-    const step = Math.max(1, Math.ceil(pts.length/5));
-    pts.forEach((r,i) => {
-      svg += '<circle cx="'+x(i)+'" cy="'+y(r.count)+'" r="3.5" fill="#04060C" stroke="#FF2E7E" stroke-width="2"/>';
-      if (i%step===0 || i===pts.length-1)
-        svg += '<text x="'+x(i)+'" y="'+(H-8)+'" text-anchor="middle" font-size="9.5" fill="#7E8BA8" font-family="Menlo">'+fmtJP(r.date)+"</text>";
+    const line = pts.map((r, i) => (i ? "L" : "M") + x(i) + "," + y(r.count)).join(" ");
+    svg += '<path d="' + line + ' L' + x(pts.length - 1) + ',' + (H - PB) + ' L' + PL + ',' + (H - PB) + ' Z" fill="rgba(255,46,126,.1)"/>' +
+      '<path d="' + line + '" fill="none" stroke="#FF2E7E" stroke-width="2.5" stroke-linejoin="round"/>';
+    const step = Math.max(1, Math.ceil(pts.length / 5));
+    pts.forEach((r, i) => {
+      svg += '<circle cx="' + x(i) + '" cy="' + y(r.count) + '" r="3.5" fill="#04060C" stroke="#FF2E7E" stroke-width="2"/>';
+      if (i % step === 0 || i === pts.length - 1)
+        svg += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="9.5" fill="#7E8BA8" font-family="Menlo">' + fmtJP(r.date) + "</text>";
     });
     chartEl.innerHTML = svg + "</svg>";
   }
@@ -4339,36 +4273,75 @@ BUILDERS.followers = (el) => {
     const b = document.createElement("button"); b.className = "btn btn-ghost"; b.textContent = "AIに推移を分析させる"; aiEl.appendChild(b);
     const out = outArea(aiEl);
     b.onclick = () => runAI(b, out, () =>
-      `${S.sns}アカウントのフォロワー推移:\n${fs.map((r)=>r.date+": "+r.count).join("\n")}\n目標: ${goals[S.sns]||"未設定"}\n\nこのデータから日本語で簡潔に:\n■伸びの評価(加速中/横ばい/鈍化+理由)\n■原因の仮説2つ\n■今週の打ち手3つ(${S.sns}の機能を使った具体策)\n前置き不要。`);
+      `${S.sns}アカウントのフォロワー推移:\n${fs.map((r) => r.date + ": " + r.count).join("\n")}\n目標: ${goals[S.sns] || "未設定"}\n\nこのデータから日本語で簡潔に:\n■伸びの評価(加速中/横ばい/鈍化+理由)\n■原因の仮説2つ\n■今週の打ち手3つ(${S.sns}の機能を使った具体策)\n前置き不要。`);
   }
 
   function drawHist() {
     histEl.innerHTML = "";
-    const sr = records.filter((r)=>r.platform.startsWith(S.sns+":"));
-    if (!sr.length) { histEl.innerHTML = '<div class="muted" style="text-align:center;margin-top:20px">まだ記録なし。今日の数字から始める。</div>'; return; }
+    const sr = records.filter((r) => r.platform.startsWith(S.sns + ":"));
+    if (!sr.length) { histEl.innerHTML = '<div class="muted" style="text-align:center;margin-top:20px">まだ記録なし。アカウントを入れて「📡 記録」を押してみて。</div>'; return; }
     fld(histEl, "記録履歴(最新10件)");
-    sr.slice().sort((a,b)=>b.date.localeCompare(a.date)).slice(0,10).forEach((r) => {
+    sr.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10).forEach((r) => {
       const d = document.createElement("div");
       d.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:9px 4px;border-bottom:1px solid var(--border);font-size:13.5px";
-      d.innerHTML = '<span class="muted" style="width:48px;font-family:var(--mono)">'+fmtJP(r.date)+"</span>" +
-        '<span class="muted" style="flex:1">'+esc(r.platform.split(":")[1])+"</span>" +
-        '<b style="margin-right:12px;font-family:var(--mono)">'+r.count.toLocaleString()+"</b>" +
+      d.innerHTML = '<span class="muted" style="width:48px;font-family:var(--mono)">' + fmtJP(r.date) + "</span>" +
+        '<span class="muted" style="flex:1">' + esc(r.platform.split(":")[1]) + "</span>" +
+        '<b style="margin-right:12px;font-family:var(--mono)">' + r.count.toLocaleString() + "</b>" +
         '<button style="background:none;border:none;color:var(--muted);font-size:15px;cursor:pointer">×</button>';
       d.querySelector("button").onclick = async () => {
-        records = records.filter((x)=>!(x.date===r.date&&x.platform===r.platform));
+        records = records.filter((x) => !(x.date === r.date && x.platform === r.platform));
         await kvSet(recKey(), records); drawAll();
       };
       histEl.appendChild(d);
     });
   }
+
+  function diff7(recs) {
+    const fs = (recs || []).filter((r) => r.platform === key("フォロワー")).sort((a, b) => a.date.localeCompare(b.date));
+    if (!fs.length) return null;
+    const last = fs[fs.length - 1];
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const base = fs.filter((r) => r.date <= cutoff).pop() || fs[0];
+    return { now: last.count, diff: base.date === last.date ? null : last.count - base.count };
+  }
+
+  async function drawCompare() {
+    compEl.innerHTML = "";
+    const tname = target();
+    if (!tname) return;
+    const cfg = await kvGet("gen_config:" + tname, null);
+    const comps = cfg && cfg.competitors ? String(cfg.competitors).split(/[,、\n\s]+/).map((s) => s.replace(/^@/, "").trim()).filter(Boolean) : [];
+    if (!comps.length) return;
+    const meRecs = await kvGet("followers:" + tname, []);
+    const rows = [["@" + tname + "(自分)", diff7(meRecs), true]];
+    for (const c of comps) { rows.push(["@" + c, diff7(await kvGet("followers:" + c, [])), false]); }
+    fld(compEl, "競合との比較(直近7日のフォロワー増減)");
+    const tbl = document.createElement("div"); tbl.style.cssText = "display:flex;flex-direction:column;gap:6px";
+    rows.forEach(([name, d, me]) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:" + (me ? "rgba(255,46,126,.08)" : "var(--surface2)") + ";border:1px solid var(--border);font-size:13px";
+      const now = d && d.now != null ? d.now.toLocaleString() : "—";
+      const dd = d && d.diff != null ? ((d.diff >= 0 ? "+" : "") + d.diff.toLocaleString()) : "記録待ち";
+      const dcol = d && d.diff != null ? (d.diff >= 0 ? "var(--ok)" : "var(--bad)") : "var(--muted)";
+      row.innerHTML = '<span style="font-weight:' + (me ? "800" : "600") + '">' + esc(name) + '</span>' +
+        '<span style="display:flex;gap:12px;align-items:center"><b style="font-family:var(--mono)">' + now + '</b>' +
+        '<span style="font-family:var(--mono);color:' + dcol + ';min-width:70px;text-align:right">' + dd + '/7日</span></span>';
+      tbl.appendChild(row);
+    });
+    compEl.appendChild(tbl);
+    const cnote = document.createElement("p"); cnote.className = "desc"; cnote.style.cssText = "margin:6px 0 0;font-size:11px";
+    cnote.textContent = "競合のデータは「📡 記録」or 毎日5時の自動記録で溜まる。記録が増えるほど比較が正確になる。";
+    compEl.appendChild(cnote);
+  }
 };
 
 /* ---- 10 週報 ---- */
+
 BUILDERS.report = (el) => {
   head(el, "週次AIレポート",
     "推移記録のフォロワーデータ(直近1週間)を自動で読み込み、今週の投稿と突き合わせて週報を作る。",
     ["今週投稿した内容を貼る(数字も分かれば)","「週報を作る」を押す","総評・因果の仮説・来週のアクション3つが出る"]);
-  const linkEl = document.createElement("div"); linkEl.className = "row"; linkEl.style.fontFamily = "var(--mono)"; linkEl.style.fontSize = "12.5px"; el.appendChild(linkEl);
+  const linkEl = document.createElement("div"); linkEl.className = "row"; linkEl.style.fontFamily = "var(--mono)"; linkEl.style.fontSize = "12.5px"; linkEl.style.color = "var(--muted)"; linkEl.textContent = "フォロワー記録を読み込み中…"; el.appendChild(linkEl);
   let fdata = [];
   (async () => {
     const recs = await kvGet(recKey(), []);
