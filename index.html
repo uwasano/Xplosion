@@ -88,16 +88,9 @@
     border-color:#FF6A00!important;
     color:#fff!important;
     background:linear-gradient(180deg,#FF2E7E,#FF6A00,#FFD000)!important;
-    background-size:100% 200%!important;
-    animation:buzzFlame .7s ease-in-out infinite alternate, buzzShift 1.2s linear infinite;
-    box-shadow:0 0 16px rgba(255,106,0,.7), 0 0 32px rgba(255,46,126,.5)!important;
-    text-shadow:0 0 6px rgba(255,255,255,.6);
+    box-shadow:0 0 14px rgba(255,106,0,.55), 0 0 26px rgba(255,46,126,.35)!important;
+    text-shadow:0 0 5px rgba(255,255,255,.5);
   }
-  @keyframes buzzFlame{
-    from{box-shadow:0 0 12px rgba(255,106,0,.6), 0 0 24px rgba(255,46,126,.4); transform:translateY(0) scale(1)}
-    to{box-shadow:0 0 22px rgba(255,160,0,.9), 0 0 44px rgba(255,46,126,.6); transform:translateY(-1px) scale(1.04)}
-  }
-  @keyframes buzzShift{ from{background-position:0 0} to{background-position:0 -200%} }
   .row{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px;font-size:13.5px;line-height:1.7}
   .meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
   .pill{font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 9px;border:1px solid}
