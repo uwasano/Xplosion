@@ -809,8 +809,8 @@ function normalizeCompetitors_(raw) {
     if (/^[A-Za-z0-9_]{1,15}$/.test(direct)) {
       name = direct;
     } else {
-      /* URLとして解釈してみる */
-      let s = p;
+      /* URLとして解釈してみる(先頭@を剥がしたdirectを使う。@https://… でも壊れないように) */
+      let s = direct;
       if (!/^https?:\/\//i.test(s)) s = "https://" + s;
       try {
         const u = new URL(s);
@@ -1656,16 +1656,23 @@ BUILDERS.radar = (el) => {
 
   /* モード切替(🔍検索で探す / 👥競合に絡む客) */
   function renderModeToggle() {
-    const wrap = document.createElement("div"); wrap.className = "chips"; wrap.style.cssText = "margin:4px 0 12px";
-    [["🔍 検索で探す","search"],["👥 競合に絡む客から探す","competitor"]].forEach(([txt,val])=>{
+    const lab = document.createElement("div"); lab.className = "desc"; lab.style.cssText = "margin:2px 0 5px;font-size:12px";
+    lab.textContent = "📡 探し方を選ぶ";
+    body.appendChild(lab);
+    const seg = document.createElement("div");
+    seg.style.cssText = "display:flex;gap:5px;margin:0 0 14px;padding:5px;border-radius:13px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09)";
+    [["🔍 検索で探す","search"],["👥 競合に絡む客","competitor"]].forEach(([txt,val])=>{
+      const on = (mode===val);
       const b = document.createElement("button");
-      b.className = "chip" + (mode===val?" on cyan":"");
-      b.style.cssText = "flex:1;text-align:center";
       b.textContent = txt;
+      b.style.cssText = "flex:1;text-align:center;padding:12px 8px;border:none;border-radius:9px;font-size:14px;font-weight:800;cursor:pointer;transition:all .15s;"
+        + (on
+            ? "background:linear-gradient(135deg,rgba(34,224,255,.22),rgba(168,85,247,.22));color:#22e0ff;box-shadow:0 0 14px rgba(34,224,255,.4),inset 0 0 0 1px rgba(34,224,255,.4)"
+            : "background:transparent;color:var(--muted)");
       b.onclick = ()=>{ if(mode===val) return; mode=val; out.innerHTML=""; renderBody(); };
-      wrap.appendChild(b);
+      seg.appendChild(b);
     });
-    body.appendChild(wrap);
+    body.appendChild(seg);
   }
 
   function renderBody() {
@@ -1776,9 +1783,9 @@ BUILDERS.radar = (el) => {
     runRow.appendChild(listBtn);
   }
 
-  /* CFG.competitors(カンマ/改行/全角読点/空白区切り・@つき)→ ユーザー名配列 */
+  /* CFG.competitors → ユーザー名配列。URL/＠/素の名前/?param付きどれでも@名に正規化(normalizeCompetitors_流用) */
   function parseCompetitors_(raw) {
-    return String(raw || "").split(/[,、\n\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean);
+    return normalizeCompetitors_(raw).split(/\n+/).map(s=>s.trim()).filter(Boolean);
   }
 
   async function runCompetitorRadar() {
@@ -1788,6 +1795,11 @@ BUILDERS.radar = (el) => {
     if (!biz) { alert("先に⚙生成設定で業種を入れてな(例: 競艇予想 / 金沢のシーシャバー)"); return; }
     const area = (CFG.bizArea||"").trim();
     const competitors = parseCompetitors_(CFG.competitors);
+    /* 競合欄がURLや?param付きのままなら@名に正規化して保存(次回から綺麗に・自己修復) */
+    const cleaned = competitors.join("\n");
+    if (competitors.length && cleaned !== String(CFG.competitors||"").trim()) {
+      CFG.competitors = cleaned; try { await saveCfg(); } catch(_){}
+    }
     if (!competitors.length) {
       out.innerHTML = '<div class="card" style="padding:14px;font-size:13px;line-height:1.8">'
         + '👥 競合がまだ登録されてへん。<br><br>'
