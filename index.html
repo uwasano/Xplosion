@@ -1701,6 +1701,7 @@ BUILDERS.radar = (el) => {
   let strength = "normal", limit = 30, period = "24h";
   let lastQueries = [];
   let mode = "search"; /* "search"=第1弾検索方式 / "competitor"=第2弾競合エンゲージ方式 */
+  let rivalOn = {};    /* 競合モードの競合ごとON/OFF(キー=小文字handle, false=除外。未定義はON) */
 
   /* モード切替(🔍検索で探す / 👥競合に絡む客) */
   function renderModeToggle() {
@@ -1788,6 +1789,9 @@ BUILDERS.radar = (el) => {
     const biz = (CFG.bizType || "").trim();
     const area = (CFG.bizArea || "").trim();
     const competitors = parseCompetitors_(CFG.competitors);
+    let scanBtn; /* 実行ボタン参照(タグ側から件数ラベル更新するため) */
+    const onCount = () => competitors.filter(c => rivalOn[c.toLowerCase()] !== false).length;
+    const updateScanLabel = () => { if (scanBtn) scanBtn.textContent = "📡 競合に絡む客をさがす（ON " + onCount() + "件）"; };
 
     /* 業種・地域 */
     const info = document.createElement("div"); info.className = "card"; info.style.cssText = "padding:10px;margin-bottom:10px;font-size:13px";
@@ -1800,13 +1804,25 @@ BUILDERS.radar = (el) => {
     body.appendChild(how);
 
     /* 登録済み競合の表示 */
-    fld(body, "登録済みの競合(⚙生成設定の競合欄で編集)");
+    fld(body, "登録済みの競合(タップでON/OFF・⚙生成設定で追加削除)");
     const cWrap = document.createElement("div"); cWrap.className = "chips"; body.appendChild(cWrap);
     if (competitors.length) {
       competitors.forEach(c => {
-        const chip = document.createElement("span"); chip.className = "chip on"; chip.textContent = "@" + c;
-        cWrap.appendChild(chip);
+        const key = c.toLowerCase();
+        const b = document.createElement("button");
+        const setLook = () => {
+          const on = rivalOn[key] !== false;
+          b.className = "chip" + (on ? " on" : "");
+          if (on) { b.style.cssText = "opacity:1"; b.textContent = "✓ @" + c; }
+          else { b.style.cssText = "opacity:.45;text-decoration:line-through;filter:grayscale(1)"; b.textContent = "✕ @" + c; }
+        };
+        setLook();
+        b.onclick = () => { rivalOn[key] = (rivalOn[key] === false); setLook(); updateScanLabel(); };
+        cWrap.appendChild(b);
       });
+      const tip = document.createElement("p"); tip.className = "desc"; tip.style.cssText = "margin:6px 0 0;font-size:11.5px";
+      tip.textContent = "タップでON/OFF。✓=検索する / ✕(取り消し線)=今回は外す。全員まとめると重いんで「今日はこの人だけ」と絞れる。下の📡ボタンに今ONの件数が出る。";
+      body.appendChild(tip);
     } else {
       const warn = document.createElement("div"); warn.style.cssText = "color:#ff9;font-size:12.5px;padding:4px 0;line-height:1.6";
       warn.innerHTML = '競合がまだ登録されてへん。<b>⚙生成設定</b>の「競合アカウント」欄にライバルのXアカを入れてな(URL貼り付けOK・自動で@名だけ抜き出す)。';
@@ -1823,9 +1839,10 @@ BUILDERS.radar = (el) => {
 
     /* 実行 */
     const runRow = document.createElement("div"); runRow.style.cssText = "margin-top:14px;display:flex;flex-direction:column;gap:8px"; body.appendChild(runRow);
-    const runBtn = document.createElement("button"); runBtn.className = "btn"; runBtn.textContent = "📡 競合に絡む客をさがす";
-    runBtn.onclick = ()=> runCompetitorRadar();
-    runRow.appendChild(runBtn);
+    scanBtn = document.createElement("button"); scanBtn.className = "btn";
+    scanBtn.onclick = ()=> runCompetitorRadar();
+    updateScanLabel();
+    runRow.appendChild(scanBtn);
     const listBtn = document.createElement("button"); listBtn.className = "mini"; listBtn.textContent = "⭐ 保存した見込み客リストを見る";
     listBtn.onclick = ()=> showSavedList();
     runRow.appendChild(listBtn);
@@ -1857,10 +1874,12 @@ BUILDERS.radar = (el) => {
         + '</div>';
       return;
     }
+    const selected = competitors.filter(c => rivalOn[c.toLowerCase()] !== false);
+    if (!selected.length) { alert("競合を1つ以上ONにしてな(タップで切り替えられる)"); return; }
     const excludes = RADAR_EXCLUDES.filter(x=>excludeSel[x]);
-    out.innerHTML = '<div class="muted" style="padding:10px;line-height:1.7">👥 競合に絡んでる客を集めてAI判定中…(30秒〜1分)<br>対象競合: ' + competitors.map(c=>"@"+esc(c)).join(" / ") + '</div>';
+    out.innerHTML = '<div class="muted" style="padding:10px;line-height:1.7">👥 競合に絡んでる客を集めてAI判定中…(30秒〜1分)<br>対象競合: ' + selected.map(c=>"@"+esc(c)).join(" / ") + '</div>';
     try {
-      const sr = await gasFetch_("radarCompetitorScan", { competitors, industry: biz, area, service: biz, excludes, limit, minScore: 30, screen_name: acct.value });
+      const sr = await gasFetch_("radarCompetitorScan", { competitors: selected, industry: biz, area, service: biz, excludes, limit, minScore: 30, screen_name: acct.value });
       const items = (sr && sr.items) ? sr.items : [];
       if (!items.length) {
         const dbg = (sr && sr.debug) ? sr.debug : {};
@@ -1884,7 +1903,7 @@ BUILDERS.radar = (el) => {
         out.innerHTML = '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7">'+lines+'</div>';
         return;
       }
-      renderCompetitorResults(items, sr.debug, sr.perComp, competitors);
+      renderCompetitorResults(items, sr.debug, sr.perComp, selected);
     } catch(e) { out.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
   }
 
@@ -2099,7 +2118,7 @@ BUILDERS.radar = (el) => {
     acct.innerHTML = "";
     accounts.forEach(a=>{ const o=document.createElement("option"); o.value=a.screen_name; o.textContent="@"+a.screen_name; acct.appendChild(o); });
     if (accounts.length) { acct.value = accounts[0].screen_name; await loadCfgFor(acct.value); }
-    acct.onchange = async ()=>{ await loadCfgFor(acct.value); desireSel={}; renderBody(); };
+    acct.onchange = async ()=>{ await loadCfgFor(acct.value); desireSel={}; rivalOn={}; renderBody(); };
     renderBody();
   })();
 };
