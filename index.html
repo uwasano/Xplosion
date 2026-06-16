@@ -558,8 +558,8 @@ async function shMixPostText(audience, sceneObj){
   }
   /* 星評価ブロック(固定で付ける) */
   const starBlock =
-    (sceneObj ? "こんなあなたに "+star(8)+"\n" : "") +
-    "オススメ度 "+star(osusume*10/6)+"\n激推し度 "+star(gekioshi*10/6)+"\n" +
+    (sceneObj ? "マスターのオススメ度 "+star(8)+"\n" : "マスターのオススメ度 "+star(osusume*10/6)+"\n") +
+    "激推し度 "+star(gekioshi*10/6)+"\n" +
     "甘さ "+star(sweet)+" / 酸味 "+star(sour)+"\n清涼感 "+star(cool)+" / 吸いごたえ "+star(heavy);
   const prompt =
     `金沢・片町のシーシャ店の店長として、おすすめミックスを紹介する短いX投稿の「本文だけ」を書く。\n` +
@@ -794,6 +794,44 @@ async function callAI(prompt, useSearch, model, wantUrls) {
 }
 
 /* 業種ごとの「混ざってはいけない題材ワード」 */
+/* 競合欄の入力(URL/@/素の名前が混在)を、1行1ユーザー名に整形する */
+function normalizeCompetitors_(raw) {
+  if (!raw) return "";
+  /* 改行・カンマ・全角カンマ・スペースで区切る */
+  const parts = String(raw).split(/[\n,、\s]+/).map(s=>s.trim()).filter(Boolean);
+  const reserved = new Set(["home","explore","search","notifications","messages","settings","compose","intent","share","i","hashtag","tos","privacy","login","signup"]);
+  const out = [];
+  const seen = {};
+  parts.forEach(p => {
+    let name = "";
+    /* @username or 素のusername */
+    const direct = p.replace(/^@/, "");
+    if (/^[A-Za-z0-9_]{1,15}$/.test(direct)) {
+      name = direct;
+    } else {
+      /* URLとして解釈してみる */
+      let s = p;
+      if (!/^https?:\/\//i.test(s)) s = "https://" + s;
+      try {
+        const u = new URL(s);
+        const host = u.hostname.toLowerCase().replace(/^www\./,"").replace(/^mobile\./,"");
+        if (host === "x.com" || host === "twitter.com") {
+          const seg = u.pathname.split("/").filter(Boolean);
+          if (seg.length) {
+            const cand = seg[0].replace(/^@/, "");
+            if (/^[A-Za-z0-9_]{1,15}$/.test(cand) && !reserved.has(cand.toLowerCase())) name = cand;
+          }
+        }
+      } catch(e) { /* URLとして無効なら捨てる */ }
+    }
+    if (name && !reserved.has(name.toLowerCase())) {
+      const low = name.toLowerCase();
+      if (!seen[low]) { seen[low] = true; out.push(name); }
+    }
+  });
+  return out.join("\n");
+}
+
 function bannedTopicsFor(bizType) {
   const b = bizType;
   const isBoat = /競艇|ボート|レース|公営競技|舟券/.test(b);
@@ -1064,15 +1102,20 @@ BUILDERS.settings = (el) => {
   el.appendChild(typeNote);
 
   /* 競合アカウント(バズミラー・リプハンターで自動取得する相手) */
-  fld(el, "競合アカウント(バズミラー・リプハンター用)");
+  fld(el, "競合アカウント(URL貼り付けOK)");
   const rivalIn = document.createElement("textarea"); rivalIn.rows = 3;
-  rivalIn.placeholder = "客を取りたい業界の競合アカウントのユーザー名(@不要)\n複数は改行 or カンマ区切り\n例:\narisa1996kyotei\nkyotei_pro";
+  rivalIn.placeholder = "競合のXページURLをそのまま貼ればOK(@やユーザー名でも可)\n複数は改行 or カンマ区切り\n例:\nhttps://x.com/arisa1996kyotei\n@kyotei_pro\nboat_yosou";
   rivalIn.value = CFG.competitors || "";
   rivalIn.style.cssText = "width:100%;font-size:14px";
   rivalIn.oninput = () => { CFG.competitors = rivalIn.value; save(); };
+  /* 入力欄から離れたら、URL等を自動でユーザー名に整形して1行1アカウントに揃える */
+  rivalIn.onblur = () => {
+    const cleaned = normalizeCompetitors_(rivalIn.value);
+    if (cleaned !== rivalIn.value) { rivalIn.value = cleaned; CFG.competitors = cleaned; save(); }
+  };
   el.appendChild(rivalIn);
   const rivalNote = document.createElement("p"); rivalNote.className = "desc"; rivalNote.style.margin = "6px 0 0";
-  rivalNote.textContent = "ここに登録すると、トレンド画面の「🪞バズってる投稿をマネする」「🎯バズってる投稿にリプする」がボタン一発で自動取得する(毎回入力しなくてOK)。";
+  rivalNote.textContent = "URLを貼って入力欄の外をタップすると、自動でアカウント名だけ抜き出して整理する。ここの競合は「バズミラー」「リプハンター」「見込み客レーダー(競合フォロワー)」で使う。";
   el.appendChild(rivalNote);
 
   /* リプハンターPRO 監視回数 */
@@ -1609,9 +1652,26 @@ BUILDERS.radar = (el) => {
   RADAR_EXCLUDES.forEach((x,i)=> excludeSel[x] = (i<5)); /* 上位5個は初期ON */
   let strength = "normal", limit = 30, period = "24h";
   let lastQueries = [];
+  let mode = "search"; /* "search"=第1弾検索方式 / "competitor"=第2弾競合エンゲージ方式 */
+
+  /* モード切替(🔍検索で探す / 👥競合に絡む客) */
+  function renderModeToggle() {
+    const wrap = document.createElement("div"); wrap.className = "chips"; wrap.style.cssText = "margin:4px 0 12px";
+    [["🔍 検索で探す","search"],["👥 競合に絡む客から探す","competitor"]].forEach(([txt,val])=>{
+      const b = document.createElement("button");
+      b.className = "chip" + (mode===val?" on cyan":"");
+      b.style.cssText = "flex:1;text-align:center";
+      b.textContent = txt;
+      b.onclick = ()=>{ if(mode===val) return; mode=val; out.innerHTML=""; renderBody(); };
+      wrap.appendChild(b);
+    });
+    body.appendChild(wrap);
+  }
 
   function renderBody() {
     body.innerHTML = "";
+    renderModeToggle();
+    if (mode === "competitor") { renderCompetitorBody(); return; }
     const biz = (CFG.bizType || "").trim();
     const area = (CFG.bizArea || "").trim();
 
@@ -1666,6 +1726,118 @@ BUILDERS.radar = (el) => {
     const listBtn = document.createElement("button"); listBtn.className = "mini"; listBtn.textContent = "⭐ 保存した見込み客リストを見る";
     listBtn.onclick = ()=> showSavedList();
     runRow.appendChild(listBtn);
+  }
+
+  /* ===== 第2弾: 競合に絡む客から探す ===== */
+  function renderCompetitorBody() {
+    const biz = (CFG.bizType || "").trim();
+    const area = (CFG.bizArea || "").trim();
+    const competitors = parseCompetitors_(CFG.competitors);
+
+    /* 業種・地域 */
+    const info = document.createElement("div"); info.className = "card"; info.style.cssText = "padding:10px;margin-bottom:10px;font-size:13px";
+    info.innerHTML = "🏷️ 業種: <b>" + (biz?esc(biz):'<span style="color:#f88">未設定</span>') + "</b>　📍 地域: <b>" + (area?esc(area):'<span style="color:#f88">未設定</span>') + "</b>";
+    body.appendChild(info);
+
+    /* 仕組み説明 */
+    const how = document.createElement("p"); how.className="desc"; how.style.cssText="margin:2px 0 10px;font-size:12px;line-height:1.7";
+    how.innerHTML = "⚙生成設定で登録した<b>競合アカウント</b>に、実際にリプ・メンションして<b>絡んでる客</b>を集めて、絡んだ回数の多い順に見込み度を判定する。同じ業界に前のめりな濃い客が取れる。";
+    body.appendChild(how);
+
+    /* 登録済み競合の表示 */
+    fld(body, "登録済みの競合(⚙生成設定の競合欄で編集)");
+    const cWrap = document.createElement("div"); cWrap.className = "chips"; body.appendChild(cWrap);
+    if (competitors.length) {
+      competitors.forEach(c => {
+        const chip = document.createElement("span"); chip.className = "chip on"; chip.textContent = "@" + c;
+        cWrap.appendChild(chip);
+      });
+    } else {
+      const warn = document.createElement("div"); warn.style.cssText = "color:#ff9;font-size:12.5px;padding:4px 0;line-height:1.6";
+      warn.innerHTML = '競合がまだ登録されてへん。<b>⚙生成設定</b>の「競合アカウント」欄にライバルのXアカを入れてな(URL貼り付けOK・自動で@名だけ抜き出す)。';
+      cWrap.appendChild(warn);
+    }
+
+    /* 件数 */
+    fld(body, "表示件数");
+    const optRow = document.createElement("div"); optRow.style.cssText = "display:flex;flex-direction:column;gap:8px"; body.appendChild(optRow);
+    optRow.appendChild(radarChoice("表示件数", [["10",10],["30",30],["50",50]], limit, v=>limit=v));
+    const note2 = document.createElement("p"); note2.className="desc"; note2.style.cssText="margin:8px 0 0;font-size:11.5px";
+    note2.textContent = "※絡みの多い競合ほど客が取れる。リプの少ないアカウントは0件になることがある。絡み回数の多い上位だけAI判定するんで費用は抑えめ。";
+    body.appendChild(note2);
+
+    /* 実行 */
+    const runRow = document.createElement("div"); runRow.style.cssText = "margin-top:14px;display:flex;flex-direction:column;gap:8px"; body.appendChild(runRow);
+    const runBtn = document.createElement("button"); runBtn.className = "btn"; runBtn.textContent = "📡 競合に絡む客をさがす";
+    runBtn.onclick = ()=> runCompetitorRadar();
+    runRow.appendChild(runBtn);
+    const listBtn = document.createElement("button"); listBtn.className = "mini"; listBtn.textContent = "⭐ 保存した見込み客リストを見る";
+    listBtn.onclick = ()=> showSavedList();
+    runRow.appendChild(listBtn);
+  }
+
+  /* CFG.competitors(カンマ/改行/全角読点/空白区切り・@つき)→ ユーザー名配列 */
+  function parseCompetitors_(raw) {
+    return String(raw || "").split(/[,、\n\s]+/).map(s=>s.replace(/^@/,"").trim()).filter(Boolean);
+  }
+
+  async function runCompetitorRadar() {
+    if (!acct.value) { alert("対象アカウントを選んでな"); return; }
+    await loadCfgFor(acct.value);
+    const biz = (CFG.bizType||"").trim();
+    if (!biz) { alert("先に⚙生成設定で業種を入れてな(例: 競艇予想 / 金沢のシーシャバー)"); return; }
+    const area = (CFG.bizArea||"").trim();
+    const competitors = parseCompetitors_(CFG.competitors);
+    if (!competitors.length) {
+      out.innerHTML = '<div class="card" style="padding:14px;font-size:13px;line-height:1.8">'
+        + '👥 競合がまだ登録されてへん。<br><br>'
+        + '<b>⚙生成設定</b>の「競合アカウント」欄に、ライバルのXアカウントを入れてな。<br>'
+        + 'URLを貼り付けてもOK(入力欄の外をタップで自動整形され、@名だけ残る)。<br><br>'
+        + 'ここに登録した競合に<b>実際に絡んでる客</b>を、絡んだ回数の多い順に拾って見込み度を判定するで。'
+        + '</div>';
+      return;
+    }
+    const excludes = RADAR_EXCLUDES.filter(x=>excludeSel[x]);
+    out.innerHTML = '<div class="muted" style="padding:10px;line-height:1.7">👥 競合に絡んでる客を集めてAI判定中…(30秒〜1分)<br>対象競合: ' + competitors.map(c=>"@"+esc(c)).join(" / ") + '</div>';
+    try {
+      const sr = await gasFetch_("radarCompetitorScan", { competitors, industry: biz, area, service: biz, excludes, limit, minScore: 30, screen_name: acct.value });
+      const items = (sr && sr.items) ? sr.items : [];
+      if (!items.length) {
+        const dbg = (sr && sr.debug) ? sr.debug : {};
+        const perComp = (sr && sr.perComp) ? sr.perComp : [];
+        let lines = "条件を満たす見込み客が見つからんかった。<br><br>";
+        lines += '<div style="font-size:12px;line-height:1.8;font-family:monospace">'
+          + '競合数: ' + (dbg.competitors||0) + '<br>'
+          + '取得した絡み: ' + (dbg.fetched||0) + '件<br>'
+          + 'ユニーク客: ' + (dbg.uniqueUsers||0) + '人<br>'
+          + 'AI判定: ' + (dbg.judged||0) + '人<br>'
+          + '通過(30点以上): ' + (dbg.passed||0) + '人'
+          + '</div><br>';
+        if (sr && sr.error==="NO_COMPETITORS") lines += '👉 競合が空。⚙生成設定で登録してな。';
+        else if (!dbg.fetched) lines += '👉 競合への絡みが0件。リプの少ないアカウントやと取れん。<b>もっと絡みの多い競合</b>を足すか、別の競合で試して。';
+        else if (!dbg.judged) lines += '👉 客は取れたけどAI判定が空。もう一回試すか件数を変えてみて。';
+        else lines += '👉 候補はあったけど30点未満やった。別の競合を足すと精度上がる。';
+        if (perComp.length) {
+          lines += '<br><br><span class="muted" style="font-size:11px">競合別の絡みヒット数:<br>'
+            + perComp.map(p=>"@"+esc(p.competitor)+" → "+p.hits+"件").join("<br>") + '</span>';
+        }
+        out.innerHTML = '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7">'+lines+'</div>';
+        return;
+      }
+      renderCompetitorResults(items, sr.debug, sr.perComp, competitors);
+    } catch(e) { out.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
+  }
+
+  function renderCompetitorResults(items, dbg, perComp, competitors) {
+    out.innerHTML = "";
+    const head2 = document.createElement("div"); head2.className = "desc"; head2.style.margin = "6px 0";
+    let summary = '👥 競合: ' + competitors.map(c=>"@"+esc(c)).join(" / ");
+    if (perComp && perComp.length) summary += '<br><span style="font-size:11px;color:var(--muted)">絡みヒット: ' + perComp.map(p=>"@"+esc(p.competitor)+" "+p.hits+"件").join(" / ") + '</span>';
+    if (dbg) summary += '<br><span style="font-size:11px;color:var(--muted)">絡み'+(dbg.fetched||0)+'→客'+(dbg.uniqueUsers||0)+'人→判定'+(dbg.judged||0)+'→表示'+(dbg.passed||0)+'</span>';
+    summary += '<br>絡み回数×見込み度の高い順。リプ案をコピーしてXで送る(送信は手動):';
+    head2.innerHTML = summary;
+    out.appendChild(head2);
+    items.forEach(it => out.appendChild(radarCard(it)));
   }
 
   function radarChoice(label, opts, cur, onPick) {
@@ -1772,6 +1944,11 @@ BUILDERS.radar = (el) => {
       + '<div style="font-size:12px;color:var(--accent2)">@'+esc(it.author_handle||"")+(it.posted_at?' · '+timeAgo(it.posted_at):'')+'</div>'
       + '<span style="font-size:11px;padding:2px 7px;border-radius:6px;background:'+riskColor+'22;color:'+riskColor+'">'+riskLabel+'</span>'
       + '</div>'
+      /* 第2弾の絡みバッジ(engage_countがある時だけ) */
+      + (it.engage_count ? '<div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">'
+          + '<span style="font-size:11px;padding:3px 9px;border-radius:7px;background:rgba(34,224,255,.12);color:#22e0ff;font-weight:700">🔥 競合に絡み '+it.engage_count+'回</span>'
+          + ((it.competitor_count>1) ? '<span style="font-size:11px;padding:3px 9px;border-radius:7px;background:rgba(168,85,247,.14);color:#c98bff;font-weight:700">🎯 競合'+it.competitor_count+'件に接触</span>' : '')
+          + '</div>' : '')
       /* 近未来ネオンゲージ */
       + '<div style="margin-bottom:10px">'
         + '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3px">'
@@ -1814,7 +1991,7 @@ BUILDERS.radar = (el) => {
     /* 操作ボタン */
     const btnRow = document.createElement("div"); btnRow.style.cssText="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px";
     const openB = document.createElement("button"); openB.className="mini"; openB.textContent="↗ Xで開く";
-    openB.onclick = ()=>{ if(it.tweet_url) window.open(it.tweet_url,"_blank"); };
+    openB.onclick = ()=>{ const link = it.tweet_url || it.profile_url; if(link) window.open(link,"_blank"); };
     const saveB = document.createElement("button"); saveB.className="mini cyan"; saveB.textContent="⭐ 見込み客リストに追加";
     saveB.onclick = async ()=>{ saveB.disabled=true; saveB.textContent="保存中…";
       try {
@@ -1832,11 +2009,14 @@ BUILDERS.radar = (el) => {
 
   function radarRowFor(it) {
     return {
-      tweet_id: it.tweet_id, tweet_url: it.tweet_url, tweet_text: it.tweet_text,
+      tweet_id: it.tweet_id, tweet_url: it.tweet_url || it.profile_url, tweet_text: it.tweet_text,
       author_name: it.author_name, author_handle: it.author_handle,
       score: it.score, score_reason: it.score_reason, risk_level: it.risk_level,
       reply_1: it.reply_1, reply_2: it.reply_2, reply_3: it.reply_3,
       quote_text: it.quote_text,
+      engage_count: it.engage_count || 0,
+      competitor_count: it.competitor_count || 0,
+      source: it.engage_count ? "competitor" : "search",
     };
   }
 
@@ -3449,7 +3629,7 @@ BUILDERS.calendar = (el) => {
   };
 
   addBtn.onclick = async () => {
-    if (!addDay.value) { return; }
+    if (!addDay.value) { addOut.innerHTML = '<div class="err">📅 日付を入力してください</div>'; return; }
     addBtn.disabled = true; addBtn.textContent = "生成中…";
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
     /* 入力値(datetime-local: "YYYY-MM-DDTHH:MM")から、秒を含めず正確な時刻を組み立てる */
