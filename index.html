@@ -1767,9 +1767,13 @@ BUILDERS.radar = (el) => {
     const riskColor = it.risk_level==="high" ? "#ff5577" : it.risk_level==="medium" ? "#ffaa33" : "#33cc88";
     const riskLabel = it.risk_level==="high" ? "⚠️高" : it.risk_level==="medium" ? "注意" : "安全";
     const sc = Math.max(0, Math.min(100, it.score||0));
+    const rk = Math.max(0, Math.min(100, (typeof it.risk_score==="number") ? it.risk_score : (it.risk_level==="high"?80:it.risk_level==="medium"?50:10)));
     /* 見込み度で色を変える: 高=シアン, 中=紫, 低=くすみ */
     const scColor = sc>=75 ? "#22e0ff" : sc>=50 ? "#a855f7" : "#7a8499";
     const scGlow = sc>=75 ? "rgba(34,224,255,.65)" : sc>=50 ? "rgba(168,85,247,.55)" : "rgba(122,132,153,.35)";
+    /* 危険度: 高いほど赤く光る */
+    const rkColor = rk>=65 ? "#ff4466" : rk>=35 ? "#ffaa33" : "#33cc88";
+    const rkGlow = rk>=65 ? "rgba(255,68,102,.6)" : rk>=35 ? "rgba(255,170,51,.5)" : "rgba(51,204,136,.4)";
     card.innerHTML =
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
       + '<div style="font-size:12px;color:var(--accent2)">@'+esc(it.author_handle||"")+(it.posted_at?' · '+timeAgo(it.posted_at):'')+'</div>'
@@ -1783,6 +1787,16 @@ BUILDERS.radar = (el) => {
         + '</div>'
         + '<div style="height:6px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden;position:relative">'
           + '<div style="height:100%;width:'+sc+'%;border-radius:99px;background:linear-gradient(90deg,'+scColor+'66,'+scColor+');box-shadow:0 0 10px '+scGlow+'"></div>'
+        + '</div>'
+      + '</div>'
+      /* 危険度ゲージ */
+      + '<div style="margin-bottom:10px">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:3px">'
+          + '<span style="font-size:10px;letter-spacing:2px;color:'+rkColor+';text-transform:uppercase;opacity:.85">危険度</span>'
+          + '<span style="font-size:15px;font-weight:800;line-height:1;color:'+rkColor+';text-shadow:0 0 6px '+rkGlow+'">'+rk+'<span style="font-size:10px;font-weight:700">%</span></span>'
+        + '</div>'
+        + '<div style="height:4px;border-radius:99px;background:rgba(255,255,255,.07);overflow:hidden">'
+          + '<div style="height:100%;width:'+rk+'%;border-radius:99px;background:linear-gradient(90deg,'+rkColor+'66,'+rkColor+');box-shadow:0 0 8px '+rkGlow+'"></div>'
         + '</div>'
       + '</div>'
       + '<div style="font-size:13px;line-height:1.55;margin-bottom:6px;white-space:pre-wrap">'+esc((it.tweet_text||"").slice(0,200))+'</div>'
