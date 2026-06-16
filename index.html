@@ -920,17 +920,11 @@ function renderTop() {
 const TABS = [
   { id:"settings", num:"00", label:"⚙ 生成設定" },
   { id:"calendar", num:"01", label:"カレンダー" },
-  { id:"score", num:"02", label:"スコア診断" },
   { id:"competitor", num:"03", label:"競合分析" },
-  { id:"buzz", num:"04", label:"バズ構造" },
-  { id:"multi", num:"05", label:"形式展開" },
-  { id:"trend", num:"06", label:"トレンド" },
   { id:"radar", num:"📡", label:"見込み客レーダー" },
-  { id:"reply", num:"07", label:"リプ生成" },
   { id:"unfollow", num:"🧹", label:"フォロー整理" },
   { id:"outreach", num:"07+", label:"🎯営業リプ" },
   { id:"gapcheck", num:"📭", label:"書き漏れ" },
-  { id:"remake", num:"08", label:"リメイク" },
   { id:"followers", num:"09", label:"推移記録" },
   { id:"report", num:"10", label:"週報" },
   { id:"schedule", num:"12", label:"予約管理" },
@@ -947,7 +941,7 @@ function renderNav() {
     $("nav").appendChild(b);
   });
 }
-function showTab(id) { $("content").innerHTML = ""; BUILDERS[id]($("content")); }
+function showTab(id) { if (!BUILDERS[id]) id = "calendar"; S.tab = id; $("content").innerHTML = ""; BUILDERS[id]($("content")); }
 
 /* ============ 共通部品 ============ */
 function head(el, title, desc, steps) {
