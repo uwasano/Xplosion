@@ -4139,7 +4139,20 @@ BUILDERS.followers = (el) => {
   const num = document.createElement("input"); num.type = "number"; num.placeholder = "1234"; rowEl.appendChild(num);
   const rec = document.createElement("button"); rec.className = "mini primary"; rec.style.flex = "0 0 80px"; rec.textContent = "記録"; rowEl.appendChild(rec);
   const msg = document.createElement("div"); msg.className = "okmsg"; el.appendChild(msg);
+
+  /* 📡 Xから自動取得(＋毎日5時に自動記録) */
+  fld(el, "Xから自動取得");
+  const autoRow = document.createElement("div"); autoRow.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap"; el.appendChild(autoRow);
+  const autoName = document.createElement("input"); autoName.placeholder = "Xユーザー名(@なし)"; autoName.style.cssText = "flex:1;min-width:140px";
+  if (recAcct && recAcct !== "_default_") autoName.value = recAcct;
+  const autoBtn = document.createElement("button"); autoBtn.className = "mini cyan"; autoBtn.style.flex = "0 0 auto"; autoBtn.textContent = "📡 今すぐ取得";
+  autoRow.appendChild(autoName); autoRow.appendChild(autoBtn);
+  const autoNote = document.createElement("p"); autoNote.className = "desc"; autoNote.style.cssText = "margin:6px 0 0;font-size:11.5px";
+  autoNote.innerHTML = "ユーザー名を入れて押すと、今のフォロワー数をAPIで取得して記録(＋登録した競合も一緒に)。<b>毎日5時に自動記録</b>もされる(初回だけGASエディタで <code>setupTriggers</code> を1回実行して有効化)。";
+  el.appendChild(autoNote);
+
   const statsEl = document.createElement("div"); el.appendChild(statsEl);
+  const compEl = document.createElement("div"); el.appendChild(compEl);
   const goalEl = document.createElement("div"); el.appendChild(goalEl);
   const chartEl = document.createElement("div"); el.appendChild(chartEl);
   const aiEl = document.createElement("div"); el.appendChild(aiEl);
@@ -4156,6 +4169,7 @@ BUILDERS.followers = (el) => {
     records = await kvGet(recKey(), []);
     goals = await kvGet(goalKey(), {});
     drawAll();
+    drawCompare();
   }
   reload();
 
@@ -4171,7 +4185,60 @@ BUILDERS.followers = (el) => {
     drawAll();
   };
 
-  function fSeries() { return records.filter((r)=>r.platform===key("フォロワー")).sort((a,b)=>a.date.localeCompare(b.date)); }
+  autoBtn.onclick = async () => {
+    const nm = (autoName.value || "").replace(/^@/, "").trim();
+    if (!nm) { alert("Xユーザー名を入れてな"); return; }
+    autoBtn.disabled = true; autoBtn.textContent = "取得中…";
+    try {
+      const cfg = await kvGet("gen_config:" + nm, null);
+      const comps = cfg && cfg.competitors ? String(cfg.competitors).split(/[,、\n\s]+/).map((s)=>s.replace(/^@/,"").trim()).filter(Boolean) : [];
+      const r = await gasFetch_("followerSnapshotNow", { screen_name: nm, competitors: comps, platform: S.sns });
+      const ok = r && r.results ? r.results.filter((x)=>x.ok) : [];
+      msg.textContent = ok.length ? ("取得OK: " + ok.map((x)=>"@"+x.screen_name+" "+Number(x.count).toLocaleString()).join(" / ")) : "取得失敗。ユーザー名を確認してな。";
+      setTimeout(()=>{ msg.textContent=""; }, 4000);
+      recAcct = nm;
+      await reload();
+    } catch (e) { msg.textContent = "エラー: " + (e && e.message ? e.message : e); }
+    autoBtn.disabled = false; autoBtn.textContent = "📡 今すぐ取得";
+  };
+
+  function diff7(recs) {
+    const fs = (recs||[]).filter((r)=>r.platform===key("フォロワー")).sort((a,b)=>a.date.localeCompare(b.date));
+    if (!fs.length) return null;
+    const last = fs[fs.length-1];
+    const cutoff = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+    const base = fs.filter((r)=>r.date<=cutoff).pop() || fs[0];
+    return { now: last.count, diff: base.date===last.date ? null : last.count-base.count };
+  }
+
+  async function drawCompare() {
+    compEl.innerHTML = "";
+    const tname = (recAcct && recAcct !== "_default_") ? recAcct.replace(/^@/,"") : (autoName.value||"").replace(/^@/,"").trim();
+    if (!tname) return;
+    const cfg = await kvGet("gen_config:" + tname, null);
+    const comps = cfg && cfg.competitors ? String(cfg.competitors).split(/[,、\n\s]+/).map((s)=>s.replace(/^@/,"").trim()).filter(Boolean) : [];
+    if (!comps.length) return;
+    const meRecs = await kvGet("followers:" + tname, []);
+    const rows = [["@"+tname+"(自分)", diff7(meRecs), true]];
+    for (const c of comps) { rows.push(["@"+c, diff7(await kvGet("followers:"+c, [])), false]); }
+    fld(compEl, "競合との比較(直近7日のフォロワー増減)");
+    const tbl = document.createElement("div"); tbl.style.cssText = "display:flex;flex-direction:column;gap:6px";
+    rows.forEach(([name, d, me]) => {
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:"+(me?"rgba(255,46,126,.08)":"var(--surface2)")+";border:1px solid var(--border);font-size:13px";
+      const now = d && d.now != null ? d.now.toLocaleString() : "—";
+      const dd = d && d.diff != null ? ((d.diff>=0?"+":"")+d.diff.toLocaleString()) : "記録待ち";
+      const dcol = d && d.diff != null ? (d.diff>=0?"var(--ok)":"var(--bad)") : "var(--muted)";
+      row.innerHTML = '<span style="font-weight:'+(me?"800":"600")+'">'+esc(name)+'</span>'
+        + '<span style="display:flex;gap:12px;align-items:center"><b style="font-family:var(--mono)">'+now+'</b>'
+        + '<span style="font-family:var(--mono);color:'+dcol+';min-width:70px;text-align:right">'+dd+'/7日</span></span>';
+      tbl.appendChild(row);
+    });
+    compEl.appendChild(tbl);
+    const note = document.createElement("p"); note.className="desc"; note.style.cssText="margin:6px 0 0;font-size:11px";
+    note.textContent = "競合のデータは「今すぐ取得」or 毎日5時の自動記録で溜まる。記録が増えるほど比較が正確になる。";
+    compEl.appendChild(note);
+  }
 
   function drawAll() { drawStats(); drawGoal(); drawChart(); drawAI(); drawHist(); }
 
