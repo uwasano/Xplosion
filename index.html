@@ -1099,7 +1099,19 @@ function aiTab(el, cfg) {
   cfg.fields.forEach((f) => {
     fld(el, f.label);
     if (f.type === "ta") refs[f.key] = ta(el, f.rows, f.ph);
-    else if (f.type === "in") refs[f.key] = inp(el, f.ph);
+    else if (f.type === "in") {
+      refs[f.key] = inp(el, f.ph);
+      if (f.normalizeUser) {
+        const _i = refs[f.key];
+        _i.addEventListener("change", () => {
+          const raw = (_i.value || "").trim();
+          if (!raw) return;
+          const nv = normalizeCompetitors_(raw);
+          const first = Array.isArray(nv) ? nv[0] : String(nv).split(/[\n,、\s]+/).filter(Boolean)[0];
+          if (first) _i.value = "@" + first;
+        });
+      }
+    }
     else if (f.type === "chips") refs[f.key] = chipsSingle(el, f.options, f.options[0]);
     else if (f.type === "multi") refs[f.key] = chipsMulti(el, f.options, f.initial || []);
   });
@@ -1767,7 +1779,7 @@ BUILDERS.competitor = (el) => aiTab(el, {
   desc: `ライバルの${S.sns}投稿をAIが分解して、「なぜ伸びてるか」「どこで勝てるか」を出す。`,
   steps: ["競合の投稿を2〜5件コピーして貼る(いいね数も分かれば一緒に)","「分析する」を押す","真似すべき点・差別化すべき点が3つずつ出る"],
   fields: [
-    { key:"name", type:"in", label:"競合アカウント名", ph:"例: @rival_shisha_bar" },
+    { key:"name", type:"in", label:"競合アカウント名", ph:"例: @rival_shisha_bar", normalizeUser:true },
     { key:"posts", type:"ta", label:"投稿テキスト(複数可・「---」区切り推奨)", rows:8, ph:"投稿1\n---\n投稿2" },
   ],
   btn: "分析する",
