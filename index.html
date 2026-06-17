@@ -929,6 +929,7 @@ function renderTop() {
 /* ============ タブ ============ */
 const TABS = [
   { id:"settings", num:"00", label:"⚙ 生成設定" },
+  { id:"dailytask", num:"", label:"✅ 今日のやること" },
   { id:"calendar", num:"01", label:"カレンダー" },
   { id:"competitor", num:"02", label:"競合分析" },
   { id:"radar", num:"03", label:"📡 見込み客レーダー" },
@@ -943,7 +944,7 @@ const TABS = [
 ];
 const NAV_GROUPS = [
   { id: "home", icon: "🏠", label: "ホーム", tabs: [] },
-  { id: "post", icon: "✍️", label: "投稿", tabs: ["calendar", "gapcheck"] },
+  { id: "post", icon: "✍️", label: "投稿", tabs: ["dailytask", "calendar", "gapcheck"] },
   { id: "analyze", icon: "📈", label: "分析", tabs: ["competitor", "radar", "unfollow", "outreach", "followers", "report"] },
   { id: "config", icon: "⚙️", label: "設定", tabs: ["settings", "schedule", "autoqueue", "clients"] },
 ];
@@ -1148,7 +1149,7 @@ BUILDERS.home = (el) => {
 
   fld(el, "クイック");
   const qrow = document.createElement("div"); qrow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap"; el.appendChild(qrow);
-  [["📅 カレンダー", "calendar"], ["📡 レーダー", "radar"], ["📈 推移記録", "followers"], ["⚙️ 生成設定", "settings"]].forEach(([lb, tid]) => {
+  [["✅ 今日のやること", "dailytask"], ["📅 カレンダー", "calendar"], ["📡 レーダー", "radar"], ["📈 推移記録", "followers"]].forEach(([lb, tid]) => {
     const b = document.createElement("button"); b.className = "chip"; b.textContent = lb; b.onclick = () => { showTab(tid); renderNav(); }; qrow.appendChild(b);
   });
 
@@ -1182,6 +1183,72 @@ BUILDERS.home = (el) => {
       } catch (e) { cFoll.val.textContent = "—"; }
     } else { cFoll.val.textContent = "—"; }
   })();
+};
+
+/* ---- 今日のやること(フォロワー獲得) ---- */
+BUILDERS.dailytask = (el) => {
+  head(el, "今日のやること", "フォロワーを増やす今日のアクションをAIが毎日作成。リプ・投稿・引用はXのAPIで自動計測して達成をチェックする。",
+    ["記録するアカウントを入れる", "「読み込む」で今日のタスクと進捗を取得", "リプ中心にこなすほどフォロワーが増えやすい"]);
+  const actives = S.clients.filter((c) => c.status === "active" && !/^_test/.test(c.screen_name));
+  fld(el, "アカウント(Xユーザー名・@なし)");
+  const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap"; el.appendChild(row);
+  const nameIn = document.createElement("input"); nameIn.placeholder = "例: uwasa1206"; nameIn.style.cssText = "flex:1;min-width:150px";
+  nameIn.value = (S.activeAccount && S.activeAccount !== "_default_") ? S.activeAccount : "";
+  const loadBtn = document.createElement("button"); loadBtn.className = "mini primary"; loadBtn.style.flex = "0 0 auto"; loadBtn.textContent = "読み込む";
+  row.appendChild(nameIn); row.appendChild(loadBtn);
+  if (actives.length) {
+    const q = document.createElement("div"); q.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"; el.appendChild(q);
+    actives.forEach((c) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = "@" + c.screen_name; b.onclick = () => { nameIn.value = c.screen_name; load(); }; q.appendChild(b); });
+  }
+  const out = document.createElement("div"); out.style.marginTop = "14px"; el.appendChild(out);
+
+  const TYPE_LABEL = { reply: "💬 リプ", post: "📝 投稿", quote: "🔁 引用" };
+
+  async function load() {
+    const nm = (nameIn.value || "").replace(/^@/, "").trim();
+    if (!nm) { toast("Xユーザー名を入れてください", "err"); return; }
+    loadBtn.disabled = true; loadBtn.textContent = "読み込み中…";
+    out.innerHTML = '<div class="muted" style="text-align:center;margin-top:10px">AIが今日のリストを作成中…</div>';
+    try {
+      const r = await gasFetch_("dailyTasks", { screen_name: nm });
+      if (!r || !r.ok) { out.innerHTML = '<div class="muted" style="text-align:center">取得できなかった: ' + esc((r && r.error) || "不明") + '</div>'; }
+      else render(r);
+    } catch (e) { out.innerHTML = '<div class="muted" style="text-align:center">エラー: ' + esc(e.message || e) + '</div>'; }
+    loadBtn.disabled = false; loadBtn.textContent = "読み込む";
+  }
+
+  function render(r) {
+    out.innerHTML = "";
+    const doneN = r.tasks.filter((t) => t.done).length;
+    const head2 = document.createElement("div");
+    head2.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:6px";
+    head2.innerHTML = '<div style="font-size:11px;font-weight:800;letter-spacing:.1em;color:var(--accent2);font-family:var(--mono)">' + r.date + ' ・ 達成 ' + doneN + '/' + r.tasks.length + '</div>'
+      + '<div style="font-size:11px;color:var(--muted)">今日 リプ' + (r.counts.reply || 0) + ' / 投稿' + (r.counts.post || 0) + ' / 引用' + (r.counts.quote || 0) + '</div>';
+    out.appendChild(head2);
+    r.tasks.forEach((t) => {
+      const pct = Math.min(100, Math.round(t.actual / t.count * 100));
+      const card = document.createElement("div");
+      card.style.cssText = "padding:11px 12px;border-radius:10px;background:var(--surface2);border:1px solid " + (t.done ? "rgba(61,255,168,.45)" : "var(--border)") + ";margin-bottom:9px";
+      card.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+        + '<span style="font-size:11px;font-weight:800;color:var(--muted);font-family:var(--mono)">' + (TYPE_LABEL[t.type] || t.type) + '</span>'
+        + '<span style="font-size:13px;font-weight:800;color:' + (t.done ? "var(--ok)" : "var(--text)") + '">' + (t.done ? "✓ 達成" : t.actual + " / " + t.count) + '</span></div>'
+        + '<div style="font-size:13px;line-height:1.55;margin-bottom:8px">' + esc(t.label) + '</div>'
+        + '<div style="height:6px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + (t.done ? "var(--ok)" : "var(--accent)") + ';border-radius:4px;transition:width .3s"></div></div>';
+      out.appendChild(card);
+    });
+    if (r.apiError) {
+      const e = document.createElement("p"); e.className = "desc"; e.style.cssText = "margin-top:8px;font-size:11px;color:var(--bad)";
+      e.textContent = "※実績の自動計測でエラー: " + r.apiError;
+      out.appendChild(e);
+    }
+    const note = document.createElement("p"); note.className = "desc"; note.style.cssText = "margin-top:10px;font-size:11px";
+    note.textContent = "リプは『いいねの27倍』効く。大きめアカウントへ早く価値あるリプを送るのが一番フォロワーに効く。リストは毎朝自動で更新される。";
+    out.appendChild(note);
+  }
+
+  loadBtn.onclick = load;
+  if (nameIn.value) load();
 };
 
 /* ---- 00 生成設定 ---- */
