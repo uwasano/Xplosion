@@ -4276,7 +4276,7 @@ BUILDERS.followers = (el) => {
     try {
       await kvSet("followers:" + nm, []);
       msg.textContent = "@" + nm + " の記録を削除した";
-      toast("@" + nm + " の記録を削除した", "ok");
+      toast("@" + nm + " の記録を削除しました", "ok");
       setTimeout(() => { msg.textContent = ""; }, 3000);
       await reload();
     } catch (e) { msg.textContent = "削除エラー: " + (e && e.message ? e.message : e); }
@@ -4305,7 +4305,7 @@ BUILDERS.followers = (el) => {
     try {
       const cur = await kvGet("followers:" + nm, []);
       if (Array.isArray(cur) && cur.some((r) => r.date === todayJST && r.platform === key("フォロワー"))) {
-        toast("@" + nm + " は今日もう登録済みやで", "ok");
+        toast("@" + nm + " は本日すでに登録済みです", "ok");
         await reload();
         return;
       }
@@ -4317,7 +4317,7 @@ BUILDERS.followers = (el) => {
       const r = await gasFetch_("followerSnapshotNow", { screen_name: nm, competitors: comps, platform: S.sns });
       const ok = r && r.results ? r.results.filter((x) => x.ok) : [];
       msg.textContent = ok.length ? ("記録OK: " + ok.map((x) => "@" + x.screen_name + " " + Number(x.count).toLocaleString()).join(" / ")) : "取得失敗。ユーザー名を確認してな。";
-      toast(ok.length ? "記録OK ✓ " + ok.length + "件" : "取得失敗", ok.length ? "ok" : "err");
+      toast(ok.length ? "記録しました（" + ok.length + "件）" : "取得に失敗しました", ok.length ? "ok" : "err");
       setTimeout(() => { msg.textContent = ""; }, 4000);
       await reload();
     } catch (e) { msg.textContent = "エラー: " + (e && e.message ? e.message : e); }
