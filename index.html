@@ -612,7 +612,7 @@ function defaultCfg() {
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
-    competitors: "", hunterWatch: 0, yosouLogic: "compare",
+    competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare",
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
@@ -1362,7 +1362,7 @@ BUILDERS.settings = (el) => {
   drawRivalTags();
 
   /* リプハンターPRO 監視回数 */
-  fld(el, "リプハンターPRO 監視回数(1日あたり)");
+  fld(el, "競合ウォッチ 監視回数(1日あたり)");
   const watchChips = document.createElement("div"); watchChips.className = "chips"; el.appendChild(watchChips);
   function drawWatchChips() {
     watchChips.innerHTML = "";
@@ -1377,6 +1377,23 @@ BUILDERS.settings = (el) => {
   const watchNote = document.createElement("p"); watchNote.className = "desc"; watchNote.style.margin = "6px 0 0";
   watchNote.textContent = "登録した競合を1日に何回チェックして、伸びてる投稿を自動で溜めるか。回数が多いほど機会を逃さないがAPI費用が増える(目安: 競合5人で1回約7円)。トレンド画面「🎯リプハンターPRO」で溜まった投稿を確認できる。";
   el.appendChild(watchNote);
+
+  /* 先回りリプ 自動チェック頻度 */
+  fld(el, "先回りリプ 自動チェック頻度");
+  const proChips = document.createElement("div"); proChips.className = "chips"; el.appendChild(proChips);
+  function drawProChips() {
+    proChips.innerHTML = "";
+    [["停止",0],["2時間ごと",2],["1時間ごと",1]].forEach(function(pair){
+      const on = (CFG.proactiveFreq || 0) === pair[1];
+      const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = pair[0];
+      b.onclick = () => { CFG.proactiveFreq = pair[1]; save(); drawProChips(); };
+      proChips.appendChild(b);
+    });
+  }
+  drawProChips();
+  const proNote = document.createElement("p"); proNote.className = "desc"; proNote.style.margin = "6px 0 0";
+  proNote.textContent = "自分の業種・地域に関心がある人の『投稿後60分以内の伸び始めポスト』を自動で探して溜める。鮮度が命なので競合ウォッチより短い間隔(1時間ごとが最大)。検索が多いぶんAPI費用は競合ウォッチより少し高め。下の業種・店名エリアの設定が必要。";
+  el.appendChild(proNote);
 
   /* 店名・エリア(任意・AIに教えるか選べる) */
   fld(el, "店名・エリアをAIに教える");
@@ -3432,37 +3449,140 @@ BUILDERS.calendar = (el) => {
   };
 
   /* 🎯 リプハンターPRO: 自動監視で溜まった伸び中投稿を表示(アカウントごと) */
+  let _hp = { mode: "proactive", tab: "now", items: {} };
   btnHunterPro.onclick = async () => {
     if (acct.value) await loadCfgFor(acct.value); else await loadCfgFor("_default_");
-    btnHunterPro.disabled = true; btnHunterPro.textContent = "溜まった投稿を確認中…"; trOut.innerHTML = "";
-    try {
-      const j = await gasFetch_("hunterList", acct.value ? { screenName: acct.value } : {});
-      const items = (j && j.items) ? j.items : [];
-      if (!items.length) {
-        trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12.5px">まだ溜まった投稿が無い。<br>リプハンターPROは競合を1日3回(9時/15時/21時)自動監視して、伸び中の投稿をここに溜める。<br><br>① 生成設定で「競合アカウント」を登録<br>② setupTriggersを実行(まだなら)<br>③ 監視時刻が過ぎると、伸びてる投稿がここに出る</div>';
-        btnHunterPro.disabled=false; btnHunterPro.textContent="🎯 リプハンターPRO(自動で溜めた投稿)"; return;
-      }
-      const byAcct = {};
-      items.forEach(it => { (byAcct[it.screen_name] = byAcct[it.screen_name] || []).push(it); });
-      trOut.innerHTML = '<div class="desc" style="margin:6px 0">自動監視で見つけた「今伸びてる投稿」。リプ生成して手動で送ると目立つ:</div>';
-      Object.keys(byAcct).forEach(sn => {
-        const h = document.createElement("div"); h.style.cssText="font-weight:700;font-size:13px;color:var(--accent);margin:12px 0 4px"; h.textContent = "▼ @"+sn+" 向け ("+byAcct[sn].length+"件)";
-        trOut.appendChild(h);
-        byAcct[sn].forEach(it => {
-          const card = document.createElement("div");
-          card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:8px";
-          card.innerHTML = '<div style="font-size:11px;color:var(--accent2);margin-bottom:4px">@'+esc(it.competitor||"")+' · ❤'+(it.likes||0)+' · 🔥伸び率'+(it.velocity||0)+'/h</div>'
-            + '<div style="font-size:13px;line-height:1.55;margin-bottom:6px;white-space:pre-wrap">'+esc((it.tweet_text||"").length>180?(it.tweet_text.slice(0,180)+"…"):(it.tweet_text||""))+'</div>';
-          const repBox = document.createElement("div"); card.appendChild(repBox);
-          trOut.appendChild(card);
-          makeHunterReplies(repBox, { text: it.tweet_text||"", url: it.tweet_url||"", _author: it.competitor||"", _qid: it.id });
-        });
-      });
-    } catch (e) { trOut.innerHTML = '<div class="err">'+e.message+'</div>'; }
-    btnHunterPro.disabled = false; btnHunterPro.textContent = "🎯 リプハンターPRO(自動で溜めた投稿)";
+    _hp = { mode: "proactive", tab: "now", items: {} };
+    await renderHunterPro();
   };
 
-  /* リプハンターの個別リプ生成(3案) */
+  function hpAgeMin(it) {
+    const base = it.posted_at || it.created_at;
+    if (!base) return 99999;
+    return Math.max(0, Math.round((Date.now() - new Date(base).getTime()) / 60000));
+  }
+  function hpClassify(it) {
+    const st = it.status || "new";
+    if (st === "replied" || st === "skip") return "done";
+    const m = hpAgeMin(it);
+    if (m <= 60) return "now";
+    if (m <= 1440) return "later";
+    return "expired";
+  }
+  async function hpFetch(mode) {
+    if (_hp.items[mode]) return _hp.items[mode];
+    const action = mode === "proactive" ? "proactiveList" : "hunterList";
+    const j = await gasFetch_(action, acct.value ? { screenName: acct.value } : {});
+    _hp.items[mode] = (j && j.items) ? j.items : [];
+    return _hp.items[mode];
+  }
+  async function hpMark(it, status) {
+    try { await gasFetch_("hunterMark", { id: it.id, status: status }); it.status = status; } catch (e) {}
+  }
+  async function renderHunterPro() {
+    trOut.innerHTML = '<div class="muted" style="padding:8px">読み込み中…</div>';
+    let items;
+    try { items = await hpFetch(_hp.mode); }
+    catch (e) { trOut.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
+    trOut.innerHTML = "";
+
+    /* モード切替 */
+    const modeRow = document.createElement("div"); modeRow.style.cssText = "display:flex;gap:8px;margin:4px 0 10px";
+    [["competitor", "🔭 競合ウォッチ"], ["proactive", "🎯 先回りリプ"]].forEach(([mv, lb]) => {
+      const b = document.createElement("button"); b.className = "mini" + (_hp.mode === mv ? " cyan" : "");
+      b.textContent = lb; b.style.cssText = "flex:1;padding:9px;border-radius:10px;font-weight:700";
+      b.onclick = async () => { _hp.mode = mv; _hp.tab = "now"; await renderHunterPro(); };
+      modeRow.appendChild(b);
+    });
+    trOut.appendChild(modeRow);
+
+    const desc = document.createElement("p"); desc.className = "desc"; desc.style.margin = "0 0 8px";
+    desc.textContent = _hp.mode === "proactive"
+      ? "自分の客層が見てる『今伸び始めた投稿』に早く自然に絡む。初回は営業せず、まず存在を知ってもらうのが狙い。"
+      : "登録した競合の『普段より伸びてる投稿』を多角的に判定して表示。会話に乗って自分を見てもらう。";
+    trOut.appendChild(desc);
+
+    /* タブ分け */
+    const groups = { now: [], later: [], done: [] };
+    items.forEach(it => { const c = hpClassify(it); if (groups[c]) groups[c].push(it); });
+    groups.now.sort((a, b) => (b.chance_score || 0) - (a.chance_score || 0));
+    groups.later.sort((a, b) => (b.chance_score || 0) - (a.chance_score || 0));
+
+    const tabRow = document.createElement("div"); tabRow.style.cssText = "display:flex;gap:6px;margin-bottom:10px";
+    [["now", "🔥 今すぐ", groups.now.length], ["later", "📥 あとで見る", groups.later.length], ["done", "✅ 対応済み", groups.done.length]].forEach(([tv, lb, n]) => {
+      const b = document.createElement("button"); b.className = "mini" + (_hp.tab === tv ? " cyan" : "");
+      b.textContent = lb + " " + n; b.style.cssText = "flex:1;padding:7px;border-radius:9px;font-size:12px";
+      b.onclick = () => { _hp.tab = tv; renderHunterPro(); };
+      tabRow.appendChild(b);
+    });
+    trOut.appendChild(tabRow);
+
+    const list = groups[_hp.tab] || [];
+    if (!list.length) {
+      const freqMsg = _hp.mode === "proactive"
+        ? "「設定 → 先回りリプ 自動チェック頻度」をONにして、業種・地域も入れると溜まる。"
+        : "「設定 → 競合アカウント登録 ＋ 競合ウォッチ 監視回数」を設定すると溜まる。";
+      const tabMsg = _hp.tab === "now" ? "60分以内の鮮度が高い候補がここに出る。" : (_hp.tab === "later" ? "60分を過ぎたけど引用や自社投稿のネタに使える候補がここに。" : "Xで返信／見送りした投稿がここに残る。");
+      const note = document.createElement("div"); note.className = "muted"; note.style.cssText = "padding:10px;font-size:12.5px;line-height:1.6";
+      note.innerHTML = "このタブは今カラ。<br>" + tabMsg + (_hp.tab !== "done" ? "<br>" + freqMsg : "");
+      trOut.appendChild(note); return;
+    }
+    list.forEach(it => trOut.appendChild(hpCard(it)));
+  }
+
+  function hpCard(it) {
+    const mode = _hp.mode;
+    const m = hpAgeMin(it);
+    const card = document.createElement("div");
+    card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px;margin-top:10px";
+    const score = it.chance_score || 0;
+    const scoreColor = score >= 70 ? "#3DFFA8" : (score >= 50 ? "#eab308" : "#7E8BA8");
+    const scoreLabel = mode === "proactive" ? "先回りチャンス" : "伸び";
+    let head = '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">';
+    head += '<span style="font-weight:800;font-size:15px;color:' + scoreColor + '">' + scoreLabel + ' ' + score + '%</span>';
+    if (it.category) head += '<span style="font-size:11px;background:rgba(0,229,255,.12);color:var(--accent2);padding:2px 8px;border-radius:10px">' + esc(it.category) + '</span>';
+    head += '<span style="font-size:11px;color:var(--muted);margin-left:auto">投稿後' + (m < 99999 ? m + "分" : "—") + '</span></div>';
+    let stat = '<div style="font-size:11.5px;color:var(--accent2);margin-bottom:6px">@' + esc(it.competitor || "") + ' · ❤' + (it.likes || 0) + ' · 💬' + (it.replies || 0);
+    if (mode === "competitor" && it.velocity) stat += ' · 🔥' + it.velocity + '/h';
+    stat += '</div>';
+    const body = '<div style="font-size:13px;line-height:1.55;margin-bottom:6px;white-space:pre-wrap">' + esc((it.tweet_text || "").length > 200 ? (it.tweet_text.slice(0, 200) + "…") : (it.tweet_text || "")) + '</div>';
+    const reason = it.reason ? '<div style="font-size:11.5px;color:var(--muted);background:var(--bg);border-radius:8px;padding:6px 8px;margin-bottom:8px">💡 ' + esc(it.reason) + '</div>' : '';
+    card.innerHTML = head + stat + body + reason;
+
+    let ideas = it.reply_ideas;
+    if (typeof ideas === "string") { try { ideas = JSON.parse(ideas); } catch (e) { ideas = []; } }
+    if (!Array.isArray(ideas)) ideas = [];
+    const labels = ["共感", "情報", "質問"];
+    if (ideas.length) {
+      ideas.slice(0, 3).forEach((rep, i) => {
+        const w = document.createElement("div"); w.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px";
+        w.innerHTML = '<div style="font-size:10.5px;color:var(--accent2);margin-bottom:3px">' + (labels[i] || ("案" + (i + 1))) + '</div><div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(rep) + '</div>';
+        const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "📋 コピー"; cp.style.marginTop = "6px";
+        cp.onclick = () => { navigator.clipboard.writeText(rep); cp.textContent = "✓ コピーした"; setTimeout(() => cp.textContent = "📋 コピー", 1200); };
+        w.appendChild(cp); card.appendChild(w);
+      });
+    } else {
+      const repBox = document.createElement("div"); card.appendChild(repBox);
+      makeHunterReplies(repBox, { text: it.tweet_text || "", url: it.tweet_url || "", _author: it.competitor || "", _qid: it.id });
+    }
+
+    const st = it.status || "new";
+    if (st !== "replied" && st !== "skip") {
+      const acts = document.createElement("div"); acts.style.cssText = "display:flex;gap:8px;margin-top:10px";
+      const go = document.createElement("a"); go.className = "mini cyan"; go.textContent = "↗ Xで返信"; go.href = it.tweet_url || ("https://x.com/" + (it.competitor || "")); go.target = "_blank";
+      go.style.cssText = "flex:1;text-align:center;text-decoration:none;padding:9px;border-radius:9px;font-weight:700";
+      go.onclick = async () => { await hpMark(it, "replied"); setTimeout(() => renderHunterPro(), 500); };
+      const skip = document.createElement("button"); skip.className = "mini"; skip.textContent = "見送り"; skip.style.cssText = "padding:9px 14px;border-radius:9px";
+      skip.onclick = async () => { await hpMark(it, "skip"); renderHunterPro(); };
+      acts.appendChild(go); acts.appendChild(skip); card.appendChild(acts);
+    } else {
+      const done = document.createElement("div"); done.style.cssText = "font-size:11px;color:var(--muted);margin-top:8px";
+      done.textContent = st === "replied" ? "✅ Xで返信済み" : "➖ 見送り済み";
+      card.appendChild(done);
+    }
+    return card;
+  }
+
   async function makeHunterReplies(host, p) {
     const hbtn = document.createElement("button"); hbtn.className="mini cyan"; hbtn.textContent="この投稿にリプ(3案)";
     const hOut = document.createElement("div");
