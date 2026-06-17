@@ -1140,7 +1140,7 @@ BUILDERS.home = (el) => {
     return { val, sub: subEl };
   }
 
-  const cToday = card("今日の投稿予定", "予約確定ぶん", "schedule");
+  const cToday = card("今日の投稿予定", "予約確定済み", "schedule");
   const cPending = card("承認待ち(GO待ち)", "タップで確認", "schedule");
   const cFoll = card("フォロワー", acctName ? "@" + acctName : "アカ未設定", "followers");
   const cReport = card("週報", "今週をAI集計 →", "report");
@@ -1170,7 +1170,14 @@ BUILDERS.home = (el) => {
         if (fs.length) {
           const now = fs[fs.length - 1].count;
           cFoll.val.textContent = now.toLocaleString();
-          if (fs.length > 1) { const diff = now - fs[fs.length - 2].count; cFoll.sub.textContent = "@" + acctName + "  前回比 " + (diff >= 0 ? "+" : "") + diff; cFoll.sub.style.color = diff >= 0 ? "var(--ok)" : "var(--bad)"; }
+          if (fs.length > 1) {
+            const diff = now - fs[fs.length - 2].count;
+            const arrow = diff > 0 ? "▲" : (diff < 0 ? "▼" : "→");
+            const col = diff > 0 ? "var(--ok)" : (diff < 0 ? "var(--bad)" : "var(--muted)");
+            cFoll.sub.innerHTML = '<span style="color:var(--muted)">@' + acctName + '</span>　<b style="color:' + col + '">前日比 ' + arrow + (diff > 0 ? "+" : "") + diff.toLocaleString() + '</b>';
+          } else {
+            cFoll.sub.textContent = "@" + acctName + "  前日比は記録2日分で表示";
+          }
         } else { cFoll.val.textContent = "—"; cFoll.sub.textContent = "推移記録で取得"; }
       } catch (e) { cFoll.val.textContent = "—"; }
     } else { cFoll.val.textContent = "—"; }
