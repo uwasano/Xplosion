@@ -891,7 +891,7 @@ async function loadClients() {
   /* screen_nameで重複排除(念のため・描画2重防止) */
   const seen = {}; const uniq = [];
   (data || []).forEach(c => { if (!seen[c.screen_name]) { seen[c.screen_name] = 1; uniq.push(c); } });
-  S.clients = uniq;
+  S.clients = uniq.filter((c) => !/^_test/.test(c.screen_name || ""));
 }
 
 /* ============ ヘッダーUI ============ */
@@ -1210,7 +1210,7 @@ BUILDERS.dailytask = (el) => {
   row.appendChild(nameIn); row.appendChild(loadBtn);
   if (actives.length) {
     const q = document.createElement("div"); q.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"; el.appendChild(q);
-    actives.forEach((c) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = "@" + c.screen_name; b.onclick = () => { nameIn.value = c.screen_name; load(); }; q.appendChild(b); });
+    actives.forEach((c) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = "@" + c.screen_name; b.onclick = () => { nameIn.value = c.screen_name; }; q.appendChild(b); });
   }
   const out = document.createElement("div"); out.style.marginTop = "14px"; el.appendChild(out);
 
@@ -1260,7 +1260,6 @@ BUILDERS.dailytask = (el) => {
   }
 
   loadBtn.onclick = load;
-  if (nameIn.value) load();
 };
 
 /* ---- 00 生成設定 ---- */
