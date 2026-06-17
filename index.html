@@ -1159,6 +1159,8 @@ BUILDERS.home = (el) => {
   const cReport = card("週報", "今週をAI集計 →", "report");
   cReport.val.style.fontSize = "18px"; cReport.val.style.color = "var(--accent2)"; cReport.val.textContent = "作る";
 
+  const autoErrBox = document.createElement("div"); autoErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(autoErrBox);
+
   fld(el, "クイック");
   const qrow = document.createElement("div"); qrow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap"; el.appendChild(qrow);
   [["✅ 今日のやること", "dailytask"], ["📅 カレンダー", "calendar"], ["📡 レーダー", "radar"], ["📈 推移記録", "followers"]].forEach(([lb, tid]) => {
@@ -1176,6 +1178,24 @@ BUILDERS.home = (el) => {
       cPending.val.textContent = pendingCount + "件";
       if (pendingCount > 0) { cPending.val.style.color = "var(--accent)"; cPending.sub.textContent = "GO待ちあり → タップ"; }
     } catch (e) { cToday.val.textContent = "—"; cPending.val.textContent = "—"; }
+    try {
+      const todayJST2 = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+      const { data: aq } = await sb.from("auto_queue").select("kind,status,error_msg,screen_name,scheduled_at").eq("run_date", todayJST2).eq("status", "error");
+      /* 「(対象レースなし)」等のカッコ始まりは正常スキップなので除外。本物のエラーだけ出す */
+      const errs = (aq || []).filter((e) => !String(e.error_msg || "").startsWith("(対象レース"));
+      if (errs.length) {
+        const kindJP = { trend: "トレンド", enjou: "炎上ニュース", normal: "通常投稿", flavor: "フレーバー", yosou: "予想(人気順)", yosou_score: "予想(スコア)", yokoku: "レース予告" };
+        let html = '<div style="background:rgba(255,123,123,.12);border:1px solid var(--bad);border-radius:10px;padding:11px">';
+        html += '<div style="font-weight:700;color:var(--bad);margin-bottom:4px">⚠️ オート投稿でエラー ' + errs.length + '件</div>';
+        html += '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">下の原因を直すか、生成設定を見直してな。直ったら次回から自動で復帰する。</div>';
+        errs.forEach((er) => {
+          const tm = String(er.scheduled_at || "").slice(11, 16);
+          html += '<div style="font-size:12px;line-height:1.55;margin-top:7px;padding-top:7px;border-top:1px solid var(--border)">・<b>' + esc(kindJP[er.kind] || er.kind || "") + '</b> <span style="color:var(--muted)">@' + esc(er.screen_name || "") + (tm ? " " + tm : "") + '</span><br><span style="color:var(--bad)">' + esc(er.error_msg || "原因不明") + '</span></div>';
+        });
+        html += '</div>';
+        autoErrBox.innerHTML = html; autoErrBox.style.display = "block";
+      }
+    } catch (e) {}
     if (acctName) {
       try {
         const recs = await kvGet("followers:" + acctName, []);
