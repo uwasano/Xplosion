@@ -108,6 +108,11 @@
   .mini.cyan{border-color:rgba(0,229,255,.4);color:var(--accent2)}
   .err{color:var(--bad);font-size:13px;margin-top:10px;line-height:1.5}
   .okmsg{color:var(--ok);font-size:13px;margin-top:10px}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(18px);background:var(--surface2);border:1px solid var(--accent);color:var(--text);padding:11px 20px;border-radius:10px;font-size:13.5px;font-weight:600;box-shadow:0 8px 30px rgba(0,0,0,.55);z-index:9999;opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;max-width:88%;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{border-color:var(--ok)}
+  .toast.err{border-color:var(--bad)}
+  .howto-toggle{background:none;border:1px solid var(--border);color:var(--accent2);font-size:11px;font-family:var(--mono);letter-spacing:.08em;padding:5px 11px;border-radius:7px;cursor:pointer;margin-bottom:6px}
   .muted{color:var(--muted);font-size:13px}
   .count{font-size:11px;color:var(--muted);text-align:right;margin-top:4px;font-family:var(--mono)}
   .count.over{color:var(--bad);font-weight:800}
@@ -944,13 +949,33 @@ function renderNav() {
 function showTab(id) { if (!BUILDERS[id]) id = "calendar"; S.tab = id; $("content").innerHTML = ""; BUILDERS[id]($("content")); }
 
 /* ============ 共通部品 ============ */
+let _toastTimer = null;
+function toast(text, type) {
+  let t = document.getElementById("globalToast");
+  if (!t) { t = document.createElement("div"); t.id = "globalToast"; document.body.appendChild(t); }
+  t.className = "toast" + (type ? " " + type : "");
+  t.textContent = text;
+  void t.offsetWidth;
+  t.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.classList.remove("show"); }, 3000);
+}
 function head(el, title, desc, steps) {
   const d = document.createElement("div");
+  const howId = "howto_" + Math.random().toString(36).slice(2, 8);
   d.innerHTML = "<h2>" + esc(title) + '</h2><p class="desc">' + esc(desc) + "</p>" +
-    '<div class="howto"><div class="hd">HOW TO USE</div>' +
+    '<button type="button" class="howto-toggle">ⓘ 使い方を見る</button>' +
+    '<div class="howto" id="' + howId + '" style="display:none">' +
     steps.map((s, i) => '<div class="st"><b>' + String(i + 1).padStart(2, "0") + "</b><span>" + esc(s) + "</span></div>").join("") +
     "</div>";
   el.appendChild(d);
+  const btn = d.querySelector(".howto-toggle");
+  const how = d.querySelector("#" + howId);
+  btn.onclick = () => {
+    const open = how.style.display !== "none";
+    how.style.display = open ? "none" : "block";
+    btn.textContent = open ? "ⓘ 使い方を見る" : "✕ 使い方を閉じる";
+  };
 }
 function fld(el, label) {
   const l = document.createElement("label"); l.className = "fld"; l.textContent = "▸ " + label; el.appendChild(l);
@@ -4160,6 +4185,7 @@ BUILDERS.followers = (el) => {
     try {
       await kvSet("followers:" + nm, []);
       msg.textContent = "@" + nm + " の記録を削除した";
+      toast("@" + nm + " の記録を削除した", "ok");
       setTimeout(() => { msg.textContent = ""; }, 3000);
       await reload();
     } catch (e) { msg.textContent = "削除エラー: " + (e && e.message ? e.message : e); }
@@ -4191,6 +4217,7 @@ BUILDERS.followers = (el) => {
       const r = await gasFetch_("followerSnapshotNow", { screen_name: nm, competitors: comps, platform: S.sns });
       const ok = r && r.results ? r.results.filter((x) => x.ok) : [];
       msg.textContent = ok.length ? ("記録OK: " + ok.map((x) => "@" + x.screen_name + " " + Number(x.count).toLocaleString()).join(" / ")) : "取得失敗。ユーザー名を確認してな。";
+      toast(ok.length ? "記録OK ✓ " + ok.length + "件" : "取得失敗", ok.length ? "ok" : "err");
       setTimeout(() => { msg.textContent = ""; }, 4000);
       await reload();
     } catch (e) { msg.textContent = "エラー: " + (e && e.message ? e.message : e); }
