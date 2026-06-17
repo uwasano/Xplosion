@@ -1017,7 +1017,7 @@ function ta(el, rows, ph) {
 function inp(el, ph, type) {
   const t = document.createElement("input"); t.type = type || "text"; t.placeholder = ph || ""; el.appendChild(t); return t;
 }
-function chipsSingle(el, options, initial, cyan) {
+function chipsSingle(el, options, initial, cyan, onChange) {
   const w = document.createElement("div"); w.className = "chips"; el.appendChild(w);
   const state = { value: initial };
   function draw() {
@@ -1026,7 +1026,7 @@ function chipsSingle(el, options, initial, cyan) {
       const c = document.createElement("button");
       c.className = "chip" + (state.value === o ? (cyan ? " on cyan" : " on") : "");
       c.textContent = o;
-      c.onclick = () => { state.value = o; draw(); };
+      c.onclick = () => { state.value = o; draw(); if (onChange) onChange(o); };
       w.appendChild(c);
     });
   }
@@ -2768,7 +2768,7 @@ BUILDERS.outreach = (el) => {
   fld(el, "トーン");
   const toneRef = chipsSingle(el, ["丁寧","共感","タメ口","ツッコミ"], "丁寧");
   fld(el, "作るもの");
-  const kindRef = chipsSingle(el, ["リプ(返信で絡む)","引用RT(拡散狙い)","DM誘導(LINEへ)"], "リプ(返信で絡む)");
+  const kindRef = chipsSingle(el, ["リプ(返信で絡む)","引用RT(拡散狙い)","DM誘導(LINEへ)"], "リプ(返信で絡む)", false, () => updateBtnLabel());
   fld(el, "誘導先LINE(DM誘導の時だけ使う・任意)");
   const lineIn = inp(el, "https://lin.ee/xxxx など");
   /* ターゲット情報の表示エリア */
@@ -2832,14 +2832,12 @@ BUILDERS.outreach = (el) => {
 
   const btn = runBtn(el, "🎯 生成する");
   const out = outArea(el);
-  /* 選択に応じてボタン文言を更新(chipsSingleにonChangeが無いので軽く監視) */
-  let lastKind = kindRef.value;
+  /* 選択に応じてボタン文言を更新(chipsSingleのonChangeで駆動・常時タイマーなし) */
   const updateBtnLabel = () => {
     const k = kindRef.value;
     btn.textContent = k.indexOf("引用RT")>=0 ? "🎯 引用RT文を生成" : (k.indexOf("DM誘導")>=0 ? "🎯 DM誘導文を生成" : "🎯 刺さるリプを生成");
   };
   updateBtnLabel();
-  setInterval(() => { if (kindRef.value !== lastKind) { lastKind = kindRef.value; if (!btn.disabled) updateBtnLabel(); } }, 400);
 
   btn.onclick = async () => {
     const url = urlIn.value.trim();
