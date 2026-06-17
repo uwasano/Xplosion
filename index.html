@@ -4210,6 +4210,15 @@ BUILDERS.followers = (el) => {
   recBtn.onclick = async () => {
     const nm = target();
     if (!nm) { alert("Xユーザー名を入れてな"); return; }
+    const todayJST = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    try {
+      const cur = await kvGet("followers:" + nm, []);
+      if (Array.isArray(cur) && cur.some((r) => r.date === todayJST && r.platform === key("フォロワー"))) {
+        toast("@" + nm + " は今日もう登録済みやで", "ok");
+        await reload();
+        return;
+      }
+    } catch (e) {}
     recBtn.disabled = true; recBtn.textContent = "取得中…";
     try {
       const cfg = await kvGet("gen_config:" + nm, null);
