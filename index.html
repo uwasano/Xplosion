@@ -70,7 +70,12 @@
   .out pre{white-space:pre-wrap;word-break:break-word;margin:0;font-family:inherit;font-size:14.5px;line-height:1.75}
   .copybtn{position:absolute;top:10px;right:10px;background:var(--surface2);color:var(--muted);
     border:1px solid var(--border);border-radius:8px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer}
-  nav{display:flex;gap:8px;overflow-x:auto;padding:12px 0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  nav{display:flex;flex-direction:column;gap:8px;padding:12px 0}
+  .navrow{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .navrow::-webkit-scrollbar{display:none}
+  .navbtn.grp{font-size:13.5px;font-weight:800}
+  .navbtn.grp.on{border-color:var(--accent2);background:rgba(0,224,255,.12);color:var(--accent2);box-shadow:0 0 14px rgba(0,224,255,.25)}
+  .navbtn.sub{font-size:12.5px;padding:7px 12px}
   nav::-webkit-scrollbar{display:none}
   .navbtn{flex-shrink:0;padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
     color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px}
@@ -598,7 +603,7 @@ async function shMixPostText(audience, sceneObj){
 
 
 /* ============ 状態 ============ */
-const S = { sns: "X", mode: "標準", profile: "", genres: ["シーシャバー(店舗)","ゲーム制作","開発・ツール"], tab: "calendar", clients: [], activeAccount: "_default_" };
+const S = { sns: "X", mode: "標準", profile: "", genres: ["シーシャバー(店舗)","ゲーム制作","開発・ツール"], tab: "home", clients: [], activeAccount: "_default_" };
 
 /* 生成設定のひな形 */
 function defaultCfg() {
@@ -936,15 +941,40 @@ const TABS = [
   { id:"autoqueue", num:"10", label:"⏰ オート予定" },
   { id:"clients", num:"11", label:"クライアント" },
 ];
+const NAV_GROUPS = [
+  { id: "home", icon: "🏠", label: "ホーム", tabs: [] },
+  { id: "post", icon: "✍️", label: "投稿", tabs: ["calendar", "gapcheck"] },
+  { id: "analyze", icon: "📈", label: "分析", tabs: ["competitor", "radar", "unfollow", "outreach", "followers", "report"] },
+  { id: "config", icon: "⚙️", label: "設定", tabs: ["settings", "schedule", "autoqueue", "clients"] },
+];
+function currentGroup() {
+  if (S.tab === "home") return "home";
+  const g = NAV_GROUPS.find((g) => g.tabs.indexOf(S.tab) >= 0);
+  return g ? g.id : "post";
+}
 function renderNav() {
-  $("nav").innerHTML = "";
-  TABS.forEach((t) => {
+  const nav = $("nav"); nav.innerHTML = "";
+  const row1 = document.createElement("div"); row1.className = "navrow"; nav.appendChild(row1);
+  NAV_GROUPS.forEach((g) => {
     const b = document.createElement("button");
-    b.className = "navbtn" + (S.tab === t.id ? " on" : "");
-    b.innerHTML = "<b>" + t.num + "</b>" + t.label;
-    b.onclick = () => { S.tab = t.id; renderNav(); showTab(t.id); };
-    $("nav").appendChild(b);
+    b.className = "navbtn grp" + (currentGroup() === g.id ? " on" : "");
+    b.innerHTML = g.icon + " " + g.label;
+    b.onclick = () => { showTab(g.id === "home" ? "home" : g.tabs[0]); renderNav(); };
+    row1.appendChild(b);
   });
+  const cg = NAV_GROUPS.find((g) => g.id === currentGroup());
+  if (cg && cg.tabs.length) {
+    const row2 = document.createElement("div"); row2.className = "navrow"; nav.appendChild(row2);
+    cg.tabs.forEach((tid) => {
+      const t = TABS.find((t) => t.id === tid);
+      if (!t) return;
+      const b = document.createElement("button");
+      b.className = "navbtn sub" + (S.tab === tid ? " on" : "");
+      b.innerHTML = t.label;
+      b.onclick = () => { showTab(tid); renderNav(); };
+      row2.appendChild(b);
+    });
+  }
 }
 function showTab(id) { if (!BUILDERS[id]) id = "calendar"; S.tab = id; $("content").innerHTML = ""; BUILDERS[id]($("content")); }
 
@@ -1085,6 +1115,67 @@ function aiTab(el, cfg) {
 }
 
 const BUILDERS = {};
+
+/* ---- ホーム(店運用ダッシュボード・競艇は出さない) ---- */
+BUILDERS.home = (el) => {
+  const acctName = (S.activeAccount && S.activeAccount !== "_default_")
+    ? S.activeAccount
+    : ((S.clients.find((c) => c.status === "active" && !/^_test/.test(c.screen_name)) || {}).screen_name || "");
+
+  const d = document.createElement("div");
+  d.innerHTML = '<h2>ホーム</h2><p class="desc">今の状況をまとめて表示。カードをタップで各画面へ。</p>';
+  el.appendChild(d);
+
+  const grid = document.createElement("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px"; el.appendChild(grid);
+
+  function card(label, sub, goTab) {
+    const c = document.createElement("button");
+    c.style.cssText = "text-align:left;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;cursor:pointer";
+    const lab = document.createElement("div"); lab.style.cssText = "font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--muted);font-family:var(--mono)"; lab.textContent = label;
+    const val = document.createElement("div"); val.style.cssText = "font-size:26px;font-weight:800;margin-top:4px;color:var(--text)"; val.textContent = "…";
+    const subEl = document.createElement("div"); subEl.style.cssText = "font-size:11px;color:var(--muted);margin-top:2px"; subEl.textContent = sub || "";
+    c.appendChild(lab); c.appendChild(val); c.appendChild(subEl);
+    if (goTab) c.onclick = () => { showTab(goTab); renderNav(); };
+    grid.appendChild(c);
+    return { val, sub: subEl };
+  }
+
+  const cToday = card("今日の投稿予定", "予約確定ぶん", "schedule");
+  const cPending = card("承認待ち(GO待ち)", "タップで確認", "schedule");
+  const cFoll = card("フォロワー", acctName ? "@" + acctName : "アカ未設定", "followers");
+  const cReport = card("週報", "今週をAI集計 →", "report");
+  cReport.val.style.fontSize = "18px"; cReport.val.style.color = "var(--accent2)"; cReport.val.textContent = "作る";
+
+  fld(el, "クイック");
+  const qrow = document.createElement("div"); qrow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap"; el.appendChild(qrow);
+  [["📅 カレンダー", "calendar"], ["📡 レーダー", "radar"], ["📈 推移記録", "followers"], ["⚙️ 生成設定", "settings"]].forEach(([lb, tid]) => {
+    const b = document.createElement("button"); b.className = "chip"; b.textContent = lb; b.onclick = () => { showTab(tid); renderNav(); }; qrow.appendChild(b);
+  });
+
+  (async () => {
+    try {
+      const { data } = await sb.from("scheduled_posts").select("status,scheduled_at");
+      const rows = data || [];
+      const todayJST = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+      const todayCount = rows.filter((r) => r.status === "pending" && String(r.scheduled_at || "").slice(0, 10) === todayJST).length;
+      const pendingCount = rows.filter((r) => r.status === "draft").length;
+      cToday.val.textContent = todayCount + "件";
+      cPending.val.textContent = pendingCount + "件";
+      if (pendingCount > 0) { cPending.val.style.color = "var(--accent)"; cPending.sub.textContent = "GO待ちあり → タップ"; }
+    } catch (e) { cToday.val.textContent = "—"; cPending.val.textContent = "—"; }
+    if (acctName) {
+      try {
+        const recs = await kvGet("followers:" + acctName, []);
+        const fs = (recs || []).filter((r) => r.platform === "X:フォロワー").sort((a, b) => a.date.localeCompare(b.date));
+        if (fs.length) {
+          const now = fs[fs.length - 1].count;
+          cFoll.val.textContent = now.toLocaleString();
+          if (fs.length > 1) { const diff = now - fs[fs.length - 2].count; cFoll.sub.textContent = "@" + acctName + "  前回比 " + (diff >= 0 ? "+" : "") + diff; cFoll.sub.style.color = diff >= 0 ? "var(--ok)" : "var(--bad)"; }
+        } else { cFoll.val.textContent = "—"; cFoll.sub.textContent = "推移記録で取得"; }
+      } catch (e) { cFoll.val.textContent = "—"; }
+    } else { cFoll.val.textContent = "—"; }
+  })();
+};
 
 /* ---- 00 生成設定 ---- */
 BUILDERS.settings = (el) => {
@@ -4375,16 +4466,22 @@ BUILDERS.followers = (el) => {
     const rows = [["@" + tname + "(自分)", diff7(meRecs), true]];
     for (const c of comps) { rows.push(["@" + c, diff7(await kvGet("followers:" + c, [])), false]); }
     fld(compEl, "競合との比較(直近7日のフォロワー増減)");
-    const tbl = document.createElement("div"); tbl.style.cssText = "display:flex;flex-direction:column;gap:6px";
+    const tbl = document.createElement("div"); tbl.style.cssText = "display:flex;flex-direction:column;gap:8px";
+    const maxNow = Math.max(1, ...rows.map(([, d]) => (d && d.now != null ? d.now : 0)));
     rows.forEach(([name, d, me]) => {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:" + (me ? "rgba(255,46,126,.08)" : "var(--surface2)") + ";border:1px solid var(--border);font-size:13px";
-      const now = d && d.now != null ? d.now.toLocaleString() : "—";
+      const nowN = d && d.now != null ? d.now : null;
+      const pct = nowN != null ? Math.max(3, Math.round(nowN / maxNow * 100)) : 0;
+      const now = nowN != null ? nowN.toLocaleString() : "—";
       const dd = d && d.diff != null ? ((d.diff >= 0 ? "+" : "") + d.diff.toLocaleString()) : "記録待ち";
       const dcol = d && d.diff != null ? (d.diff >= 0 ? "var(--ok)" : "var(--bad)") : "var(--muted)";
-      row.innerHTML = '<span style="font-weight:' + (me ? "800" : "600") + '">' + esc(name) + '</span>' +
-        '<span style="display:flex;gap:12px;align-items:center"><b style="font-family:var(--mono)">' + now + '</b>' +
-        '<span style="font-family:var(--mono);color:' + dcol + ';min-width:70px;text-align:right">' + dd + '/7日</span></span>';
+      const row = document.createElement("div");
+      row.style.cssText = "padding:9px 11px;border-radius:9px;background:" + (me ? "rgba(255,46,126,.08)" : "var(--surface2)") + ";border:1px solid var(--border)";
+      row.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;font-size:13px;margin-bottom:7px">' +
+        '<span style="font-weight:' + (me ? "800" : "600") + '">' + esc(name) + '</span>' +
+        '<span style="display:flex;gap:10px;align-items:center"><b style="font-family:var(--mono)">' + now + '</b>' +
+        '<span style="font-family:var(--mono);color:' + dcol + ';min-width:66px;text-align:right;font-size:12px">' + dd + '/7日</span></span></div>' +
+        '<div style="height:6px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + (me ? "var(--accent)" : "#5b6bb0") + ';border-radius:4px"></div></div>';
       tbl.appendChild(row);
     });
     compEl.appendChild(tbl);
