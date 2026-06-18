@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "34";
+const APP_VERSION = "35";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -253,7 +253,7 @@ function diagnoseErr(msg) {
 }
 
 /* AI利用料を機能別にSVG円グラフで描く。data=[{tag,cost,color}]。総額と円換算も出す。 */
-function renderCostPie(box, data, title) {
+function renderCostPie(box, data, title, modelData) {
   const total = data.reduce((s, d) => s + d.cost, 0);
   if (total <= 0) {
     box.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="font-weight:700;margin-bottom:4px">' + esc(title) + '</div><div style="font-size:12px;color:var(--muted)">まだAIの利用記録がありません。投稿生成・予想・先回りリプ等を動かすと、機能ごとの利用料がここに出ます。</div></div>';
@@ -282,11 +282,30 @@ function renderCostPie(box, data, title) {
       '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(d.tag) + '</span>' +
       '<span style="color:var(--muted);flex-shrink:0">' + pct + '% / ¥' + yen + '</span></div>';
   });
+  /* モデル別内訳(Haiku / Sonnet)の積み上げバー */
+  let modelBar = "";
+  if (modelData && modelData.length) {
+    const mData = modelData.filter((m) => m.cost > 0);
+    const mTotal = mData.reduce((s, m) => s + m.cost, 0);
+    if (mTotal > 0) {
+      let segBar = "", mLabels = "";
+      mData.forEach((m) => {
+        const pct = m.cost / mTotal * 100;
+        segBar += '<div style="width:' + pct.toFixed(1) + '%;background:' + m.color + ';height:100%"></div>';
+        mLabels += '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;margin-top:5px;font-size:12px"><span style="width:10px;height:10px;border-radius:2px;background:' + m.color + ';flex-shrink:0"></span>' + esc(m.name) + ' ¥' + (m.cost * 150).toFixed(1) + ' (' + pct.toFixed(0) + '%)</span>';
+      });
+      modelBar = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">モデル別内訳（Haiku=安い / Sonnet=高精度）</div>' +
+        '<div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--border)">' + segBar + '</div>' +
+        '<div style="display:flex;flex-wrap:wrap">' + mLabels + '</div></div>';
+    }
+  }
   box.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">' +
     '<div style="font-weight:700;margin-bottom:10px">' + esc(title) + '</div>' +
     '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center">' +
     '<svg width="170" height="170" viewBox="0 0 170 170" style="flex-shrink:0">' + arcs + center + '</svg>' +
     '<div style="flex:1;min-width:160px">' + legend + '</div></div>' +
+    modelBar +
     '<div style="font-size:10px;color:var(--muted);margin-top:8px">※$1=150円で概算。Haiku=入力$1/出力$5、Sonnet=入力$3/出力$15(各100万トークン)。</div></div>';
 }
 
@@ -1392,12 +1411,22 @@ BUILDERS.home = (el) => {
     /* AI利用料を機能タグ別に集計して円グラフ表示(今月分) */
     try {
       const monthStart = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 8) + "01";
-      const { data: tu } = await sb.from("token_usage").select("tag,cost_usd").gte("day", monthStart);
+      const { data: tu } = await sb.from("token_usage").select("tag,cost_usd,model").gte("day", monthStart);
       const byTag = {};
-      (tu || []).forEach((r) => { const t = r.tag || "その他"; byTag[t] = (byTag[t] || 0) + (Number(r.cost_usd) || 0); });
+      const byModel = { Haiku: 0, Sonnet: 0, "その他": 0 };
+      (tu || []).forEach((r) => {
+        const t = r.tag || "その他"; byTag[t] = (byTag[t] || 0) + (Number(r.cost_usd) || 0);
+        const mk = /haiku/i.test(r.model) ? "Haiku" : /sonnet/i.test(r.model) ? "Sonnet" : "その他";
+        byModel[mk] += (Number(r.cost_usd) || 0);
+      });
       const colors = ["#10b981", "#00e5ff", "#a855f7", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899", "#84cc16"];
       const arr = Object.keys(byTag).map((t) => ({ tag: t, cost: byTag[t] })).sort((a, b) => b.cost - a.cost).map((d, i) => ({ tag: d.tag, cost: d.cost, color: colors[i % colors.length] }));
-      renderCostPie(costPieBox, arr, "💰 今月のAI利用料(機能別)");
+      const modelData = [
+        { name: "Haiku", cost: byModel.Haiku, color: "#00e5ff" },
+        { name: "Sonnet", cost: byModel.Sonnet, color: "#a855f7" },
+        { name: "その他", cost: byModel["その他"], color: "#94a3b8" },
+      ];
+      renderCostPie(costPieBox, arr, "💰 今月のAI利用料(機能別)", modelData);
     } catch (e) { renderCostPie(costPieBox, [], "💰 今月のAI利用料(機能別)"); }
     /* 直近7日間の日別利用料(棒グラフ) */
     try {
