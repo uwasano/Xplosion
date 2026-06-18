@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "45";
+const APP_VERSION = "47";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -350,7 +350,8 @@ function renderCostBars(box, days, title) {
 
 /* リプ案を持ってXのリプ画面を開く(リプ文プリフィル)。iPhoneのXアプリでも開くようintentを使う。
    念のためクリップボードにもコピー(プリフィルが効かない端末では貼り付けでリプできる)。 */
-function xReplyIntent(tweetId, replyText) {
+function xReplyIntent(it, replyText, replyType) {
+  var tweetId = (it && typeof it === "object") ? (it.tweet_id || "") : (it || "");
   var url = tweetId
     ? "https://twitter.com/intent/tweet?in_reply_to=" + encodeURIComponent(tweetId) + "&text=" + encodeURIComponent(replyText || "")
     : "https://twitter.com/intent/tweet?text=" + encodeURIComponent(replyText || "");
@@ -359,6 +360,22 @@ function xReplyIntent(tweetId, replyText) {
   try { w = window.open(url, "_blank"); } catch (e) {}
   if (!w) { try { location.href = url; } catch (e) {} }   /* ポップアップがブロックされたら同じタブで開く */
   try { navigator.clipboard.writeText(replyText || ""); } catch (e) {}
+  /* 接触ログを記録(フォロー転換の学習用・失敗しても無視) */
+  if (it && typeof it === "object") {
+    try {
+      var ageMin = it.posted_at ? Math.round((Date.now() - new Date(it.posted_at).getTime()) / 60000) : 0;
+      gasFetch_("logContact", { contact: {
+        screen_name: it.screen_name || "",
+        target: it.competitor || it.author_handle || it.target || "",
+        competitor: it.competitor || "",
+        reply_type: replyType || "",
+        reply_text: replyText || "",
+        tweet_id: tweetId,
+        tweet_url: it.tweet_url || "",
+        post_age_min: (ageMin > 0 && ageMin < 100000) ? ageMin : 0
+      } });
+    } catch (e) {}
+  }
 }
 
 /* 投稿日時を「○分前/○時間前/○日前/M月D日」に整形 */
@@ -2552,7 +2569,7 @@ BUILDERS.radar = (el) => {
         const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "📋 コピー";
         cp.onclick = () => { navigator.clipboard.writeText(r); cp.textContent = "✓ コピーした"; setTimeout(() => cp.textContent = "📋 コピー", 1200); };
         const go = document.createElement("button"); go.className = "mini cyan"; go.textContent = "↗ この案でXリプ"; go.style.cssText = "margin-left:6px;font-weight:700";
-        go.onclick = () => { xReplyIntent(it.tweet_id, r); };
+        go.onclick = () => { xReplyIntent(it, r, ""); };
         wrap.appendChild(cp); wrap.appendChild(go); card.appendChild(wrap);
       });
     }
@@ -3760,7 +3777,8 @@ BUILDERS.calendar = (el) => {
     return _hp.items[mode];
   }
   async function hpMark(it, status) {
-    try { await gasFetch_("hunterMark", { id: it.id, status: status }); it.status = status; } catch (e) {}
+    it.status = status;   /* ローカルは先に確実に更新(通信が失敗しても画面は消化済みを保つ) */
+    try { await gasFetch_("hunterMark", { id: it.id, status: status }); } catch (e) {}
   }
   async function renderHunterPro() {
     trOut.innerHTML = '<div class="muted" style="padding:8px">読み込み中…</div>';
@@ -3852,7 +3870,7 @@ BUILDERS.calendar = (el) => {
         const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "📋 コピー"; cp.style.marginTop = "6px";
         cp.onclick = () => { navigator.clipboard.writeText(rep); cp.textContent = "✓ コピーした"; setTimeout(() => cp.textContent = "📋 コピー", 1200); };
         const go1 = document.createElement("button"); go1.className = "mini cyan"; go1.textContent = "↗ この案でXリプ"; go1.style.cssText = "margin-top:6px;margin-left:6px;font-weight:700";
-        go1.onclick = async () => { xReplyIntent(it.tweet_id, rep); await hpMark(it, "replied"); setTimeout(() => renderHunterPro(), 900); };
+        go1.onclick = async () => { xReplyIntent(it, rep, labels[i]); await hpMark(it, "replied"); setTimeout(() => renderHunterPro(), 900); };
         w.appendChild(cp); w.appendChild(go1); card.appendChild(w);
       });
     } else {
@@ -3920,7 +3938,7 @@ BUILDERS.calendar = (el) => {
       const end = function () {
         if (!dragging) return; dragging = false;
         tint.style.opacity = "0"; label.style.opacity = "0";
-        if (curX > 110) { xReplyIntent(it.tweet_id, ideas[0] || ""); hpMark(it, "replied"); fly(card, 1); }
+        if (curX > 110) { xReplyIntent(it, ideas[0] || "", "いちばん自然"); hpMark(it, "replied"); fly(card, 1); }
         else if (curX < -110) { hpMark(it, "skip"); fly(card, -1); }
         else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
         curX = 0;
@@ -3956,7 +3974,7 @@ BUILDERS.calendar = (el) => {
         const b = document.createElement("button"); b.className = "mini cyan";
         b.style.cssText = "display:block;width:100%;text-align:left;white-space:normal;line-height:1.5;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2";
         b.innerHTML = '<span style="opacity:.6;font-size:10px">' + (labels[i] || "案") + '</span><br>↗ ' + esc(rep);
-        b.onclick = function () { xReplyIntent(it.tweet_id, rep); hpMark(it, "replied"); fly(card, 1); };
+        b.onclick = function () { xReplyIntent(it, rep, labels[i]); hpMark(it, "replied"); fly(card, 1); };
         card.appendChild(b);
       });
       /* スワイプ方向の色フィードバック */
