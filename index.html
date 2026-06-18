@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "33";
+const APP_VERSION = "34";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -259,57 +259,33 @@ function renderCostPie(box, data, title) {
     box.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px"><div style="font-weight:700;margin-bottom:4px">' + esc(title) + '</div><div style="font-size:12px;color:var(--muted)">まだAIの利用記録がありません。投稿生成・予想・先回りリプ等を動かすと、機能ごとの利用料がここに出ます。</div></div>';
     return;
   }
-  /* === 3D立体パイチャート(SVGで俯瞰+厚み) === */
-  const W = 240, H = 178, cx = 116, cy = 76, rx = 100, ry = 55, depth = 26;
-  const TAU = Math.PI * 2;
-  let ang = -Math.PI / 2;
-  const segs = [];
-  data.forEach((d) => { const frac = d.cost / total; segs.push({ d: d, a1: ang, a2: ang + frac * TAU, frac: frac }); ang += frac * TAU; });
-  function darken(hex, f) {
-    const m = String(hex).replace("#", "");
-    if (m.length < 6) return hex;
-    const r = Math.round(parseInt(m.slice(0, 2), 16) * f), g = Math.round(parseInt(m.slice(2, 4), 16) * f), b = Math.round(parseInt(m.slice(4, 6), 16) * f);
-    return "rgb(" + r + "," + g + "," + b + ")";
-  }
-  function P(a) { return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)]; }
-  /* 側面(厚み): 手前側(sin>0)に来る弧だけ壁を立てて立体に。細かく分割して滑らかに */
-  let sideSvg = "";
-  segs.forEach((s) => {
-    const steps = Math.max(1, Math.ceil(s.frac * 90));
-    for (let i = 0; i < steps; i++) {
-      const aa = s.a1 + (s.a2 - s.a1) * (i / steps);
-      const ab = s.a1 + (s.a2 - s.a1) * ((i + 1) / steps);
-      if (Math.sin(aa) <= 0 && Math.sin(ab) <= 0) continue;
-      const pa = P(aa), pb = P(ab);
-      sideSvg += '<path d="M' + pa[0].toFixed(1) + ',' + pa[1].toFixed(1) + ' L' + pb[0].toFixed(1) + ',' + pb[1].toFixed(1) + ' L' + pb[0].toFixed(1) + ',' + (pb[1] + depth).toFixed(1) + ' L' + pa[0].toFixed(1) + ',' + (pa[1] + depth).toFixed(1) + ' Z" fill="' + darken(s.d.color, 0.6) + '"/>';
-    }
+  /* === フラットなドーナツチャート(中央に合計) === */
+  const cx = 85, cy = 85, r = 62, sw = 24;
+  const C = 2 * Math.PI * r;
+  const gap = data.length > 1 ? 2.5 : 0;      /* セグメント間の隙間 */
+  let offset = 0, arcs = "";
+  data.forEach((d) => {
+    const frac = d.cost / total;
+    const len = Math.max(0.01, frac * C - gap);
+    arcs += '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="none" stroke="' + d.color + '" stroke-width="' + sw + '" stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '" stroke-dashoffset="' + (-offset).toFixed(2) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')"/>';
+    offset += frac * C;
   });
-  /* 上面の扇形(楕円) */
-  let topSvg = "";
-  segs.forEach((s) => {
-    if (s.frac >= 0.999) { topSvg += '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rx + '" ry="' + ry + '" fill="' + s.d.color + '" stroke="rgba(255,255,255,.15)" stroke-width="1"/>'; return; }
-    const p1 = P(s.a1), p2 = P(s.a2);
-    const large = s.frac > 0.5 ? 1 : 0;
-    topSvg += '<path d="M' + cx + ',' + cy + ' L' + p1[0].toFixed(1) + ',' + p1[1].toFixed(1) + ' A' + rx + ',' + ry + ' 0 ' + large + ',1 ' + p2[0].toFixed(1) + ',' + p2[1].toFixed(1) + ' Z" fill="' + s.d.color + '" stroke="rgba(255,255,255,.16)" stroke-width="1"/>';
-  });
-  /* ハイライト(上面に光沢の楕円) */
-  const gloss = '<ellipse cx="' + (cx - rx * 0.22) + '" cy="' + (cy - ry * 0.34) + '" rx="' + (rx * 0.5) + '" ry="' + (ry * 0.42) + '" fill="rgba(255,255,255,.10)"/>';
   const yenTotal = Math.round(total * 150);
+  const center = '<text x="' + cx + '" y="' + (cy - 3) + '" text-anchor="middle" font-size="18" font-weight="700" fill="#eaf2fb">$' + total.toFixed(2) + '</text>' +
+    '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" font-size="10" fill="var(--muted)">約¥' + yenTotal + '</text>';
   let legend = "";
   data.forEach((d) => {
     const pct = (d.cost / total * 100).toFixed(1);
     const yen = (d.cost * 150).toFixed(1);
-    legend += '<div style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:5px">' +
-      '<span style="width:12px;height:12px;border-radius:3px;background:' + d.color + ';flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,.45),inset 0 1px 1px rgba(255,255,255,.3)"></span>' +
+    legend += '<div style="display:flex;align-items:center;gap:7px;font-size:12px;margin-top:6px">' +
+      '<span style="width:11px;height:11px;border-radius:50%;background:' + d.color + ';flex-shrink:0"></span>' +
       '<span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(d.tag) + '</span>' +
       '<span style="color:var(--muted);flex-shrink:0">' + pct + '% / ¥' + yen + '</span></div>';
   });
   box.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">' +
-    '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:8px;flex-wrap:wrap">' +
-    '<div style="font-weight:700">' + esc(title) + '</div>' +
-    '<div style="font-size:13px;color:var(--accent);font-weight:700">合計 $' + total.toFixed(2) + ' <span style="color:var(--muted);font-weight:400">(約¥' + yenTotal + ')</span></div></div>' +
-    '<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;justify-content:center">' +
-    '<svg width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" style="flex-shrink:0;filter:drop-shadow(0 8px 12px rgba(0,0,0,.45))">' + sideSvg + topSvg + gloss + '</svg>' +
+    '<div style="font-weight:700;margin-bottom:10px">' + esc(title) + '</div>' +
+    '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:center">' +
+    '<svg width="170" height="170" viewBox="0 0 170 170" style="flex-shrink:0">' + arcs + center + '</svg>' +
     '<div style="flex:1;min-width:160px">' + legend + '</div></div>' +
     '<div style="font-size:10px;color:var(--muted);margin-top:8px">※$1=150円で概算。Haiku=入力$1/出力$5、Sonnet=入力$3/出力$15(各100万トークン)。</div></div>';
 }
