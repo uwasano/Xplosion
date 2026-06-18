@@ -213,6 +213,41 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+/* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
+   投稿が止まった時、ホームでこれを表示して何が起きてるか一目で分かるようにする。
+   新しい原因が出たらここに1行足すだけでホーム表示に反映される。 */
+function diagnoseErr(msg) {
+  const m = String(msg || "");
+  /* 今回ハマったやつ: X API公式の投稿クレジット切れ(402) */
+  if (/402|CreditsDepleted|credits to fulfill|PaymentRequired/i.test(m))
+    return { icon: "💳", cause: "X APIの投稿クレジットが切れてる", fix: "console.x.com → Billing でクレジットをチャージ。オートチャージをONにすれば再発を防げる(普通の投稿は約2.3円/件、リンク入りは約30円/件)" };
+  /* X連携トークンが失効 */
+  if (/\b401\b|invalid or expired token|could not authenticate|unable to verify credentials/i.test(m))
+    return { icon: "🔑", cause: "Xとの連携が切れてる(トークン失効)", fix: "設定からこのアカウントを再連携してください" };
+  /* 重複投稿ガード(これは異常やない) */
+  if (/重複|duplicate/i.test(m))
+    return { icon: "♻️", cause: "同じ本文を最近投稿済み(重複ガードでスキップ)", fix: "本文を変えれば投稿できます。意図通りなら無視でOK" };
+  /* 文字数オーバー */
+  if (/\b403\b/.test(m) && /(280|文字|too long|length)/i.test(m))
+    return { icon: "✂️", cause: "本文が長すぎる(280字オーバー)", fix: "本文を短くしてください" };
+  /* 403 その他(規約/権限) */
+  if (/\b403\b|forbidden/i.test(m))
+    return { icon: "🚫", cause: "Xに投稿を拒否された(規約違反か権限不足の可能性)", fix: "本文の内容、またはアプリの読み書き権限を確認してください" };
+  /* レート制限 */
+  if (/\b429\b|rate limit|too many requests/i.test(m))
+    return { icon: "⏳", cause: "短時間に投稿しすぎでレート制限中", fix: "時間をおけば自動で再開します。触らんで大丈夫" };
+  /* X側サーバーエラー */
+  if (/\b5\d\d\b|internal server|service unavailable|bad gateway/i.test(m))
+    return { icon: "🛠️", cause: "X側の一時的な不具合", fix: "自動で再試行されます。しばらく待ってください" };
+  /* 通信エラー */
+  if (/timeout|timed out|network|fetch failed|econn|getaddrinfo/i.test(m))
+    return { icon: "📡", cause: "通信エラー(一時的)", fix: "自動で再試行されます" };
+  /* トークンが見つからない(未連携) */
+  if (/未連携|no token|token.*not found|getToken/i.test(m))
+    return { icon: "🔌", cause: "このアカウントがまだXに連携されてない", fix: "設定からアカウントを連携してください" };
+  return { icon: "❓", cause: "原因不明のエラー", fix: "下の元メッセージを確認してください" };
+}
+
 /* 投稿日時を「○分前/○時間前/○日前/M月D日」に整形 */
 function timeAgo(createdAt) {
   if (!createdAt) return "";
@@ -1159,6 +1194,7 @@ BUILDERS.home = (el) => {
   const cReport = card("週報", "今週をAI集計 →", "report");
   cReport.val.style.fontSize = "18px"; cReport.val.style.color = "var(--accent2)"; cReport.val.textContent = "作る";
 
+  const postErrBox = document.createElement("div"); postErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(postErrBox);
   const autoErrBox = document.createElement("div"); autoErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(autoErrBox);
 
   fld(el, "クイック");
@@ -1178,6 +1214,38 @@ BUILDERS.home = (el) => {
       cPending.val.textContent = pendingCount + "件";
       if (pendingCount > 0) { cPending.val.style.color = "var(--accent)"; cPending.sub.textContent = "GO待ちあり → タップ"; }
     } catch (e) { cToday.val.textContent = "—"; cPending.val.textContent = "—"; }
+    /* 投稿(scheduled_posts)の失敗を診断して出す。今回の402みたいに「投稿段階」で
+       止まってるやつは、ここに原因＋対処が日本語で出る。同じ原因はまとめて件数表示。 */
+    try {
+      const since = new Date(Date.now() - 48 * 3600000).toISOString();
+      const { data: sp } = await sb.from("scheduled_posts").select("error_msg,screen_name,scheduled_at").eq("status", "error").gte("scheduled_at", since).order("scheduled_at", { ascending: false }).limit(50);
+      const spErrs = (sp || []).filter((e) => e.error_msg && !String(e.error_msg).startsWith("重複スキップ"));
+      if (spErrs.length) {
+        const groups = {};
+        spErrs.forEach((e) => {
+          const d = diagnoseErr(e.error_msg);
+          if (!groups[d.cause]) groups[d.cause] = { d: d, count: 0, sample: e.error_msg, accts: new Set(), last: e.scheduled_at };
+          groups[d.cause].count++;
+          if (e.screen_name) groups[d.cause].accts.add(e.screen_name);
+        });
+        let html = '<div style="background:rgba(255,123,123,.13);border:1px solid var(--bad);border-radius:10px;padding:12px">';
+        html += '<div style="font-weight:700;color:var(--bad);margin-bottom:4px">🛑 オート投稿が止まってる(直近48時間)</div>';
+        html += '<div style="font-size:11px;color:var(--muted);margin-bottom:2px">原因を直したら、溜まってる予約は次の自動投稿で復活する。</div>';
+        Object.keys(groups).forEach((k) => {
+          const g = groups[k];
+          const accts = Array.from(g.accts).map((a) => "@" + a).join(" ");
+          const tm = String(g.last || "").slice(5, 16).replace("T", " ");
+          html += '<div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border)">';
+          html += '<div style="font-size:13px;font-weight:700">' + g.d.icon + " " + esc(g.d.cause) + ' <span style="color:var(--muted);font-weight:400">×' + g.count + "件</span></div>";
+          html += '<div style="font-size:12px;color:var(--accent);margin-top:3px;line-height:1.5">→ ' + esc(g.d.fix) + "</div>";
+          html += '<div style="font-size:10px;color:var(--muted);margin-top:3px">' + esc(accts) + (tm ? " / 最後の失敗 " + tm : "") + "</div>";
+          html += '<details style="margin-top:4px"><summary style="font-size:10px;color:var(--muted);cursor:pointer">元のエラー文を見る</summary><div style="font-size:10px;color:var(--bad);word-break:break-all;margin-top:3px">' + esc(g.sample) + "</div></details>";
+          html += "</div>";
+        });
+        html += "</div>";
+        postErrBox.innerHTML = html; postErrBox.style.display = "block";
+      }
+    } catch (e) {}
     try {
       const todayJST2 = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
       const { data: aq } = await sb.from("auto_queue").select("kind,status,error_msg,screen_name,scheduled_at").eq("run_date", todayJST2).eq("status", "error");
