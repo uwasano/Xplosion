@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "39";
+const APP_VERSION = "41";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -351,11 +351,14 @@ function renderCostBars(box, days, title) {
 /* リプ案を持ってXのリプ画面を開く(リプ文プリフィル)。iPhoneのXアプリでも開くようintentを使う。
    念のためクリップボードにもコピー(プリフィルが効かない端末では貼り付けでリプできる)。 */
 function xReplyIntent(tweetId, replyText) {
+  var url = tweetId
+    ? "https://twitter.com/intent/tweet?in_reply_to=" + encodeURIComponent(tweetId) + "&text=" + encodeURIComponent(replyText || "")
+    : "https://twitter.com/intent/tweet?text=" + encodeURIComponent(replyText || "");
+  /* ジェスチャー内で最優先にXを開く(これより前に非同期処理を挟むとiOSがブロックするため) */
+  var w = null;
+  try { w = window.open(url, "_blank"); } catch (e) {}
+  if (!w) { try { location.href = url; } catch (e) {} }   /* ポップアップがブロックされたら同じタブで開く */
   try { navigator.clipboard.writeText(replyText || ""); } catch (e) {}
-  let url;
-  if (tweetId) url = "https://twitter.com/intent/tweet?in_reply_to=" + encodeURIComponent(tweetId) + "&text=" + encodeURIComponent(replyText || "");
-  else url = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(replyText || "");
-  window.open(url, "_blank");
 }
 
 /* 投稿日時を「○分前/○時間前/○日前/M月D日」に整形 */
@@ -3874,7 +3877,7 @@ BUILDERS.calendar = (el) => {
     return card;
   }
 
-  /* === スワイプモード: カードを1枚ずつ、右スワイプ=トップ案でXリプ / 左=見送り === */
+  /* === スワイプモード: 右=リプ(薄ピンク) / 左=スルー(水色)、戻る付き === */
   function openSwipeMode(items) {
     if (!items || !items.length) return;
     let idx = 0;
@@ -3883,11 +3886,14 @@ BUILDERS.calendar = (el) => {
     const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "✕ 閉じる";
     closeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
     closeBtn.onclick = () => { overlay.remove(); renderHunterPro(); };
+    const backBtn = document.createElement("button"); backBtn.className = "mini"; backBtn.textContent = "↩ 戻る";
+    backBtn.style.cssText = "position:fixed;top:16px;left:16px;z-index:100000;display:none";
+    backBtn.onclick = () => { if (idx <= 0) return; idx--; hpMark(items[idx], "new"); renderCard(); };
     const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
     const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
     const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
-    hint.innerHTML = "← 左スワイプで<b style='color:#7E8BA8'>見送り</b> ／ 右スワイプで<b style='color:#3DFFA8'>トップ案でXリプ</b> →<br>または下のリプ案を直接タップ";
-    overlay.appendChild(closeBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
+    hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スルー</b> ／ 右スワイプで<b style='color:#ff9ec4'>リプ</b> →<br>または下のリプ案を直接タップ";
+    overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
     document.body.appendChild(overlay);
 
     function parseIdeas(it) { let v = it.reply_ideas; if (typeof v === "string") { try { v = JSON.parse(v); } catch (e) { v = []; } } return Array.isArray(v) ? v : []; }
@@ -3899,12 +3905,21 @@ BUILDERS.calendar = (el) => {
       setTimeout(function () { idx++; renderCard(); }, 280);
     }
 
-    function attachSwipe(card, it, ideas) {
+    function attachSwipe(card, it, ideas, tint, label) {
       let startX = 0, curX = 0, dragging = false;
       const start = function (x) { startX = x; dragging = true; card.style.transition = "none"; };
-      const move = function (x) { if (!dragging) return; curX = x - startX; card.style.transform = "translateX(" + curX + "px) rotate(" + (curX * 0.04) + "deg)"; card.style.opacity = String(1 - Math.min(Math.abs(curX) / 600, 0.5)); };
+      const move = function (x) {
+        if (!dragging) return;
+        curX = x - startX;
+        card.style.transform = "translateX(" + curX + "px) rotate(" + (curX * 0.04) + "deg)";
+        const t = Math.min(Math.abs(curX) / 150, 0.85);
+        if (curX > 8) { tint.style.background = "rgba(255,158,196,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "リプ ↗"; label.style.color = "#ff9ec4"; label.style.opacity = String(t); }
+        else if (curX < -8) { tint.style.background = "rgba(127,212,255,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "スルー"; label.style.color = "#7fd4ff"; label.style.opacity = String(t); }
+        else { tint.style.opacity = "0"; label.style.opacity = "0"; }
+      };
       const end = function () {
         if (!dragging) return; dragging = false;
+        tint.style.opacity = "0"; label.style.opacity = "0";
         if (curX > 110) { xReplyIntent(it.tweet_id, ideas[0] || ""); hpMark(it, "replied"); fly(card, 1); }
         else if (curX < -110) { hpMark(it, "skip"); fly(card, -1); }
         else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
@@ -3920,9 +3935,10 @@ BUILDERS.calendar = (el) => {
 
     function renderCard() {
       stack.innerHTML = "";
+      backBtn.style.display = idx > 0 ? "block" : "none";
       if (idx >= items.length) {
         counter.textContent = ""; hint.style.display = "none";
-        stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px;font-size:16px;line-height:1.9">🎉 全部捌いた！<br>お疲れさん。</div>';
+        stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px;font-size:16px;line-height:1.9">🎉 全部捌きました！<br>お疲れさまでした。</div>';
         return;
       }
       counter.textContent = (idx + 1) + " / " + items.length;
@@ -3938,13 +3954,19 @@ BUILDERS.calendar = (el) => {
       const labels = ["共感", "反応", "質問"];
       ideas.slice(0, 3).forEach(function (rep, i) {
         const b = document.createElement("button"); b.className = "mini cyan";
-        b.style.cssText = "display:block;width:100%;text-align:left;white-space:normal;line-height:1.5;margin-top:8px;padding:11px;font-size:13px";
+        b.style.cssText = "display:block;width:100%;text-align:left;white-space:normal;line-height:1.5;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2";
         b.innerHTML = '<span style="opacity:.6;font-size:10px">' + (labels[i] || "案") + '</span><br>↗ ' + esc(rep);
         b.onclick = function () { xReplyIntent(it.tweet_id, rep); hpMark(it, "replied"); fly(card, 1); };
         card.appendChild(b);
       });
+      /* スワイプ方向の色フィードバック */
+      const tint = document.createElement("div");
+      tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
+      const label = document.createElement("div");
+      label.style.cssText = "position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:28px;font-weight:900;opacity:0;pointer-events:none;text-shadow:0 2px 10px rgba(0,0,0,.6);z-index:4";
+      card.appendChild(tint); card.appendChild(label);
       stack.appendChild(card);
-      attachSwipe(card, it, ideas);
+      attachSwipe(card, it, ideas, tint, label);
     }
 
     renderCard();
