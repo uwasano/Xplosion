@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "30";
+const APP_VERSION = "31";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1237,6 +1237,7 @@ BUILDERS.home = (el) => {
   const cReport = card("週報", "今週をAI集計 →", "report");
   cReport.val.style.fontSize = "18px"; cReport.val.style.color = "var(--accent2)"; cReport.val.textContent = "作る";
 
+  const stuckBox = document.createElement("div"); stuckBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(stuckBox);
   const postErrBox = document.createElement("div"); postErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(postErrBox);
   const autoErrBox = document.createElement("div"); autoErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(autoErrBox);
   const costPieBox = document.createElement("div"); costPieBox.style.cssText = "margin:14px 0 0"; el.appendChild(costPieBox);
@@ -1259,15 +1260,38 @@ BUILDERS.home = (el) => {
       cPending.val.textContent = pendingCount + "件";
       if (pendingCount > 0) { cPending.val.style.color = "var(--accent)"; cPending.sub.textContent = "GO待ちあり → タップ"; }
     } catch (e) { cToday.val.textContent = "—"; cPending.val.textContent = "—"; }
-    /* 投稿(scheduled_posts)の失敗を診断して出す。今回の402みたいに「投稿段階」で
-       止まってるやつは、ここに原因＋対処が日本語で出る。同じ原因はまとめて件数表示。 */
+    /* 各アカが「最後に投稿成功した時刻」。これより後のエラーだけ未解決とみなす(postErr/autoErrで共有) */
+    const lastOK = {};
+    try {
+      const { data: okData } = await sb.from("scheduled_posts").select("screen_name,scheduled_at").eq("status", "posted").order("scheduled_at", { ascending: false }).limit(300);
+      (okData || []).forEach((p) => { if (!lastOK[p.screen_name] || p.scheduled_at > lastOK[p.screen_name]) lastOK[p.screen_name] = p.scheduled_at; });
+    } catch (e) {}
+    /* 【最重要】投稿時刻を過ぎたのに pending のまま=「予約はあるのに投稿されてない」を検知。
+       error になる前でもここで気づける(クレジット切れ・トリガー停止など)。今回の見落としポイント。 */
+    try {
+      const cutoff = new Date(Date.now() - 10 * 60000).toISOString();   /* 10分の猶予 */
+      const { data: stuck } = await sb.from("scheduled_posts").select("screen_name,scheduled_at").eq("status", "pending").lt("scheduled_at", cutoff).order("scheduled_at", { ascending: true }).limit(50);
+      const stuckList = stuck || [];
+      if (stuckList.length) {
+        let causeLine = "";
+        try {
+          const { data: le } = await sb.from("scheduled_posts").select("error_msg").eq("status", "error").order("scheduled_at", { ascending: false }).limit(1);
+          if (le && le[0] && le[0].error_msg) { const d = diagnoseErr(le[0].error_msg); causeLine = d.icon + " 直近の失敗理由は「" + d.cause + "」。" + d.fix; }
+        } catch (e) {}
+        if (!causeLine) causeLine = "考えられる原因は2つ。①X APIのクレジット切れ(console.x.comで残高確認) ②GASのトリガー(checkAndPost)が止まってる。両方チェックしてな。";
+        const oldest = String(stuckList[0].scheduled_at || "").slice(5, 16).replace("T", " ");
+        const accts = Array.from(new Set(stuckList.map((s) => s.screen_name).filter(Boolean))).map((a) => "@" + a).join(" ");
+        let html = '<div style="background:rgba(255,123,123,.16);border:1px solid var(--bad);border-radius:10px;padding:12px">';
+        html += '<div style="font-weight:700;color:var(--bad);margin-bottom:4px">🛑 投稿時刻を過ぎたのに投稿できてない ×' + stuckList.length + '件</div>';
+        html += '<div style="font-size:12px;color:var(--accent);margin-top:3px;line-height:1.55">→ ' + esc(causeLine) + '</div>';
+        html += '<div style="font-size:10px;color:var(--muted);margin-top:4px">' + esc(accts) + ' / 一番古いの ' + oldest + '</div>';
+        html += '</div>';
+        stuckBox.innerHTML = html; stuckBox.style.display = "block";
+      }
+    } catch (e) {}
+    /* 投稿(scheduled_posts)の失敗を診断して出す。同じ原因はまとめて件数表示。 */
     try {
       const since = new Date(Date.now() - 48 * 3600000).toISOString();
-      /* 各アカが「最後に投稿成功した時刻」を取る。これより後に起きたエラーだけ＝まだ解決してない。
-         クレジット入れて投稿が復活したら、復活後の成功時刻より古いエラーは自動で消える。 */
-      const { data: okData } = await sb.from("scheduled_posts").select("screen_name,scheduled_at").eq("status", "posted").order("scheduled_at", { ascending: false }).limit(300);
-      const lastOK = {};
-      (okData || []).forEach((p) => { if (!lastOK[p.screen_name] || p.scheduled_at > lastOK[p.screen_name]) lastOK[p.screen_name] = p.scheduled_at; });
       const { data: sp } = await sb.from("scheduled_posts").select("error_msg,screen_name,scheduled_at").eq("status", "error").gte("scheduled_at", since).order("scheduled_at", { ascending: false }).limit(50);
       const spErrs = (sp || []).filter((e) => {
         if (!e.error_msg) return false;
@@ -1305,8 +1329,9 @@ BUILDERS.home = (el) => {
     try {
       const todayJST2 = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
       const { data: aq } = await sb.from("auto_queue").select("kind,status,error_msg,screen_name,scheduled_at").eq("run_date", todayJST2).eq("status", "error");
-      /* 「(対象レースなし)」等のカッコ始まりは正常スキップなので除外。本物のエラーだけ出す */
-      const errs = (aq || []).filter((e) => !String(e.error_msg || "").startsWith("(対象レース"));
+      /* 「(対象レースなし)」等のカッコ始まりは正常スキップなので除外。
+         さらに「最後に投稿成功した時刻」より前の生成エラーは解決済みとみなして隠す(04:39の古いやつ対策)。 */
+      const errs = (aq || []).filter((e) => !String(e.error_msg || "").startsWith("(対象レース") && (!lastOK[e.screen_name] || String(e.scheduled_at || "") > lastOK[e.screen_name]));
       if (errs.length) {
         const kindJP = { trend: "トレンド", enjou: "炎上ニュース", normal: "通常投稿", flavor: "フレーバー", yosou: "予想(人気順)", yosou_score: "予想(スコア)", yokoku: "レース予告" };
         let html = '<div style="background:rgba(255,123,123,.12);border:1px solid var(--bad);border-radius:10px;padding:11px">';
