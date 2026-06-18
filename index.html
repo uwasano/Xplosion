@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "37";
+const APP_VERSION = "38";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2544,9 +2544,13 @@ BUILDERS.radar = (el) => {
     if (reps.length) {
       const rl = document.createElement("div"); rl.className="desc"; rl.style.cssText="margin:4px 0"; rl.textContent="リプ案(タップでコピー):"; card.appendChild(rl);
       reps.forEach(r => {
-        const rb = document.createElement("button"); rb.className="mini"; rb.style.cssText="display:block;width:100%;text-align:left;margin:3px 0;white-space:normal;line-height:1.4"; rb.textContent = "💬 "+r;
-        rb.onclick = ()=>{ navigator.clipboard.writeText(r); rb.textContent="✓ コピーした"; setTimeout(()=>rb.textContent="💬 "+r,1200); };
-        card.appendChild(rb);
+        const wrap = document.createElement("div"); wrap.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin:4px 0";
+        wrap.innerHTML = '<div style="font-size:13px;line-height:1.5;white-space:pre-wrap;margin-bottom:6px">💬 ' + esc(r) + '</div>';
+        const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "📋 コピー";
+        cp.onclick = () => { navigator.clipboard.writeText(r); cp.textContent = "✓ コピーした"; setTimeout(() => cp.textContent = "📋 コピー", 1200); };
+        const go = document.createElement("button"); go.className = "mini cyan"; go.textContent = "↗ この案でXリプ"; go.style.cssText = "margin-left:6px;font-weight:700";
+        go.onclick = () => { xReplyIntent(it.tweet_id, r); };
+        wrap.appendChild(cp); wrap.appendChild(go); card.appendChild(wrap);
       });
     }
     if (it.quote_text) {
