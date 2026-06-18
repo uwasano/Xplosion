@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "36";
+const APP_VERSION = "37";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -346,6 +346,16 @@ function renderCostBars(box, days, title) {
     '<div style="font-size:13px;color:var(--accent);font-weight:700">7日計 $' + total7.toFixed(2) + ' <span style="color:var(--muted);font-weight:400">(約¥' + Math.round(total7 * 150) + ')</span></div></div>' +
     '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="display:block">' + baseline + bars + '</svg>' +
     legend + '</div>';
+}
+
+/* リプ案を持ってXのリプ画面を開く(リプ文プリフィル)。iPhoneのXアプリでも開くようintentを使う。
+   念のためクリップボードにもコピー(プリフィルが効かない端末では貼り付けでリプできる)。 */
+function xReplyIntent(tweetId, replyText) {
+  try { navigator.clipboard.writeText(replyText || ""); } catch (e) {}
+  let url;
+  if (tweetId) url = "https://twitter.com/intent/tweet?in_reply_to=" + encodeURIComponent(tweetId) + "&text=" + encodeURIComponent(replyText || "");
+  else url = "https://twitter.com/intent/tweet?text=" + encodeURIComponent(replyText || "");
+  window.open(url, "_blank");
 }
 
 /* 投稿日時を「○分前/○時間前/○日前/M月D日」に整形 */
@@ -3825,7 +3835,9 @@ BUILDERS.calendar = (el) => {
         w.innerHTML = '<div style="font-size:10.5px;color:var(--accent2);margin-bottom:3px">' + (labels[i] || ("案" + (i + 1))) + '</div><div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(rep) + '</div>';
         const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "📋 コピー"; cp.style.marginTop = "6px";
         cp.onclick = () => { navigator.clipboard.writeText(rep); cp.textContent = "✓ コピーした"; setTimeout(() => cp.textContent = "📋 コピー", 1200); };
-        w.appendChild(cp); card.appendChild(w);
+        const go1 = document.createElement("button"); go1.className = "mini cyan"; go1.textContent = "↗ この案でXリプ"; go1.style.cssText = "margin-top:6px;margin-left:6px;font-weight:700";
+        go1.onclick = async () => { xReplyIntent(it.tweet_id, rep); await hpMark(it, "replied"); setTimeout(() => renderHunterPro(), 900); };
+        w.appendChild(cp); w.appendChild(go1); card.appendChild(w);
       });
     } else {
       const repBox = document.createElement("div"); card.appendChild(repBox);
