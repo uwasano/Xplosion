@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>XPLOSION</title>
 <!--
   ============================================================
@@ -211,6 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
+const APP_VERSION = "30";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1236,6 +1240,7 @@ BUILDERS.home = (el) => {
   const postErrBox = document.createElement("div"); postErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(postErrBox);
   const autoErrBox = document.createElement("div"); autoErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(autoErrBox);
   const costPieBox = document.createElement("div"); costPieBox.style.cssText = "margin:14px 0 0"; el.appendChild(costPieBox);
+  const verTag = document.createElement("div"); verTag.style.cssText = "text-align:center;font-size:10px;color:var(--muted);margin-top:18px;opacity:.55"; verTag.textContent = "XPLOSION v" + APP_VERSION; el.appendChild(verTag);
 
   fld(el, "クイック");
   const qrow = document.createElement("div"); qrow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap"; el.appendChild(qrow);
