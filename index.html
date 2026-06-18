@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "41";
+const APP_VERSION = "45";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3844,7 +3844,7 @@ BUILDERS.calendar = (el) => {
     let ideas = it.reply_ideas;
     if (typeof ideas === "string") { try { ideas = JSON.parse(ideas); } catch (e) { ideas = []; } }
     if (!Array.isArray(ideas)) ideas = [];
-    const labels = ["共感", "情報", "質問"];
+    const labels = ["いちばん自然", "少し踏み込む", "会話続く"];
     if (ideas.length) {
       ideas.slice(0, 3).forEach((rep, i) => {
         const w = document.createElement("div"); w.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px";
@@ -3951,7 +3951,7 @@ BUILDERS.calendar = (el) => {
       html += '<div style="font-size:14px;line-height:1.6;white-space:pre-wrap;margin-bottom:12px">' + esc((it.tweet_text || "").slice(0, 260)) + '</div>';
       if (it.reason) html += '<div style="font-size:11.5px;color:var(--muted);background:var(--bg);border-radius:8px;padding:6px 8px;margin-bottom:10px">💡 ' + esc(it.reason) + '</div>';
       card.innerHTML = html;
-      const labels = ["共感", "反応", "質問"];
+      const labels = ["いちばん自然", "少し踏み込む", "会話続く"];
       ideas.slice(0, 3).forEach(function (rep, i) {
         const b = document.createElement("button"); b.className = "mini cyan";
         b.style.cssText = "display:block;width:100%;text-align:left;white-space:normal;line-height:1.5;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2";
