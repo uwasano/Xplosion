@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "50";
+const APP_VERSION = "51";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3797,12 +3797,18 @@ BUILDERS.calendar = (el) => {
     });
     trOut.appendChild(modeRow);
 
-    /* フォロー獲得の成果(学習ダッシュボード)を開くボタン */
-    const statsBtn = document.createElement("button"); statsBtn.className = "mini";
-    statsBtn.style.cssText = "width:100%;padding:10px;margin:0 0 10px;font-weight:800;background:linear-gradient(90deg,#3DFFA8,#00e5ff);color:#04121c;border:none;border-radius:10px";
-    statsBtn.textContent = "🚀 フォロー獲得の成果を見る";
-    statsBtn.onclick = () => openFollowStats();
-    trOut.appendChild(statsBtn);
+    /* フォロー獲得ツール: 成果 / プロフィール採点 / 競合フォロワー */
+    const toolRow = document.createElement("div");
+    toolRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:0 0 10px";
+    const mkTool = (label, grad, fn) => {
+      const b = document.createElement("button"); b.className = "mini";
+      b.style.cssText = "padding:9px 4px;font-weight:800;font-size:11.5px;background:" + grad + ";color:#04121c;border:none;border-radius:10px;line-height:1.35";
+      b.innerHTML = label; b.onclick = fn; return b;
+    };
+    toolRow.appendChild(mkTool("🚀<br>成果", "linear-gradient(135deg,#3DFFA8,#00e5ff)", () => openFollowStats()));
+    toolRow.appendChild(mkTool("📋<br>プロフ採点", "linear-gradient(135deg,#a855f7,#00e5ff)", () => openProfileScore()));
+    toolRow.appendChild(mkTool("🎯<br>競合フォロワー", "linear-gradient(135deg,#ffb347,#ff7eb3)", () => openRivalFollowers()));
+    trOut.appendChild(toolRow);
 
     const desc = document.createElement("p"); desc.className = "desc"; desc.style.margin = "0 0 8px";
     desc.textContent = _hp.mode === "proactive"
@@ -4011,7 +4017,7 @@ BUILDERS.calendar = (el) => {
     renderCard();
   }
 
-  function openFollowStats() {
+  async function openFollowStats() {
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.98);z-index:99999;overflow-y:auto;padding:54px 16px 40px";
     const close = document.createElement("button"); close.className = "mini"; close.textContent = "✕ 閉じる";
@@ -4044,26 +4050,122 @@ BUILDERS.calendar = (el) => {
       });
       return html;
     }
+    function followerChart(arr) {
+      const pts = (arr || []).filter(function (x) { return x && /フォロワー/.test(x.platform || ""); })
+        .sort(function (a, b) { return String(a.date).localeCompare(String(b.date)); }).slice(-14);
+      if (pts.length < 2) return '<p class="muted" style="font-size:12px;padding:8px 0 14px">推移はまだデータ待ち(毎朝5時に記録。2日分から表示)。</p>';
+      const counts = pts.map(function (p) { return Number(p.count) || 0; });
+      const min = Math.min.apply(null, counts), max = Math.max.apply(null, counts), range = (max - min) || 1;
+      const W = 520, H = 120, pad = 10, n = pts.length;
+      const co = pts.map(function (p, i) {
+        return [pad + i * (W - pad * 2) / (n - 1), pad + (1 - ((Number(p.count) || 0) - min) / range) * (H - pad * 2)];
+      });
+      const line = co.map(function (c, i) { return (i ? "L" : "M") + c[0].toFixed(1) + " " + c[1].toFixed(1); }).join(" ");
+      const area = "M" + co[0][0].toFixed(1) + " " + (H - pad) + " " + line.replace(/^M/, "L") + " L" + co[n - 1][0].toFixed(1) + " " + (H - pad) + " Z";
+      const dots = co.map(function (c) { return '<circle cx="' + c[0].toFixed(1) + '" cy="' + c[1].toFixed(1) + '" r="2.5" fill="#3DFFA8"/>'; }).join("");
+      const first = counts[0], last = counts[n - 1], diff = last - first;
+      const head = '<div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">' +
+        '<span style="font-size:26px;font-weight:800">' + last + '</span><span class="muted" style="font-size:12px">フォロワー</span>' +
+        '<span style="font-size:13px;font-weight:700;color:' + (diff >= 0 ? "#3DFFA8" : "#ff6b6b") + '">' + (diff >= 0 ? "+" : "") + diff + ' (' + n + '日間)</span></div>';
+      const svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block">' +
+        '<defs><linearGradient id="fgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3DFFA8" stop-opacity="0.35"/><stop offset="1" stop-color="#3DFFA8" stop-opacity="0"/></linearGradient></defs>' +
+        '<path d="' + area + '" fill="url(#fgrad)"/><path d="' + line + '" fill="none" stroke="#3DFFA8" stroke-width="2"/>' + dots + '</svg>';
+      const lbl = '<div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:2px"><span>' + pts[0].date.slice(5) + '</span><span>' + pts[n - 1].date.slice(5) + '</span></div>';
+      return head + svg + lbl;
+    }
 
-    gasFetch_("contactStats", acct.value ? { screenName: acct.value } : {}).then(function (s) {
-      if (s && s.error) { box.innerHTML = '<div class="err">' + esc(s.error) + '</div>'; return; }
-      let h = '<h2 style="font-size:19px;margin:0 0 4px">🚀 フォロー獲得の成果</h2>' +
-        '<p class="muted" style="font-size:12px;margin:0 0 16px">リプした相手が実際にフォローしてくれた率。毎朝6時に自動で照合してる。</p>';
-      if (!s || !s.total) {
-        h += '<div class="muted" style="padding:18px;line-height:1.9;font-size:13px">まだ接触データが無いで。<br>リプ案を「↗Xリプ」やスワイプで送ると、相手・リプ種別・競合が記録される。<br>翌朝フォロー照合が走って、ここに「リプ種別別フォロー率」「競合別フォロー率」が出るで。</div>';
-        box.innerHTML = h; return;
-      }
-      h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">';
-      h += statCard("接触した人", s.total + "人");
-      h += statCard("フォローされた", s.followed + "人", "#3DFFA8");
-      h += statCard("フォロー率", s.followRate + "%", "#00e5ff");
-      h += statCard("平均フォローまで", s.avgHours != null ? s.avgHours + "h" : "—");
+    const screen = (acct.value || "").replace(/^@/, "");
+    let s, fhist = [];
+    try { s = await gasFetch_("contactStats", acct.value ? { screenName: acct.value } : {}); }
+    catch (e) { box.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
+    try { fhist = await kvGet("followers:" + screen, []); } catch (e) { fhist = []; }
+    if (s && s.error) { box.innerHTML = '<div class="err">' + esc(s.error) + '</div>'; return; }
+
+    let h = '<h2 style="font-size:19px;margin:0 0 12px">🚀 フォロー獲得の成果</h2>';
+    if (screen) { h += '<h3 style="font-size:14px;margin:0 0 6px">📈 フォロワー推移</h3>' + followerChart(fhist); }
+    h += '<p class="muted" style="font-size:12px;margin:16px 0 14px">リプした相手が実際にフォローしてくれた率。毎朝6時に自動で照合してる。</p>';
+    if (!s || !s.total) {
+      h += '<div class="muted" style="padding:14px 0;line-height:1.9;font-size:13px">リプのフォロー率はまだデータ待ち。<br>リプ案を「↗Xリプ」やスワイプで送ると記録され、翌朝の照合で「リプ種別別フォロー率」「競合別フォロー率」が出るで。</div>';
+      box.innerHTML = h; return;
+    }
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">';
+    h += statCard("接触した人", s.total + "人");
+    h += statCard("フォローされた", s.followed + "人", "#3DFFA8");
+    h += statCard("フォロー率", s.followRate + "%", "#00e5ff");
+    h += statCard("平均フォローまで", s.avgHours != null ? s.avgHours + "h" : "—");
+    h += '</div>';
+    h += '<div class="muted" style="font-size:11.5px;margin:0 0 6px">追跡中(まだ判定前): ' + s.pending + '人</div>';
+    h += barSection("リプの種類ごとのフォロー率", s.byType, "どの言い方が一番フォローに繋がるか");
+    h += barSection("競合ごとのフォロー率", s.byComp, "どの競合から来た人が付きやすいか");
+    box.innerHTML = h;
+  }
+
+  function fgOverlay_() {
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.98);z-index:99999;overflow-y:auto;padding:54px 16px 40px";
+    const close = document.createElement("button"); close.className = "mini"; close.textContent = "✕ 閉じる";
+    close.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
+    close.onclick = () => overlay.remove();
+    overlay.appendChild(close);
+    const box = document.createElement("div"); box.style.cssText = "max-width:560px;margin:0 auto";
+    overlay.appendChild(box); document.body.appendChild(overlay);
+    return box;
+  }
+
+  async function openProfileScore() {
+    const screen = (acct.value || "").replace(/^@/, "");
+    const box = fgOverlay_();
+    box.innerHTML = '<div class="muted" style="text-align:center;padding:40px">プロフィールを採点中…(10秒ほど)</div>';
+    if (!screen) { box.innerHTML = '<div class="muted" style="padding:20px">先にアカウントを選んでな。</div>'; return; }
+    let r;
+    try { r = await gasFetch_("profileScore", { screenName: screen }); }
+    catch (e) { box.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
+    if (!r || r.error) { box.innerHTML = '<div class="err">' + esc((r && r.error) || "採点に失敗") + '</div>'; return; }
+    const sc = Math.max(0, Math.min(100, r.score || 0));
+    const col = sc >= 75 ? "#3DFFA8" : (sc >= 50 ? "#00e5ff" : "#ffb347");
+    let h = '<h2 style="font-size:19px;margin:0 0 4px">📋 プロフィール採点</h2>';
+    h += '<p class="muted" style="font-size:12px;margin:0 0 14px">@' + esc(screen) + ' を「初見の人がフォローしたくなるか」で採点。</p>';
+    h += '<div style="text-align:center;margin-bottom:16px"><div style="font-size:48px;font-weight:900;color:' + col + ';line-height:1">' + sc + '<span style="font-size:20px">点</span></div>';
+    if (r.summary) h += '<div style="font-size:13px;margin-top:4px">' + esc(r.summary) + '</div>';
+    h += '</div>';
+    if (r.good) h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px;margin-bottom:10px"><div style="font-size:11px;color:#3DFFA8;margin-bottom:3px">✓ 今の強み</div><div style="font-size:13px;line-height:1.5">' + esc(r.good) + '</div></div>';
+    if (r.issues && r.issues.length) {
+      h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px;margin-bottom:10px"><div style="font-size:11px;color:#ffb347;margin-bottom:5px">⚠ 改善ポイント</div>';
+      r.issues.forEach(function (x) { h += '<div style="font-size:13px;line-height:1.6;margin-bottom:2px">・' + esc(x) + '</div>'; });
       h += '</div>';
-      h += '<div class="muted" style="font-size:11.5px;margin:0 0 6px">追跡中(まだ判定前): ' + s.pending + '人</div>';
-      h += barSection("リプの種類ごとのフォロー率", s.byType, "どの言い方が一番フォローに繋がるか");
-      h += barSection("競合ごとのフォロー率", s.byComp, "どの競合から来た人が付きやすいか");
-      box.innerHTML = h;
-    }).catch(function (e) { box.innerHTML = '<div class="err">' + e.message + '</div>'; });
+    }
+    if (r.bioSuggest) h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px"><div style="font-size:11px;color:#00e5ff;margin-bottom:5px">✍ 改善版bioの例</div><div style="font-size:13px;line-height:1.6;white-space:pre-wrap">' + esc(r.bioSuggest) + '</div></div>';
+    box.innerHTML = h;
+    if (r.bioSuggest) {
+      const cp = document.createElement("button"); cp.className = "mini cyan"; cp.textContent = "📋 改善版bioをコピー"; cp.style.cssText = "width:100%;margin-top:8px;padding:10px";
+      cp.onclick = () => { navigator.clipboard.writeText(r.bioSuggest); cp.textContent = "✓ コピーした"; setTimeout(() => cp.textContent = "📋 改善版bioをコピー", 1200); };
+      box.appendChild(cp);
+    }
+  }
+
+  async function openRivalFollowers() {
+    const screen = (acct.value || "").replace(/^@/, "");
+    const box = fgOverlay_();
+    box.innerHTML = '<div class="muted" style="text-align:center;padding:40px">競合のフォロワーを分析中…<br>(20〜30秒かかる)</div>';
+    if (!screen) { box.innerHTML = '<div class="muted" style="padding:20px">先にアカウントを選んでな。</div>'; return; }
+    let r;
+    try { r = await gasFetch_("rivalFollowers", { screenName: screen }); }
+    catch (e) { box.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
+    if (!r || r.error) { box.innerHTML = '<div class="err">' + esc((r && r.error) || "取得に失敗") + '</div>'; return; }
+    let h = '<h2 style="font-size:19px;margin:0 0 4px">🎯 競合フォロワー</h2>';
+    h += '<p class="muted" style="font-size:12px;margin:0 0 8px">競合をフォローしてる人=あなたの濃い見込み客。プロフィールを見て、合いそうな人に自分から絡もう。</p>';
+    h += '<p class="muted" style="font-size:11px;margin:0 0 12px">対象: ' + (r.rivals || []).map(function (x) { return "@" + esc(x); }).join(" ") + ' ／ あなたが未フォローの個人を抽出</p>';
+    if (!r.candidates || !r.candidates.length) {
+      h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">候補が見つからんかった。競合が未登録か、フォロワーが取得できんかったかも。設定で競合アカウントを確認してな。</div>';
+      box.innerHTML = h; return;
+    }
+    r.candidates.forEach(function (c) {
+      h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
+      h += '<div style="min-width:0"><div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div><div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + ' · ' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div></div>';
+      h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
+      h += '</div>';
+    });
+    box.innerHTML = h;
   }
 
   async function makeHunterReplies(host, p) {
