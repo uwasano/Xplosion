@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "35";
+const APP_VERSION = "36";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -313,26 +313,39 @@ function renderCostPie(box, data, title, modelData) {
 function renderCostBars(box, days, title) {
   const total7 = days.reduce((s, d) => s + d.cost, 0);
   const max = Math.max.apply(null, days.map((d) => d.cost).concat([0.000001]));
-  const W = 300, H = 156, padL = 6, padR = 6, padT = 18, padB = 26;
+  const W = 300, H = 162, padL = 6, padR = 6, padT = 18, padB = 26;
   const chartH = H - padT - padB;
   const n = days.length, bw = (W - padL - padR) / n;
+  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", other: "#94a3b8" };
+  const baseY = padT + chartH;
   let bars = "";
   days.forEach((d, i) => {
-    const h = max > 0 ? (d.cost / max) * chartH : 0;
-    const x = padL + i * bw + bw * 0.18, w = bw * 0.64, y = padT + chartH - h;
-    const yen = Math.round(d.cost * 150);
+    const x = padL + i * bw + bw * 0.18, w = bw * 0.64;
+    let yCur = baseY;
+    /* 下から haiku→sonnet→other で積み上げ */
+    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["other", d.other || 0]].forEach(function (kv) {
+      const val = kv[1];
+      if (val <= 0) return;
+      const h = max > 0 ? (val / max) * chartH : 0;
+      yCur -= h;
+      bars += '<rect x="' + x.toFixed(1) + '" y="' + yCur.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + Math.max(0.5, h).toFixed(1) + '" fill="' + COL[kv[0]] + '"/>';
+    });
+    const totalH = max > 0 ? (d.cost / max) * chartH : 0;
+    const topY = baseY - totalH;
+    if (d.cost > 0) bars += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (topY - 4).toFixed(1) + '" font-size="9" fill="#eaf2fb" text-anchor="middle">¥' + Math.round(d.cost * 150) + '</text>';
     const mmdd = String(d.day).slice(5).replace("-", "/");
-    bars += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + w.toFixed(1) + '" height="' + Math.max(0.5, h).toFixed(1) + '" rx="3" fill="url(#barGrad)"/>';
-    if (d.cost > 0) bars += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" font-size="9" fill="var(--accent)" text-anchor="middle">¥' + yen + '</text>';
     bars += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (H - 9) + '" font-size="9.5" fill="var(--muted)" text-anchor="middle">' + mmdd + '</text>';
   });
-  const grad = '<defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#00e5ff"/><stop offset="1" stop-color="#10b981"/></linearGradient></defs>';
-  const baseline = '<line x1="' + padL + '" y1="' + (padT + chartH) + '" x2="' + (W - padR) + '" y2="' + (padT + chartH) + '" stroke="var(--border)" stroke-width="1"/>';
+  const baseline = '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--border)" stroke-width="1"/>';
+  const legend = '<div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--muted)">' +
+    '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL.haiku + '"></span>Haiku</span>' +
+    '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL.sonnet + '"></span>Sonnet</span></div>';
   box.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">' +
     '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:8px;flex-wrap:wrap">' +
     '<div style="font-weight:700">' + esc(title) + '</div>' +
     '<div style="font-size:13px;color:var(--accent);font-weight:700">7日計 $' + total7.toFixed(2) + ' <span style="color:var(--muted);font-weight:400">(約¥' + Math.round(total7 * 150) + ')</span></div></div>' +
-    '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="display:block">' + grad + baseline + bars + '</svg></div>';
+    '<svg width="100%" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="display:block">' + baseline + bars + '</svg>' +
+    legend + '</div>';
 }
 
 /* 投稿日時を「○分前/○時間前/○日前/M月D日」に整形 */
@@ -1431,12 +1444,21 @@ BUILDERS.home = (el) => {
     /* 直近7日間の日別利用料(棒グラフ) */
     try {
       const since7 = new Date(Date.now() + 9 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
-      const { data: tu7 } = await sb.from("token_usage").select("cost_usd,day").gte("day", since7);
-      const byDay = {};
-      (tu7 || []).forEach((r) => { const k = String(r.day).slice(0, 10); byDay[k] = (byDay[k] || 0) + (Number(r.cost_usd) || 0); });
+      const { data: tu7 } = await sb.from("token_usage").select("cost_usd,day,model").gte("day", since7);
+      const byDayModel = {};
+      (tu7 || []).forEach((r) => {
+        const k = String(r.day).slice(0, 10);
+        if (!byDayModel[k]) byDayModel[k] = { haiku: 0, sonnet: 0, other: 0 };
+        const mk = /haiku/i.test(r.model) ? "haiku" : /sonnet/i.test(r.model) ? "sonnet" : "other";
+        byDayModel[k][mk] += (Number(r.cost_usd) || 0);
+      });
       const days7 = [];
-      for (let i = 6; i >= 0; i--) { const dd = new Date(Date.now() + 9 * 3600000 - i * 86400000).toISOString().slice(0, 10); days7.push({ day: dd, cost: byDay[dd] || 0 }); }
-      renderCostBars(costBarBox, days7, "📊 直近7日間の利用料(日別)");
+      for (let i = 6; i >= 0; i--) {
+        const dd = new Date(Date.now() + 9 * 3600000 - i * 86400000).toISOString().slice(0, 10);
+        const m = byDayModel[dd] || { haiku: 0, sonnet: 0, other: 0 };
+        days7.push({ day: dd, haiku: m.haiku, sonnet: m.sonnet, other: m.other, cost: m.haiku + m.sonnet + m.other });
+      }
+      renderCostBars(costBarBox, days7, "📊 直近7日間(Haiku/Sonnet別)");
     } catch (e) {}
   })();
 };
