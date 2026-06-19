@@ -219,11 +219,44 @@ function gasBeacon_(action, extra) {
     return navigator.sendBeacon(GAS_URL, new Blob([payload], { type: "text/plain;charset=UTF-8" }));
   } catch (e) { return false; }
 }
+/* ===== フォローペース管理: 1時間あたりのフォロー数を記録してロックリスクを表示 ===== */
+function recordFollow_() {
+  try {
+    var arr = JSON.parse(localStorage.getItem("xpl_follows") || "[]");
+    arr.push(Date.now());
+    var dayAgo = Date.now() - 86400000;
+    arr = arr.filter(function (t) { return t > dayAgo; });
+    localStorage.setItem("xpl_follows", JSON.stringify(arr));
+  } catch (e) {}
+}
+function followPace_() {
+  var arr = [];
+  try { arr = JSON.parse(localStorage.getItem("xpl_follows") || "[]"); } catch (e) {}
+  var now = Date.now();
+  var hour = arr.filter(function (t) { return t > now - 3600000; }).length;
+  var day = arr.filter(function (t) { return t > now - 86400000; }).length;
+  var pct = Math.min(100, Math.round(hour / 50 * 100));   /* 1時間50で100%(危険上限) */
+  var level, color, msg;
+  if (hour <= 15) { level = "安全"; color = "#3DFFA8"; msg = "このペースでOK"; }
+  else if (hour <= 30) { level = "やや注意"; color = "#ffd24a"; msg = "そろそろ間隔を空けて"; }
+  else if (hour <= 45) { level = "危険"; color = "#ff9f43"; msg = "ペースを落として"; }
+  else { level = "超危険"; color = "#ff6b6b"; msg = "1時間ほど手を止めて(ロックの恐れ)"; }
+  return { hour: hour, day: day, pct: pct, level: level, color: color, msg: msg };
+}
+function followPaceHtml_() {
+  var p = followPace_();
+  return '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:12px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;margin-bottom:6px">'
+    + '<span style="font-weight:700">⏱ 直近1時間 ' + p.hour + '人フォロー</span>'
+    + '<span style="color:' + p.color + ';font-weight:800">' + p.level + ' ' + p.pct + '%</span></div>'
+    + '<div style="height:9px;background:rgba(255,255,255,.1);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + p.pct + '%;background:' + p.color + ';transition:width .3s"></div></div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-top:5px">' + p.msg + ' ・ 今日の累計 ' + p.day + '人</div></div>';
+}
 /* ================================================== */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "68";
+const APP_VERSION = "69";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4306,11 +4339,12 @@ BUILDERS.calendar = (el) => {
     const backBtn = document.createElement("button"); backBtn.className = "mini"; backBtn.textContent = "↩ 戻る";
     backBtn.style.cssText = "position:fixed;top:16px;left:16px;z-index:100000;display:none";
     backBtn.onclick = () => { if (idx <= 0 || busy) return; idx--; renderCard(); };
-    const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
+    const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:8px";
+    const paceEl = document.createElement("div"); paceEl.style.cssText = "width:100%;max-width:440px;margin-bottom:10px";
     const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:50vh";
     const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
     hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スルー</b> ／ 右スワイプで<b style='color:#ff9ec4'>プロフを開く</b> →";
-    overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
+    overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(paceEl); overlay.appendChild(stack); overlay.appendChild(hint);
     document.body.appendChild(overlay);
 
     function fly(card, dir) {
@@ -4337,7 +4371,7 @@ BUILDERS.calendar = (el) => {
         if (!dragging) return; dragging = false;
         if (busy) { card.style.transition = "transform .2s"; card.style.transform = ""; curX = 0; return; }
         tint.style.opacity = "0"; label.style.opacity = "0";
-        if (curX > 110) { markSeen(it); openProf(it); fly(card, 1); }
+        if (curX > 110) { markSeen(it); recordFollow_(); openProf(it); fly(card, 1); }
         else if (curX < -110) { markSeen(it); fly(card, -1); }
         else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
         curX = 0;
@@ -4353,6 +4387,7 @@ BUILDERS.calendar = (el) => {
       busy = false;
       stack.innerHTML = "";
       backBtn.style.display = idx > 0 ? "block" : "none";
+      paceEl.innerHTML = followPaceHtml_();
       if (idx >= items.length) {
         counter.textContent = ""; hint.style.display = "none";
         stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:50px;font-size:16px;line-height:1.9">🎉 全部見ました！</div>';
@@ -4379,7 +4414,7 @@ BUILDERS.calendar = (el) => {
       const pf = document.createElement("button"); pf.className = "mini cyan";
       pf.style.cssText = "display:block;width:100%;text-align:center;margin-top:16px;padding:12px;font-size:14px;font-weight:700;position:relative;z-index:2";
       pf.textContent = "↗ プロフィールを開く";
-      pf.onclick = function () { markSeen(it); openProf(it); fly(card, 1); };
+      pf.onclick = function () { markSeen(it); recordFollow_(); openProf(it); fly(card, 1); };
       card.appendChild(pf);
       const tint = document.createElement("div");
       tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
@@ -4412,11 +4447,12 @@ BUILDERS.calendar = (el) => {
       h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。</div>';
       box.innerHTML = h; return;
     }
+    h += followPaceHtml_();
     h += '<button id="rivalSwBtn" class="mini cyan" style="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px">🃏 スワイプで一気に見る (' + r.candidates.length + '件)</button>';
     r.candidates.forEach(function (c) {
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
       h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div><div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span> <span style="color:' + ((c.risk || 0) >= 50 ? '#ff6b6b' : 'var(--muted)') + ';font-weight:700">⚠️' + (c.risk || 0) + '%</span></div></div>';
-      h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
+      h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_()" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
       h += '</div>';
     });
     box.innerHTML = h;
