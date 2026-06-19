@@ -210,11 +210,20 @@ function showMiniModal(title, body, actions, icon) {
 const SUPABASE_URL = "https://hwoltvzmsznprsbyrbaj.supabase.co";
 const SUPABASE_ANON = "sb_publishable_1JsQKCxHNyH4fGzFUJeEHg_czjaZxPR";
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcXWtE0N8A3WPH4c4uG-KdyiYwo2HIS0U8IjmS-AHftieOP/exec";
+let _lastAuthToken = "";   /* sendBeacon用に直近トークンを保持 */
+/* ページ離脱(Xを開く等)でも送信が切れないsendBeacon送信。成功でtrue */
+function gasBeacon_(action, extra) {
+  try {
+    if (!navigator.sendBeacon || !_lastAuthToken) return false;
+    const payload = JSON.stringify(Object.assign({ auth: _lastAuthToken, action: action }, extra || {}));
+    return navigator.sendBeacon(GAS_URL, new Blob([payload], { type: "text/plain;charset=UTF-8" }));
+  } catch (e) { return false; }
+}
 /* ================================================== */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "54";
+const APP_VERSION = "55";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -360,11 +369,11 @@ function xReplyIntent(it, replyText, replyType) {
   try { w = window.open(url, "_blank"); } catch (e) {}
   if (!w) { try { location.href = url; } catch (e) {} }   /* ポップアップがブロックされたら同じタブで開く */
   try { navigator.clipboard.writeText(replyText || ""); } catch (e) {}
-  /* 接触ログを記録(フォロー転換の学習用・失敗しても無視) */
+  /* 接触ログを記録(フォロー転換の学習用)。Xを開いてページ離脱しても切れないようsendBeacon優先 */
   if (it && typeof it === "object") {
     try {
       var ageMin = it.posted_at ? Math.round((Date.now() - new Date(it.posted_at).getTime()) / 60000) : 0;
-      gasFetch_("logContact", { contact: {
+      var contact = {
         screen_name: it.screen_name || "",
         target: it.competitor || it.author_handle || it.target || "",
         competitor: it.competitor || "",
@@ -373,7 +382,8 @@ function xReplyIntent(it, replyText, replyType) {
         tweet_id: tweetId,
         tweet_url: it.tweet_url || "",
         post_age_min: (ageMin > 0 && ageMin < 100000) ? ageMin : 0
-      } });
+      };
+      if (!gasBeacon_("logContact", { contact: contact })) gasFetch_("logContact", { contact: contact });
     } catch (e) {}
   }
 }
@@ -925,6 +935,7 @@ async function kvSet(key, value) {
 async function gasFetch_(action, extra) {
   const { data } = await sb.auth.getSession();
   if (!data.session) throw new Error("ログインが切れた。リロードして。");
+  _lastAuthToken = data.session.access_token;
   const res = await fetch(GAS_URL, {
     method: "POST", headers: { "Content-Type": "text/plain" },
     body: JSON.stringify(Object.assign({ auth: data.session.access_token, action }, extra || {})),
@@ -2643,7 +2654,7 @@ BUILDERS.radar = (el) => {
     overlay.appendChild(closeBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
     document.body.appendChild(overlay);
 
-    const mark = (it, st) => { it.status = st; gasFetch_("radarMark", { id: it.id, status: st }).catch(function () {}); };
+    const mark = (it, st) => { it.status = st; if (!gasBeacon_("radarMark", { id: it.id, status: st })) gasFetch_("radarMark", { id: it.id, status: st }).catch(function () {}); };
 
     function fly(card, dir) {
       busy = true;
@@ -3902,8 +3913,11 @@ BUILDERS.calendar = (el) => {
     return _hp.items[mode];
   }
   async function hpMark(it, status) {
-    it.status = status;   /* ローカルは先に確実に更新(通信が失敗しても画面は消化済みを保つ) */
-    try { await gasFetch_("hunterMark", { id: it.id, status: status }); } catch (e) {}
+    it.status = status;   /* ローカルは先に確実に更新 */
+    /* sendBeaconでサーバー保存を保証(Xを開いてページ離脱しても通信が切れない)。失敗時のみfetch */
+    if (!gasBeacon_("hunterMark", { id: it.id, status: status })) {
+      try { await gasFetch_("hunterMark", { id: it.id, status: status }); } catch (e) {}
+    }
   }
   async function renderHunterPro() {
     trOut.innerHTML = '<div class="muted" style="padding:8px">読み込み中…</div>';
