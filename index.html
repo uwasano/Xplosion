@@ -223,7 +223,7 @@ function gasBeacon_(action, extra) {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "66";
+const APP_VERSION = "68";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4294,8 +4294,9 @@ BUILDERS.calendar = (el) => {
     }
   }
 
-  function openRivalSwipe(items) {
+  function openRivalSwipe(items, rivalScreen) {
     if (!items || !items.length) return;
+    const markSeen = (it) => { try { gasBeacon_("rivalSeen", { screenName: rivalScreen || "", userName: it.userName }); } catch (e) {} };
     let idx = 0, busy = false;
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
@@ -4336,8 +4337,8 @@ BUILDERS.calendar = (el) => {
         if (!dragging) return; dragging = false;
         if (busy) { card.style.transition = "transform .2s"; card.style.transform = ""; curX = 0; return; }
         tint.style.opacity = "0"; label.style.opacity = "0";
-        if (curX > 110) { openProf(it); fly(card, 1); }
-        else if (curX < -110) { fly(card, -1); }
+        if (curX > 110) { markSeen(it); openProf(it); fly(card, 1); }
+        else if (curX < -110) { markSeen(it); fly(card, -1); }
         else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
         curX = 0;
       };
@@ -4378,7 +4379,7 @@ BUILDERS.calendar = (el) => {
       const pf = document.createElement("button"); pf.className = "mini cyan";
       pf.style.cssText = "display:block;width:100%;text-align:center;margin-top:16px;padding:12px;font-size:14px;font-weight:700;position:relative;z-index:2";
       pf.textContent = "↗ プロフィールを開く";
-      pf.onclick = function () { openProf(it); fly(card, 1); };
+      pf.onclick = function () { markSeen(it); openProf(it); fly(card, 1); };
       card.appendChild(pf);
       const tint = document.createElement("div");
       tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
@@ -4406,7 +4407,7 @@ BUILDERS.calendar = (el) => {
       ? r.rivalsInfo.map(function (x) { return x.name ? (esc(x.name) + '(@' + esc(x.userName) + ')') : ('@' + esc(x.userName)); }).join(' ')
       : (r.rivals || []).map(function (x) { return "@" + esc(x); }).join(" ");
     h += '<p class="muted" style="font-size:11px;margin:0 0 12px">対象: ' + rivalLabel + ' ／ 未フォローの個人を抽出' + (r.cached ? ' ・本日取得済み(キャッシュ/API消費なし)' : '') + '</p>';
-    if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → ' + (r.debug.shown || 0) + '人を候補に（競合' + (r.debug.rivals || 0) + 'アカ）</p>';
+    if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → 今回 ' + (r.debug.shown || 0) + '人を表示（競合' + (r.debug.rivals || 0) + 'アカ）' + (typeof r.debug.remaining === 'number' ? '・まだ見てない残り' + r.debug.remaining + '人' : '') + '</p>';
     if (!r.candidates || !r.candidates.length) {
       h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。</div>';
       box.innerHTML = h; return;
@@ -4419,7 +4420,7 @@ BUILDERS.calendar = (el) => {
       h += '</div>';
     });
     box.innerHTML = h;
-    const _rsb = box.querySelector("#rivalSwBtn"); if (_rsb) _rsb.onclick = () => openRivalSwipe(r.candidates.slice());
+    const _rsb = box.querySelector("#rivalSwBtn"); if (_rsb) _rsb.onclick = () => openRivalSwipe(r.candidates.slice(), screen);
   }
 
   async function makeHunterReplies(host, p) {
