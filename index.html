@@ -223,7 +223,7 @@ function gasBeacon_(action, extra) {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "59";
+const APP_VERSION = "62";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2654,11 +2654,14 @@ BUILDERS.radar = (el) => {
     const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "✕ 閉じる";
     closeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
     closeBtn.onclick = () => { overlay.remove(); showSavedList(); };
+    const backBtn = document.createElement("button"); backBtn.className = "mini"; backBtn.textContent = "↩ 戻る";
+    backBtn.style.cssText = "position:fixed;top:16px;left:16px;z-index:100000;display:none";
+    backBtn.onclick = () => { if (idx <= 0 || busy) return; idx--; mark(items[idx], "new"); renderCard(); };
     const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
     const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
     const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
     hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スルー</b> ／ 右スワイプで<b style='color:#ff9ec4'>リプ</b> →<br>または下のリプ案を直接タップ";
-    overlay.appendChild(closeBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
+    overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
     document.body.appendChild(overlay);
 
     const mark = (it, st) => { it.status = st; if (!it.id) return; if (!gasBeacon_("radarMark", { id: it.id, status: st })) gasFetch_("radarMark", { id: it.id, status: st }).catch(function () {}); };
@@ -2701,6 +2704,7 @@ BUILDERS.radar = (el) => {
     function renderCard() {
       busy = false;
       stack.innerHTML = "";
+      backBtn.style.display = idx > 0 ? "block" : "none";
       if (idx >= items.length) {
         counter.textContent = ""; hint.style.display = "none";
         stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px;font-size:16px;line-height:1.9">🎉 全部捌きました！<br>お疲れさまでした。</div>';
@@ -3943,17 +3947,17 @@ BUILDERS.calendar = (el) => {
     });
     trOut.appendChild(modeRow);
 
-    /* フォロー獲得ツール: 成果 / プロフィール採点 / 競合フォロワー(縦並びで見やすく) */
+    /* フォロー獲得ツール: 成果 / プロフィール採点 / 競合フォロワー */
     const toolRow = document.createElement("div");
-    toolRow.style.cssText = "display:flex;flex-direction:column;gap:8px;margin:0 0 12px";
+    toolRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:0 0 10px";
     const mkTool = (label, grad, fn) => {
       const b = document.createElement("button"); b.className = "mini";
-      b.style.cssText = "padding:14px 16px;font-weight:800;font-size:14.5px;background:" + grad + ";color:#04121c;border:none;border-radius:12px;text-align:left";
+      b.style.cssText = "padding:9px 4px;font-weight:800;font-size:11.5px;background:" + grad + ";color:#04121c;border:none;border-radius:10px;line-height:1.35";
       b.innerHTML = label; b.onclick = fn; return b;
     };
-    toolRow.appendChild(mkTool("🚀 フォロー獲得の成果", "linear-gradient(135deg,#3DFFA8,#00e5ff)", () => openFollowStats()));
-    toolRow.appendChild(mkTool("📋 プロフィール採点", "linear-gradient(135deg,#a855f7,#00e5ff)", () => openProfileScore()));
-    toolRow.appendChild(mkTool("🎯 競合フォロワーを探す", "linear-gradient(135deg,#ffb347,#ff7eb3)", () => openRivalFollowers()));
+    toolRow.appendChild(mkTool("🚀<br>成果", "linear-gradient(135deg,#3DFFA8,#00e5ff)", () => openFollowStats()));
+    toolRow.appendChild(mkTool("📋<br>プロフ採点", "linear-gradient(135deg,#a855f7,#00e5ff)", () => openProfileScore()));
+    toolRow.appendChild(mkTool("🎯<br>競合フォロワー", "linear-gradient(135deg,#ffb347,#ff7eb3)", () => openRivalFollowers()));
     trOut.appendChild(toolRow);
 
     const desc = document.createElement("p"); desc.className = "desc"; desc.style.margin = "0 0 8px";
@@ -4297,11 +4301,14 @@ BUILDERS.calendar = (el) => {
     const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "✕ 閉じる";
     closeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
     closeBtn.onclick = () => overlay.remove();
+    const backBtn = document.createElement("button"); backBtn.className = "mini"; backBtn.textContent = "↩ 戻る";
+    backBtn.style.cssText = "position:fixed;top:16px;left:16px;z-index:100000;display:none";
+    backBtn.onclick = () => { if (idx <= 0 || busy) return; idx--; renderCard(); };
     const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
     const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:50vh";
     const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
     hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スルー</b> ／ 右スワイプで<b style='color:#ff9ec4'>プロフを開く</b> →";
-    overlay.appendChild(closeBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
+    overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
     document.body.appendChild(overlay);
 
     function fly(card, dir) {
@@ -4343,6 +4350,7 @@ BUILDERS.calendar = (el) => {
     function renderCard() {
       busy = false;
       stack.innerHTML = "";
+      backBtn.style.display = idx > 0 ? "block" : "none";
       if (idx >= items.length) {
         counter.textContent = ""; hint.style.display = "none";
         stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:50px;font-size:16px;line-height:1.9">🎉 全部見ました！</div>';
@@ -4353,8 +4361,10 @@ BUILDERS.calendar = (el) => {
       const card = document.createElement("div");
       card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:22px;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55);display:flex;flex-direction:column;justify-content:center";
       let html = '<div style="font-weight:800;font-size:22px;margin-bottom:6px">@' + esc(it.userName) + '</div>';
-      if (it.name) html += '<div style="font-size:15px;margin-bottom:8px">' + esc(it.name) + '</div>';
-      html += '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">' + it.followers + ' フォロワー</div>';
+      if (it.name) html += '<div style="font-size:15px;margin-bottom:10px">' + esc(it.name) + '</div>';
+      if (it.description) html += '<div style="font-size:13.5px;line-height:1.65;margin-bottom:12px;white-space:pre-wrap;color:#dce7f5">' + esc(it.description) + '</div>';
+      html += '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">フォロワー ' + (it.followers || 0) + ' ・ フォロー ' + (it.following || 0) + '</div>';
+      if (it.location) html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">📍 ' + esc(it.location) + '</div>';
       html += '<div style="font-size:12px;color:var(--accent2)">@' + esc(it.from) + ' をフォロー中</div>';
       card.innerHTML = html;
       const pf = document.createElement("button"); pf.className = "mini cyan";
