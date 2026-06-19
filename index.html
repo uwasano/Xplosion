@@ -214,7 +214,7 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcX
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "53";
+const APP_VERSION = "54";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -777,7 +777,7 @@ function defaultCfg() {
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
-    competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare",
+    competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare", notifyEmail: false,
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
@@ -1690,6 +1690,23 @@ BUILDERS.settings = (el) => {
   const proNote = document.createElement("p"); proNote.className = "desc"; proNote.style.margin = "6px 0 0";
   proNote.textContent = "自分の業種・地域に関心がある人の『投稿後60分以内の伸び始めポスト』を自動で探して溜める。鮮度が命なので競合ウォッチより短い間隔(1時間ごとが最大)。検索が多いぶんAPI費用は競合ウォッチより少し高め。下の業種・店名エリアの設定が必要。";
   el.appendChild(proNote);
+
+  /* 📧 リプのチャンスをメール通知(アカウントごと) */
+  fld(el, "📧 リプのチャンスをメール通知");
+  const notifyChips = document.createElement("div"); notifyChips.className = "chips"; el.appendChild(notifyChips);
+  function drawNotifyChips() {
+    notifyChips.innerHTML = "";
+    [["OFF", false], ["ON", true]].forEach(function (pair) {
+      const on = (!!CFG.notifyEmail) === pair[1];
+      const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = pair[0];
+      b.onclick = () => { CFG.notifyEmail = pair[1]; save(); drawNotifyChips(); };
+      notifyChips.appendChild(b);
+    });
+  }
+  drawNotifyChips();
+  const notifyNote = document.createElement("p"); notifyNote.className = "desc"; notifyNote.style.margin = "6px 0 0";
+  notifyNote.textContent = "このアカウントでチャンス75%以上の相手が見つかったら、登録メールに通知が届く(どのアカウント向けかも件名・本文に明記)。アカウントごとにON/OFFできる。先回りリプの頻度がONになってる必要あり。";
+  el.appendChild(notifyNote);
 
   /* 店名・エリア(任意・AIに教えるか選べる) */
   fld(el, "店名・エリアをAIに教える");
