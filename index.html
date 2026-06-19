@@ -223,7 +223,7 @@ function gasBeacon_(action, extra) {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "64";
+const APP_VERSION = "66";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4361,8 +4361,13 @@ BUILDERS.calendar = (el) => {
       const it = items[idx];
       const card = document.createElement("div");
       card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:22px;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55);display:flex;flex-direction:column;justify-content:center";
-      let html = '<div style="font-weight:800;font-size:22px;margin-bottom:6px">@' + esc(it.userName) + '</div>';
-      if (it.name) html += '<div style="font-size:15px;margin-bottom:10px">' + esc(it.name) + '</div>';
+      let html = '';
+      if (it.name) {
+        html += '<div style="font-weight:800;font-size:22px;margin-bottom:2px">' + esc(it.name) + '</div>';
+        html += '<div style="font-size:14px;color:var(--muted);margin-bottom:10px">@' + esc(it.userName) + '</div>';
+      } else {
+        html += '<div style="font-weight:800;font-size:22px;margin-bottom:10px">@' + esc(it.userName) + '</div>';
+      }
       html += '<div style="display:flex;gap:14px;margin-bottom:12px;font-size:14px"><span style="color:#3DFFA8;font-weight:800">👍 推奨 ' + (it.rec || 0) + '%</span><span style="color:' + ((it.risk || 0) >= 50 ? '#ff6b6b' : 'var(--muted)') + ';font-weight:800">⚠️ 危険 ' + (it.risk || 0) + '%</span></div>';
       if (it.description) html += '<div style="font-size:13.5px;line-height:1.65;margin-bottom:12px;white-space:pre-wrap;color:#dce7f5">' + esc(it.description) + '</div>';
       else html += '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">(プロフィール文なし)</div>';
@@ -4397,7 +4402,10 @@ BUILDERS.calendar = (el) => {
     if (!r || r.error) { box.innerHTML = '<div class="err">' + esc((r && r.error) || "取得に失敗") + '</div>'; return; }
     let h = '<h2 style="font-size:19px;margin:0 0 4px">🎯 競合フォロワー</h2>';
     h += '<p class="muted" style="font-size:12px;margin:0 0 8px">競合をフォローしている人=あなたの濃い見込み客です。プロフィールを見て、合いそうな方に自分から絡みましょう。</p>';
-    h += '<p class="muted" style="font-size:11px;margin:0 0 12px">対象: ' + (r.rivals || []).map(function (x) { return "@" + esc(x); }).join(" ") + ' ／ 未フォローの個人を抽出' + (r.cached ? ' ・本日取得済み(キャッシュ/API消費なし)' : '') + '</p>';
+    var rivalLabel = (r.rivalsInfo && r.rivalsInfo.length)
+      ? r.rivalsInfo.map(function (x) { return x.name ? (esc(x.name) + '(@' + esc(x.userName) + ')') : ('@' + esc(x.userName)); }).join(' ')
+      : (r.rivals || []).map(function (x) { return "@" + esc(x); }).join(" ");
+    h += '<p class="muted" style="font-size:11px;margin:0 0 12px">対象: ' + rivalLabel + ' ／ 未フォローの個人を抽出' + (r.cached ? ' ・本日取得済み(キャッシュ/API消費なし)' : '') + '</p>';
     if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → ' + (r.debug.shown || 0) + '人を候補に（競合' + (r.debug.rivals || 0) + 'アカ）</p>';
     if (!r.candidates || !r.candidates.length) {
       h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。</div>';
@@ -4406,7 +4414,7 @@ BUILDERS.calendar = (el) => {
     h += '<button id="rivalSwBtn" class="mini cyan" style="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px">🃏 スワイプで一気に見る (' + r.candidates.length + '件)</button>';
     r.candidates.forEach(function (c) {
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
-      h += '<div style="min-width:0"><div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div><div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + ' · ' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div><div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span> <span style="color:' + ((c.risk || 0) >= 50 ? '#ff6b6b' : 'var(--muted)') + ';font-weight:700">⚠️' + (c.risk || 0) + '%</span></div></div>';
+      h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div><div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span> <span style="color:' + ((c.risk || 0) >= 50 ? '#ff6b6b' : 'var(--muted)') + ';font-weight:700">⚠️' + (c.risk || 0) + '%</span></div></div>';
       h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
       h += '</div>';
     });
