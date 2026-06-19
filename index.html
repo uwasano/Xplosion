@@ -223,7 +223,7 @@ function gasBeacon_(action, extra) {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "57";
+const APP_VERSION = "59";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3943,17 +3943,17 @@ BUILDERS.calendar = (el) => {
     });
     trOut.appendChild(modeRow);
 
-    /* フォロー獲得ツール: 成果 / プロフィール採点 / 競合フォロワー */
+    /* フォロー獲得ツール: 成果 / プロフィール採点 / 競合フォロワー(縦並びで見やすく) */
     const toolRow = document.createElement("div");
-    toolRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:0 0 10px";
+    toolRow.style.cssText = "display:flex;flex-direction:column;gap:8px;margin:0 0 12px";
     const mkTool = (label, grad, fn) => {
       const b = document.createElement("button"); b.className = "mini";
-      b.style.cssText = "padding:9px 4px;font-weight:800;font-size:11.5px;background:" + grad + ";color:#04121c;border:none;border-radius:10px;line-height:1.35";
+      b.style.cssText = "padding:14px 16px;font-weight:800;font-size:14.5px;background:" + grad + ";color:#04121c;border:none;border-radius:12px;text-align:left";
       b.innerHTML = label; b.onclick = fn; return b;
     };
-    toolRow.appendChild(mkTool("🚀<br>成果", "linear-gradient(135deg,#3DFFA8,#00e5ff)", () => openFollowStats()));
-    toolRow.appendChild(mkTool("📋<br>プロフ採点", "linear-gradient(135deg,#a855f7,#00e5ff)", () => openProfileScore()));
-    toolRow.appendChild(mkTool("🎯<br>競合フォロワー", "linear-gradient(135deg,#ffb347,#ff7eb3)", () => openRivalFollowers()));
+    toolRow.appendChild(mkTool("🚀 フォロー獲得の成果", "linear-gradient(135deg,#3DFFA8,#00e5ff)", () => openFollowStats()));
+    toolRow.appendChild(mkTool("📋 プロフィール採点", "linear-gradient(135deg,#a855f7,#00e5ff)", () => openProfileScore()));
+    toolRow.appendChild(mkTool("🎯 競合フォロワーを探す", "linear-gradient(135deg,#ffb347,#ff7eb3)", () => openRivalFollowers()));
     trOut.appendChild(toolRow);
 
     const desc = document.createElement("p"); desc.className = "desc"; desc.style.margin = "0 0 8px";
@@ -4385,6 +4385,7 @@ BUILDERS.calendar = (el) => {
     let h = '<h2 style="font-size:19px;margin:0 0 4px">🎯 競合フォロワー</h2>';
     h += '<p class="muted" style="font-size:12px;margin:0 0 8px">競合をフォローしてる人=あなたの濃い見込み客。プロフィールを見て、合いそうな人に自分から絡もう。</p>';
     h += '<p class="muted" style="font-size:11px;margin:0 0 12px">対象: ' + (r.rivals || []).map(function (x) { return "@" + esc(x); }).join(" ") + ' ／ 未フォローの個人を抽出' + (r.cached ? ' ・本日取得済み(キャッシュ/API消費なし)' : '') + '</p>';
+    if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → ' + (r.debug.shown || 0) + '人を候補に（競合' + (r.debug.rivals || 0) + 'アカ）</p>';
     if (!r.candidates || !r.candidates.length) {
       h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">候補が見つからんかった。競合が未登録か、フォロワーが取得できんかったかも。設定で競合アカウントを確認してな。</div>';
       box.innerHTML = h; return;
