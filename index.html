@@ -223,7 +223,7 @@ function gasBeacon_(action, extra) {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "55";
+const APP_VERSION = "57";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -361,9 +361,14 @@ function renderCostBars(box, days, title) {
    念のためクリップボードにもコピー(プリフィルが効かない端末では貼り付けでリプできる)。 */
 function xReplyIntent(it, replyText, replyType) {
   var tweetId = (it && typeof it === "object") ? (it.tweet_id || "") : (it || "");
+  /* tweet_idが空なら tweet_url(…/status/数字) からIDを抜く。これが無いと返信先が付かず独り言になる */
+  if (!tweetId && it && typeof it === "object" && it.tweet_url) {
+    var mm = String(it.tweet_url).match(/status\/(\d+)/);
+    if (mm) tweetId = mm[1];
+  }
   var url = tweetId
-    ? "https://twitter.com/intent/tweet?in_reply_to=" + encodeURIComponent(tweetId) + "&text=" + encodeURIComponent(replyText || "")
-    : "https://twitter.com/intent/tweet?text=" + encodeURIComponent(replyText || "");
+    ? "https://x.com/intent/tweet?in_reply_to=" + encodeURIComponent(tweetId) + "&text=" + encodeURIComponent(replyText || "")
+    : "https://x.com/intent/tweet?text=" + encodeURIComponent(replyText || "");
   /* ジェスチャー内で最優先にXを開く(これより前に非同期処理を挟むとiOSがブロックするため) */
   var w = null;
   try { w = window.open(url, "_blank"); } catch (e) {}
@@ -2449,9 +2454,10 @@ BUILDERS.radar = (el) => {
     let summary = '👥 競合: ' + competitors.map(c=>"@"+esc(c)).join(" / ");
     if (perComp && perComp.length) summary += '<br><span style="font-size:11px;color:var(--muted)">絡みヒット: ' + perComp.map(p=>"@"+esc(p.competitor)+" "+p.hits+"件").join(" / ") + '</span>';
     if (dbg) summary += '<br><span style="font-size:11px;color:var(--muted)">絡み'+(dbg.fetched||0)+'→客'+(dbg.uniqueUsers||0)+'人→判定'+(dbg.judged||0)+'→表示'+(dbg.passed||0)+'</span>';
-    summary += '<br>絡み回数×見込み度の高い順。リプ案をコピーしてXで送る(送信は手動):';
+    summary += '<br>絡み回数×見込み度の高い順。スワイプで捌く or リプ案をタップ:';
     head2.innerHTML = summary;
     out.appendChild(head2);
+    const _swb = document.createElement("button"); _swb.className="mini cyan"; _swb.style.cssText="width:100%;padding:12px;margin:6px 0 10px;font-weight:800;font-size:14px"; _swb.textContent="🃏 スワイプで一気に捌く ("+items.length+"件)"; _swb.onclick=()=>openRadarSwipe(items.slice()); out.appendChild(_swb);
     items.forEach(it => out.appendChild(radarCard(it)));
   }
 
@@ -2539,6 +2545,7 @@ BUILDERS.radar = (el) => {
     head2.innerHTML = summary;
     out.appendChild(head2);
     if (!items.length) { out.innerHTML += '<div class="muted" style="padding:10px">見込み客が見つからんかった。期間を広げる/欲望を増やす/強度を上げて再挑戦してな。</div>'; return; }
+    const _swb = document.createElement("button"); _swb.className="mini cyan"; _swb.style.cssText="width:100%;padding:12px;margin:6px 0 10px;font-weight:800;font-size:14px"; _swb.textContent="🃏 スワイプで一気に捌く ("+items.length+"件)"; _swb.onclick=()=>openRadarSwipe(items.slice()); out.appendChild(_swb);
     items.forEach(it => out.appendChild(radarCard(it)));
   }
 
@@ -2654,7 +2661,7 @@ BUILDERS.radar = (el) => {
     overlay.appendChild(closeBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
     document.body.appendChild(overlay);
 
-    const mark = (it, st) => { it.status = st; if (!gasBeacon_("radarMark", { id: it.id, status: st })) gasFetch_("radarMark", { id: it.id, status: st }).catch(function () {}); };
+    const mark = (it, st) => { it.status = st; if (!it.id) return; if (!gasBeacon_("radarMark", { id: it.id, status: st })) gasFetch_("radarMark", { id: it.id, status: st }).catch(function () {}); };
 
     function fly(card, dir) {
       busy = true;
@@ -4282,6 +4289,90 @@ BUILDERS.calendar = (el) => {
     }
   }
 
+  function openRivalSwipe(items) {
+    if (!items || !items.length) return;
+    let idx = 0, busy = false;
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
+    const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "✕ 閉じる";
+    closeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
+    closeBtn.onclick = () => overlay.remove();
+    const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
+    const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:50vh";
+    const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
+    hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スルー</b> ／ 右スワイプで<b style='color:#ff9ec4'>プロフを開く</b> →";
+    overlay.appendChild(closeBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
+    document.body.appendChild(overlay);
+
+    function fly(card, dir) {
+      busy = true;
+      card.style.transition = "transform .3s, opacity .3s";
+      card.style.transform = "translateX(" + (dir > 0 ? "120%" : "-120%") + ") rotate(" + (dir * 8) + "deg)";
+      card.style.opacity = "0";
+      setTimeout(function () { idx++; renderCard(); }, 280);
+    }
+    function openProf(it) { var w = null; try { w = window.open("https://x.com/" + encodeURIComponent(it.userName), "_blank"); } catch (e) {} if (!w) { try { location.href = "https://x.com/" + it.userName; } catch (e) {} } }
+    function attachSwipe(card, it, tint, label) {
+      let startX = 0, curX = 0, dragging = false;
+      const start = function (x) { if (busy) return; startX = x; dragging = true; card.style.transition = "none"; };
+      const move = function (x) {
+        if (!dragging) return;
+        curX = x - startX;
+        card.style.transform = "translateX(" + curX + "px) rotate(" + (curX * 0.04) + "deg)";
+        const t = Math.min(Math.abs(curX) / 150, 0.85);
+        if (curX > 8) { tint.style.background = "rgba(255,158,196,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "プロフ ↗"; label.style.color = "#ff9ec4"; label.style.opacity = String(t); }
+        else if (curX < -8) { tint.style.background = "rgba(127,212,255,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "スルー"; label.style.color = "#7fd4ff"; label.style.opacity = String(t); }
+        else { tint.style.opacity = "0"; label.style.opacity = "0"; }
+      };
+      const end = function () {
+        if (!dragging) return; dragging = false;
+        if (busy) { card.style.transition = "transform .2s"; card.style.transform = ""; curX = 0; return; }
+        tint.style.opacity = "0"; label.style.opacity = "0";
+        if (curX > 110) { openProf(it); fly(card, 1); }
+        else if (curX < -110) { fly(card, -1); }
+        else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
+        curX = 0;
+      };
+      card.addEventListener("touchstart", function (e) { start(e.touches[0].clientX); }, { passive: true });
+      card.addEventListener("touchmove", function (e) { move(e.touches[0].clientX); }, { passive: true });
+      card.addEventListener("touchend", end);
+      card.addEventListener("mousedown", function (e) { start(e.clientX); });
+      card.addEventListener("mousemove", function (e) { move(e.clientX); });
+      card.addEventListener("mouseup", end);
+    }
+    function renderCard() {
+      busy = false;
+      stack.innerHTML = "";
+      if (idx >= items.length) {
+        counter.textContent = ""; hint.style.display = "none";
+        stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:50px;font-size:16px;line-height:1.9">🎉 全部見ました！</div>';
+        return;
+      }
+      counter.textContent = (idx + 1) + " / " + items.length;
+      const it = items[idx];
+      const card = document.createElement("div");
+      card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:22px;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55);display:flex;flex-direction:column;justify-content:center";
+      let html = '<div style="font-weight:800;font-size:22px;margin-bottom:6px">@' + esc(it.userName) + '</div>';
+      if (it.name) html += '<div style="font-size:15px;margin-bottom:8px">' + esc(it.name) + '</div>';
+      html += '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">' + it.followers + ' フォロワー</div>';
+      html += '<div style="font-size:12px;color:var(--accent2)">@' + esc(it.from) + ' をフォロー中</div>';
+      card.innerHTML = html;
+      const pf = document.createElement("button"); pf.className = "mini cyan";
+      pf.style.cssText = "display:block;width:100%;text-align:center;margin-top:16px;padding:12px;font-size:14px;font-weight:700;position:relative;z-index:2";
+      pf.textContent = "↗ プロフィールを開く";
+      pf.onclick = function () { openProf(it); fly(card, 1); };
+      card.appendChild(pf);
+      const tint = document.createElement("div");
+      tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
+      const label = document.createElement("div");
+      label.style.cssText = "position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:26px;font-weight:900;opacity:0;pointer-events:none;text-shadow:0 2px 10px rgba(0,0,0,.6);z-index:4";
+      card.appendChild(tint); card.appendChild(label);
+      stack.appendChild(card);
+      attachSwipe(card, it, tint, label);
+    }
+    renderCard();
+  }
+
   async function openRivalFollowers() {
     const screen = (acct.value || "").replace(/^@/, "");
     const box = fgOverlay_();
@@ -4298,6 +4389,7 @@ BUILDERS.calendar = (el) => {
       h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">候補が見つからんかった。競合が未登録か、フォロワーが取得できんかったかも。設定で競合アカウントを確認してな。</div>';
       box.innerHTML = h; return;
     }
+    h += '<button id="rivalSwBtn" class="mini cyan" style="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px">🃏 スワイプで一気に見る (' + r.candidates.length + '件)</button>';
     r.candidates.forEach(function (c) {
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
       h += '<div style="min-width:0"><div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div><div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + ' · ' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div></div>';
@@ -4305,6 +4397,7 @@ BUILDERS.calendar = (el) => {
       h += '</div>';
     });
     box.innerHTML = h;
+    const _rsb = box.querySelector("#rivalSwBtn"); if (_rsb) _rsb.onclick = () => openRivalSwipe(r.candidates.slice());
   }
 
   async function makeHunterReplies(host, p) {
