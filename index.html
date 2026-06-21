@@ -236,14 +236,14 @@ function followPace_() {
   var m30 = arr.filter(function (t) { return t > now - 1800000; }).length;   /* 直近30分(最重要・急増検知) */
   var hour = arr.filter(function (t) { return t > now - 3600000; }).length;  /* 直近1時間 */
   var day = arr.filter(function (t) { return t > now - 86400000; }).length;  /* 直近24時間 */
-  /* リスク%: 30分窓(25で100%=1時間50ペース) と 1日(130で100%) の高い方 */
-  var pct30 = Math.min(100, Math.round(m30 / 25 * 100));
+  /* 実測: 30分16人でフォロー制限がかかった→13を100%(赤)にして3人手前で止める */
+  var pct30 = Math.min(100, Math.round(m30 / 13 * 100));
   var pctDay = Math.min(100, Math.round(day / 130 * 100));
   var pct = Math.max(pct30, pctDay);
   var level, color, msg;
-  if (m30 >= 25 || day >= 150) { level = "超危険"; color = "#ff6b6b"; msg = "今すぐ手を止めて(ロックの恐れ)"; }
-  else if (m30 >= 15 || day >= 120) { level = "危険"; color = "#ff9f43"; msg = "ペースを落として、間隔を空けて"; }
-  else if (m30 >= 8 || day >= 80) { level = "やや注意"; color = "#ffd24a"; msg = "そろそろ間隔を空けて"; }
+  if (m30 >= 13 || day >= 150) { level = "超危険"; color = "#ff6b6b"; msg = "今すぐ止めて(30分16人でロック実績あり)"; }
+  else if (m30 >= 9 || day >= 120) { level = "危険"; color = "#ff9f43"; msg = "ここで一旦ストップ、間隔を空けて"; }
+  else if (m30 >= 5 || day >= 80) { level = "やや注意"; color = "#ffd24a"; msg = "そろそろ間隔を空けて"; }
   else { level = "安全"; color = "#3DFFA8"; msg = "このペースでOK"; }
   return { m30: m30, hour: hour, day: day, pct: pct, level: level, color: color, msg: msg };
 }
@@ -255,13 +255,13 @@ function followPaceHtml_() {
     + '<span style="color:' + p.color + ';font-weight:800">' + p.level + ' ' + p.pct + '%</span></div>'
     + '<div style="height:9px;background:rgba(255,255,255,.1);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + p.pct + '%;background:' + p.color + ';transition:width .3s"></div></div>'
     + '<div style="font-size:11px;color:var(--muted);margin-top:5px">' + p.msg + ' ・ 1時間 ' + p.hour + '人 / 今日 ' + p.day + '人</div>'
-    + '<div style="font-size:10px;color:var(--muted);margin-top:3px;opacity:.85">※「直近30分」は常に今から遡って計算する移動窓。Xはこの窓で急増を検知するため、ここを最優先で監視</div></div>';
+    + '<div style="font-size:10px;color:var(--muted);margin-top:3px;opacity:.85">※実測で30分16人フォロー時にロック。安全のため30分13人を上限(100%)に設定。Xはこの移動窓で急増を検知する</div></div>';
 }
 /* ================================================== */
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "70";
+const APP_VERSION = "71";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
