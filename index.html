@@ -220,14 +220,25 @@ function gasBeacon_(action, extra) {
   } catch (e) { return false; }
 }
 /* ===== フォローペース管理: 1時間あたりのフォロー数を記録してロックリスクを表示 ===== */
-function recordFollow_() {
+function recordFollow_(name) {
+  var now = Date.now();
   try {
     var arr = JSON.parse(localStorage.getItem("xpl_follows") || "[]");
-    arr.push(Date.now());
-    var dayAgo = Date.now() - 86400000;
-    arr = arr.filter(function (t) { return t > dayAgo; });
+    arr.push(now);
+    arr = arr.filter(function (t) { return t > now - 86400000; });
     localStorage.setItem("xpl_follows", JSON.stringify(arr));
   } catch (e) {}
+  /* 誰をいつフォローしたか(非フォローバックの経過日数用・90日保持) */
+  if (name) {
+    try {
+      var key = String(name).replace(/^@/, "");
+      var log = JSON.parse(localStorage.getItem("xpl_follow_log") || "{}");
+      if (!log[key]) log[key] = now;
+      var cut = now - 90 * 86400000;
+      Object.keys(log).forEach(function (k) { if (log[k] < cut) delete log[k]; });
+      localStorage.setItem("xpl_follow_log", JSON.stringify(log));
+    } catch (e) {}
+  }
 }
 function followPace_() {
   var arr = [];
@@ -261,7 +272,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "74";
+const APP_VERSION = "75";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3194,7 +3205,7 @@ BUILDERS.unfollow = (el) => {
 
   const note = document.createElement("div");
   note.style.cssText = "background:rgba(255,107,53,.08);border:1px solid #ff6b35;border-radius:8px;padding:10px;font-size:12.5px;line-height:1.6;margin-bottom:10px;color:var(--text)";
-  note.innerHTML = "⚠️ <b>凍結対策</b>: Xは短時間の大量解除をスパム判定することがある。このツールは<b>1日30件まで</b>に制限してる。それでも一気にやりすぎず、数日に分けるのが安全。";
+  note.innerHTML = "⚠️ <b>凍結対策</b>: フォロー解除はXの仕様上アプリが自動でできないため、「Xで解除→」を押すと相手のプロフが開くので、そこで「フォロー中」を押して手動解除してください。短時間の大量解除はスパム判定されるので<b>1日30件まで</b>を目安に、数日に分けるのが安全です。";
   el.appendChild(note);
 
   fld(el, "対象アカウント(Xのみ)");
@@ -3218,24 +3229,37 @@ BUILDERS.unfollow = (el) => {
       statusEl.innerHTML = '<div class="desc">フォロー中: '+(j.followingCount||0)+' / フォロワー: '+(j.followerCount||0)+' / 非フォローバック: <b style="color:var(--accent)">'+cand.length+'件</b><br>今日の解除済み: '+(j.todayUnfollowed||0)+'/30件</div>';
       if (!cand.length) { out.innerHTML = '<div class="muted" style="padding:8px">非フォローバックは見つかりませんでした。きれいな状態です👍</div>'; goBtn.disabled=false; goBtn.textContent="🧹 非フォローバックを抽出"; return; }
       let todayCount = j.todayUnfollowed || 0;
+      let followLog = {};
+      try { followLog = JSON.parse(localStorage.getItem("xpl_follow_log") || "{}"); } catch (e) {}
+      const daysSince_ = (name) => {
+        const t = followLog[String(name).replace(/^@/, "")];
+        return t ? Math.floor((Date.now() - t) / 86400000) : null;
+      };
+      /* フォローから2日以上経過(返し待ち超過)を優先。記録なしは後ろ */
+      cand.sort((a, b) => {
+        const da = daysSince_(a.userName), db = daysSince_(b.userName);
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return db - da;
+      });
       cand.slice(0, 100).forEach((u) => {
+        const days = daysSince_(u.userName);
+        const daysLabel = days == null
+          ? '<span style="color:var(--muted)">フォロー日不明</span>'
+          : (days >= 2
+              ? '<span style="color:#ff9f43;font-weight:700">' + days + '日前にフォロー・返し無し</span>'
+              : '<span style="color:var(--muted)">' + days + '日前にフォロー</span>');
         const card = document.createElement("div");
         card.style.cssText = "display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px;flex-wrap:wrap";
-        card.innerHTML = '<div style="flex:1;min-width:140px"><div style="font-weight:700;font-size:13px">@'+esc(u.userName)+'</div><div style="font-size:11px;color:var(--muted)">'+esc(u.name||"")+' · フォロワー'+(u.followers||0)+'</div></div>';
-        const open = document.createElement("a"); open.className="mini"; open.textContent="↗開く"; open.href="https://x.com/"+u.userName; open.target="_blank";
-        open.style.cssText="text-decoration:none;padding:5px 9px;border-radius:7px;font-size:12px";
-        const unf = document.createElement("button"); unf.className="mini"; unf.textContent="解除"; unf.style.cssText="padding:5px 12px;font-size:12px;background:#ff6b35;color:#fff;border:none";
-        unf.onclick = async () => {
-          if (todayCount >= 30) { alert("今日の解除上限(30件)に達した。明日また続けて。"); return; }
-          unf.disabled = true; unf.textContent = "…";
-          try {
-            const r = await gasFetch_("unfollow", { screenName: acct.value, targetUserName: u.userName, targetId: u.id });
-            if (r.ok) { todayCount = r.todayUnfollowed; unf.textContent="解除✓"; unf.style.background="#666"; card.style.opacity="0.5";
-              statusEl.querySelector("div").innerHTML = statusEl.querySelector("div").innerHTML.replace(/今日の解除済み: \d+\/30件/, "今日の解除済み: "+todayCount+"/30件");
-            } else { unf.disabled=false; unf.textContent="解除"; alert(r.error||"解除失敗"); }
-          } catch(e) { unf.disabled=false; unf.textContent="解除"; alert(e.message); }
+        card.innerHTML = '<div style="flex:1;min-width:140px"><div style="font-weight:700;font-size:13px">@'+esc(u.userName)+'</div><div style="font-size:11px;color:var(--muted)">'+esc(u.name||"")+' · フォロワー'+(u.followers||0)+'</div><div style="font-size:11px;margin-top:2px">'+daysLabel+'</div></div>';
+        const unf = document.createElement("button"); unf.className="mini"; unf.textContent="Xで解除→"; unf.style.cssText="padding:6px 12px;font-size:12px;background:#ff6b35;color:#fff;border:none;border-radius:7px";
+        unf.onclick = () => {
+          window.open("https://x.com/" + u.userName, "_blank");
+          unf.textContent = "開いた"; unf.style.background = "#666"; card.style.opacity = "0.6";
+          if (todayCount < 30) { todayCount++; const d = statusEl.querySelector("div"); if (d) d.innerHTML = d.innerHTML.replace(/今日の解除済み: \d+\/30件/, "今日の解除済み: " + todayCount + "/30件"); }
         };
-        card.appendChild(open); card.appendChild(unf);
+        card.appendChild(unf);
         out.appendChild(card);
       });
     } catch (e) { out.innerHTML = '<div class="err">'+e.message+'</div>'; }
@@ -4387,7 +4411,7 @@ BUILDERS.calendar = (el) => {
         if (!dragging) return; dragging = false;
         if (busy) { card.style.transition = "transform .2s"; card.style.transform = ""; curX = 0; return; }
         tint.style.opacity = "0"; label.style.opacity = "0";
-        if (curX > 110) { markSeen(it); recordFollow_(); openProf(it); fly(card, 1); }
+        if (curX > 110) { markSeen(it); recordFollow_(it.userName); openProf(it); fly(card, 1); }
         else if (curX < -110) { markSeen(it); fly(card, -1); }
         else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
         curX = 0;
@@ -4430,7 +4454,7 @@ BUILDERS.calendar = (el) => {
       const pf = document.createElement("button"); pf.className = "mini cyan";
       pf.style.cssText = "display:block;width:100%;text-align:center;margin-top:16px;padding:12px;font-size:14px;font-weight:700;position:relative;z-index:2";
       pf.textContent = "↗ プロフィールを開く";
-      pf.onclick = function () { markSeen(it); recordFollow_(); openProf(it); fly(card, 1); };
+      pf.onclick = function () { markSeen(it); recordFollow_(it.userName); openProf(it); fly(card, 1); };
       card.appendChild(pf);
       const tint = document.createElement("div");
       tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
@@ -4468,7 +4492,7 @@ BUILDERS.calendar = (el) => {
     r.candidates.forEach(function (c) {
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
       h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div><div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span> <span style="color:' + ((c.risk || 0) >= 50 ? '#ff6b6b' : 'var(--muted)') + ';font-weight:700">⚠️' + (c.risk || 0) + '%</span></div></div>';
-      h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_()" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
+      h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_(\'' + esc(c.userName) + '\')" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
       h += '</div>';
     });
     box.innerHTML = h;
