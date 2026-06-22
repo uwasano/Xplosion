@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "80";
+const APP_VERSION = "81";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2180,7 +2180,8 @@ function renderMixCard(p, audience) {
       const prompt = "おしゃれな水タバコ(シーシャ)バーの幻想的な情景写真。"+flavors+"のフレーバーをイメージした"+(moods.join("・")||"心地よい")+"色彩と立ち上る煙。ムーディーな照明、ガラスのシーシャ、高級感のある雰囲気、湯気。プロのフードフォト風。文字やロゴは一切入れない。";
       try {
         const r = await gasFetch_("shishaImage", { prompt });
-        if (r && r.url) { imgWrap.innerHTML = '<img src="'+r.url+'" style="width:100%;border-radius:10px;margin-top:4px" alt="mix"><div style="font-size:10px;color:var(--muted);margin-top:2px">長押しで保存できます（画像URLは約1時間で期限切れ）</div>'; ig.textContent="🎨 もう一度生成"; }
+        const src = (r && r.b64) ? ("data:image/png;base64," + r.b64) : ((r && r.url) ? r.url : null);
+        if (src) { imgWrap.innerHTML = '<img src="'+src+'" style="width:100%;border-radius:10px;margin-top:4px" alt="mix"><div style="font-size:10px;color:var(--muted);margin-top:2px">長押しで保存できます</div>'; ig.textContent="🎨 もう一度生成"; }
         else { imgWrap.innerHTML = '<div class="err" style="font-size:12px">'+esc((r&&r.error)||"生成に失敗しました")+'</div>'; ig.textContent=ob; }
       } catch(e) { imgWrap.innerHTML='<div class="err" style="font-size:12px">'+esc(e.message)+'</div>'; ig.textContent=ob; }
       ig.disabled=false;
