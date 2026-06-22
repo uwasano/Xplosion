@@ -261,7 +261,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "71";
+const APP_VERSION = "72";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5338,6 +5338,7 @@ BUILDERS.followers = (el) => {
 
   const statsEl = document.createElement("div"); el.appendChild(statsEl);
   const compEl = document.createElement("div"); el.appendChild(compEl);
+  const sourceEl = document.createElement("div"); el.appendChild(sourceEl);
   const goalEl = document.createElement("div"); el.appendChild(goalEl);
   const chartEl = document.createElement("div"); el.appendChild(chartEl);
   const aiEl = document.createElement("div"); el.appendChild(aiEl);
@@ -5379,6 +5380,38 @@ BUILDERS.followers = (el) => {
     goals = await kvGet(goalKey(), {});
     drawAll();
     drawCompare();
+    drawSource();
+  }
+  async function drawSource() {
+    const nm = target();
+    if (!nm) { sourceEl.innerHTML = ""; return; }
+    sourceEl.innerHTML = '<div class="muted" style="margin-top:18px;font-size:12px">📍 フォロー獲得の出どころを集計中…</div>';
+    try {
+      const r = await gasFetch_("contactStats", { screen: nm });
+      if (!r || r.error) { sourceEl.innerHTML = ""; return; }
+      let h = '<div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border)">';
+      h += '<h3 style="font-size:15px;margin:0 0 4px">📍 フォロー獲得の出どころ</h3>';
+      h += '<p class="desc" style="font-size:11px;margin:0 0 12px">Xは「誰がなぜフォローしたか」を開示しません。ただしXPLOSIONは<b>自分がリプした相手のフォロー</b>を全て追跡しています。下はそのリプ経由で取れたフォローの内訳です:</p>';
+      if (!r.followed) {
+        h += '<div class="muted" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px">まだリプ経由のフォロー獲得は記録がありません。リプハンターや先回りリプで絡んだ相手がフォローしてくれると、ここに「誰が・どのリプで・どの競合経由か」が溜まっていきます。</div>';
+      } else {
+        h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px"><div style="font-size:13px">リプした相手がフォローしてくれた数: <b style="color:#3DFFA8;font-size:18px">' + r.followed + '人</b></div>';
+        h += '<div style="font-size:11px;color:var(--muted);margin-top:4px">接触した' + r.total + '人のうち / フォロー率 ' + r.followRate + '%' + (r.avgHours != null ? ' ・ 平均' + r.avgHours + '時間でフォロー返し' : '') + '</div></div>';
+        const types = (r.byType || []).filter((t) => t.f > 0);
+        if (types.length) {
+          h += '<div style="font-size:12.5px;font-weight:700;margin:10px 0 4px">どんなリプが効いたか</div>';
+          types.forEach((t) => { h += '<div style="font-size:12px;color:var(--muted);padding:2px 0">・' + esc(t.key) + ' → ' + t.f + '人フォロー(成功率' + t.rate + '%)</div>'; });
+        }
+        const comps = (r.byComp || []).filter((c) => c.f > 0 && c.key !== "(不明)");
+        if (comps.length) {
+          h += '<div style="font-size:12.5px;font-weight:700;margin:12px 0 4px">どの競合の投稿から流れてきたか</div>';
+          comps.forEach((c) => { h += '<div style="font-size:12px;color:var(--muted);padding:2px 0">・@' + esc(c.key) + ' 経由 → ' + c.f + '人</div>'; });
+        }
+        h += '<p class="desc" style="font-size:10.5px;margin-top:12px;opacity:.7">※これ以外のフォロワー増加は、あなたの投稿やプロフを見てのフォロー(オーガニック)です。Xが出どころを開示しないため、そこは追跡できません。</p>';
+      }
+      h += '</div>';
+      sourceEl.innerHTML = h;
+    } catch (e) { sourceEl.innerHTML = ""; }
   }
   reload();
 
