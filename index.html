@@ -240,6 +240,19 @@ function recordFollow_(name) {
     } catch (e) {}
   }
 }
+/* 競合フォロワーで「見た人」をフロント側でも記録(サーバーのseenが効かなくても確実に除外・14日保持) */
+function rivalSeenLocal_() {
+  try { return JSON.parse(localStorage.getItem("rival_seen") || "{}"); } catch (e) { return {}; }
+}
+function rivalMarkLocal_(names) {
+  try {
+    var s = rivalSeenLocal_(); var now = Date.now();
+    (Array.isArray(names) ? names : [names]).forEach(function (n) { if (n) s[String(n).replace(/^@/, "").toLowerCase()] = now; });
+    var cut = now - 14 * 86400000;
+    Object.keys(s).forEach(function (k) { if (s[k] < cut) delete s[k]; });
+    localStorage.setItem("rival_seen", JSON.stringify(s));
+  } catch (e) {}
+}
 function followPace_() {
   var arr = [];
   try { arr = JSON.parse(localStorage.getItem("xpl_follows") || "[]"); } catch (e) {}
@@ -272,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "76";
+const APP_VERSION = "79";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -845,7 +858,7 @@ function defaultCfg() {
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
-    mixOn: false, mixFreq: 30, mixDB: null,
+    mixOn: false, mixFreq: 30, mixDB: null, mixImage: false,
   };
 }
 
@@ -1982,6 +1995,17 @@ BUILDERS.settings = (el) => {
     fwrap.appendChild(sl); updHint(); fwrap.appendChild(fhint);
     mixBox.appendChild(fwrap);
 
+    /* 🎨 AI画像生成 on/off(DALL-E 3・GAS経由・onの時だけ課金) */
+    const imgTg = document.createElement("div");
+    imgTg.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
+    imgTg.innerHTML = '<div><div style="font-weight:700;font-size:13px">🎨 AI画像生成</div><div style="font-size:11px;color:var(--muted)">DALL-E 3でミックスのイメージ画像。onの時だけ課金(1枚約6円)</div></div>';
+    const isw = document.createElement("button");
+    isw.style.cssText = "flex:0 0 auto;width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;transition:.2s;position:relative;" + (CFG.mixImage ? "background:linear-gradient(135deg,#ff2d95,#a855f7)" : "background:#3a3a4a");
+    isw.innerHTML = '<span style="position:absolute;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;'+(CFG.mixImage?"left:27px":"left:3px")+'"></span>';
+    isw.onclick = async () => { CFG.mixImage = !CFG.mixImage; await save(); drawMix(); };
+    imgTg.appendChild(isw);
+    mixBox.appendChild(imgTg);
+
     /* 客層選択 */
     fld(mixBox, "客層を選んで生成");
     const audWrap = document.createElement("div"); audWrap.style.cssText="display:flex;flex-wrap:wrap;gap:6px";
@@ -2132,6 +2156,26 @@ function renderMixCard(p, audience) {
   const txt = shMixName(p.combo)+"\n"+p.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ")+"\nおすすめ度: "+p.sc+"点 "+label+(pitch?"\nこんなあなたに: "+pitch:"");
   cp.onclick = () => { navigator.clipboard.writeText(txt); cp.textContent="✓ コピーした"; setTimeout(()=>cp.textContent="📋 配合をコピー",1500); };
   card.appendChild(cp);
+  /* 🎨 AI画像生成ボタン(設定でonの時のみ) */
+  if (CFG.mixImage) {
+    const ig = document.createElement("button"); ig.className="mini"; ig.style.cssText="margin-top:8px;margin-left:8px;background:linear-gradient(135deg,#ff2d95,#a855f7);color:#fff;border:none";
+    ig.textContent="🎨 画像生成";
+    const imgWrap = document.createElement("div"); imgWrap.style.marginTop="8px";
+    ig.onclick = async () => {
+      ig.disabled=true; const ob=ig.textContent; ig.textContent="生成中…(15秒ほど)";
+      const flavors = p.combo.map(c=>c.name).join("、");
+      const moods = [];
+      if (sweet>=6) moods.push("甘い"); if (sour>=6) moods.push("爽やかな酸味"); if (cool>=6) moods.push("清涼感のある"); if (heavy>=6) moods.push("濃厚な");
+      const prompt = "おしゃれな水タバコ(シーシャ)バーの幻想的な情景写真。"+flavors+"のフレーバーをイメージした"+(moods.join("・")||"心地よい")+"色彩と立ち上る煙。ムーディーな照明、ガラスのシーシャ、高級感のある雰囲気、湯気。プロのフードフォト風。文字やロゴは一切入れない。";
+      try {
+        const r = await gasFetch_("shishaImage", { prompt });
+        if (r && r.url) { imgWrap.innerHTML = '<img src="'+r.url+'" style="width:100%;border-radius:10px;margin-top:4px" alt="mix"><div style="font-size:10px;color:var(--muted);margin-top:2px">長押しで保存できます（画像URLは約1時間で期限切れ）</div>'; ig.textContent="🎨 もう一度生成"; }
+        else { imgWrap.innerHTML = '<div class="err" style="font-size:12px">'+esc((r&&r.error)||"生成に失敗しました")+'</div>'; ig.textContent=ob; }
+      } catch(e) { imgWrap.innerHTML='<div class="err" style="font-size:12px">'+esc(e.message)+'</div>'; ig.textContent=ob; }
+      ig.disabled=false;
+    };
+    card.appendChild(ig); card.appendChild(imgWrap);
+  }
   return card;
 }
 
@@ -3625,8 +3669,33 @@ BUILDERS.calendar = (el) => {
           + '🔍 結果確認の最終実行: <b style="color:var(--ink)">'+fmt(j.lastCheck)+'</b><br>'
           + '結果待ち(未確定): '+(j.pending||0)+'件'+((j.gaveUp||0)?' / 確認できず打ち切り: '+j.gaveUp+'件':'')+'<br>'
           + '※結果は1日6回(13〜0時)自動で確認・監視。</div>';
-        h += '<div class="desc" style="margin-top:8px;font-size:11px">回収率100%超えが勝ち。レース数が増えるほど信頼できる。100〜300レース貯まったら勝ってる方をデフォルトに。</div></div>';
+        h += '<div class="desc" style="margin-top:8px;font-size:11px">回収率100%超えが勝ち。レース数が増えるほど信頼できる。100〜300レース貯まったら勝ってる方をデフォルトに。</div>';
+        h += '<button id="hitCopyBtn" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#3DFFA8,#00e5ff);color:#001;font-weight:800;border:none;padding:11px;border-radius:9px;font-size:13px">🎯 当たったレースを全部コピー</button>';
+        h += '<div id="hitCopyOut"></div></div>';
         statBox.innerHTML = h;
+        const hitBtn = document.getElementById("hitCopyBtn");
+        if (hitBtn) hitBtn.onclick = async () => {
+          hitBtn.disabled = true; const ob = hitBtn.textContent; hitBtn.textContent = "取得中…";
+          try {
+            const hj = await gasFetch_("hitList", { screen_name: acc || undefined, days: 0 });
+            const rows = (hj && hj.rows) ? hj.rows : [];
+            const outEl = document.getElementById("hitCopyOut");
+            if (!rows.length) { outEl.innerHTML = '<div class="muted" style="font-size:12px;margin-top:6px">まだ的中レースがありません。</div>'; hitBtn.disabled=false; hitBtn.textContent=ob; return; }
+            const NAME2 = { popular:"人気順", score:"直前スコア" };
+            const lines = rows.map(r => {
+              const d = String(r.race_date||""); const md = d.length===8 ? (parseInt(d.slice(4,6),10)+"/"+parseInt(d.slice(6,8),10)) : d;
+              const pay = r.payout ? " ¥"+Number(r.payout).toLocaleString() : "";
+              return md+" "+(r.venue||"")+r.rno+"R "+(r.result_combo||"")+pay+"（"+(NAME2[r.logic]||r.logic)+"）";
+            });
+            const text = "【的中実績】\n" + lines.join("\n") + "\n\n的中"+hj.count+"レース／回収金合計 ¥"+Number(hj.totalPayout).toLocaleString();
+            let copied = false;
+            try { await navigator.clipboard.writeText(text); copied = true; } catch(err) {}
+            hitBtn.textContent = copied ? "✓ コピーした！" : ob;
+            outEl.innerHTML = '<textarea readonly style="width:100%;height:170px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:12px;padding:8px;margin-top:8px;-webkit-user-select:all">'+esc(text)+'</textarea>'
+              + '<div class="muted" style="font-size:11px;margin-top:4px">回収金合計 <b style="color:#3DFFA8">¥'+Number(hj.totalPayout).toLocaleString()+'</b> / 的中'+hj.count+'レース'+(copied?'（コピー済み）':'（上を長押しでコピー）')+'</div>';
+            setTimeout(()=>{ hitBtn.disabled=false; hitBtn.textContent=ob; }, 2500);
+          } catch(e) { document.getElementById("hitCopyOut").innerHTML = '<div class="err" style="margin-top:6px">'+esc(e.message)+'</div>'; hitBtn.disabled=false; hitBtn.textContent=ob; }
+        };
       } catch(e){ statBox.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
     }
     renderStats(7);
@@ -4370,7 +4439,7 @@ BUILDERS.calendar = (el) => {
 
   function openRivalSwipe(items, rivalScreen) {
     if (!items || !items.length) return;
-    const markSeen = (it) => { try { gasBeacon_("rivalSeen", { screenName: rivalScreen || "", userName: it.userName }); } catch (e) {} };
+    const markSeen = (it) => { try { gasBeacon_("rivalSeen", { screenName: rivalScreen || "", userName: it.userName }); rivalMarkLocal_(it.userName); } catch (e) {} };
     let idx = 0, busy = false;
     const overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
@@ -4477,6 +4546,11 @@ BUILDERS.calendar = (el) => {
     try { r = await gasFetch_("rivalFollowers", { screenName: screen }); }
     catch (e) { box.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
     if (!r || r.error) { box.innerHTML = '<div class="err">' + esc((r && r.error) || "取得に失敗") + '</div>'; return; }
+    /* フロント側でも見た人を除外(サーバーのseenが効かない時の保険) */
+    const _localSeen = rivalSeenLocal_();
+    if (r.candidates && r.candidates.length) {
+      r.candidates = r.candidates.filter(function (c) { return !_localSeen[String(c.userName || "").replace(/^@/, "").toLowerCase()]; });
+    }
     let h = '<h2 style="font-size:19px;margin:0 0 4px">🎯 競合フォロワー</h2>';
     h += '<p class="muted" style="font-size:12px;margin:0 0 8px">競合をフォローしている人=あなたの濃い見込み客です。プロフィールを見て、合いそうな方に自分から絡みましょう。</p>';
     var rivalLabel = (r.rivalsInfo && r.rivalsInfo.length)
@@ -4493,7 +4567,7 @@ BUILDERS.calendar = (el) => {
     r.candidates.forEach(function (c) {
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
       h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div><div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span> <span style="color:' + ((c.risk || 0) >= 50 ? '#ff6b6b' : 'var(--muted)') + ';font-weight:700">⚠️' + (c.risk || 0) + '%</span></div></div>';
-      h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_(\'' + esc(c.userName) + '\')" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
+      h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_(\'' + esc(c.userName) + '\');rivalMarkLocal_(\'' + esc(c.userName) + '\')" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
       h += '</div>';
     });
     box.innerHTML = h;
