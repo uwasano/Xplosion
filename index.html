@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "84";
+const APP_VERSION = "85";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2142,6 +2142,38 @@ const AUD_PHRASE = {
   "フルーツ系":"爽やかさを求めるあなたに","紅茶系":"落ち着きたいあなたに","スイーツ系":"甘く過ごしたいあなたに",
   "重め":"濃厚を求めるあなたに","おまかせ":"特別な夜に",
 };
+/* フレーバーから自然の風景とタイトルをルールで振り分け(追加課金なし) */
+const SCENE_MAP = [
+  { kw:["ピーチ","桃","ピーチグレープ"], scene:"やわらかな光が差す桃の果樹園", title:"桃畑のひととき" },
+  { kw:["ミント","ペパーミント","ガム"], scene:"風そよぐ爽やかな高原の草原", title:"高原のそよ風" },
+  { kw:["ブルーベリー","ベリー","ストロベリー","ラズベリー","ザクロ"], scene:"朝露がきらめくベリーの森", title:"ベリーフォレスト" },
+  { kw:["レモン","ライム","シトラス","グレープフルーツ","ツーレモン","ピンクレモネード"], scene:"陽光あふれる柑橘畑", title:"シトラスガーデン" },
+  { kw:["スイカ","メロン"], scene:"真夏のさわやかな青い海辺", title:"サマービーチ" },
+  { kw:["グレープ","ぶどう","マスカット"], scene:"実り豊かな緑のぶどう畑", title:"ヴィンヤードの午後" },
+  { kw:["マンゴー","パイナップル","パッション","ココナッツ","グァバ","トロピカル","キウイ","ドラゴンフルーツ"], scene:"南国のトロピカルビーチ", title:"トロピカルアイランド" },
+  { kw:["ローズ","ジャスミン","ラベンダー","リンデン","ベルガモット"], scene:"色とりどりの花畑", title:"フラワーガーデン" },
+  { kw:["アップル","りんご","リンゴ","ペア","洋梨"], scene:"赤く実るりんごの果樹園", title:"りんご畑の昼下がり" },
+  { kw:["チェリー","さくらんぼ"], scene:"さくらんぼ実る初夏の庭", title:"チェリーガーデン" },
+  { kw:["ヨーグルト","ミルク","バニラ","ハニー"], scene:"朝もやのやわらかな牧草地", title:"ミルキーメドウ" },
+  { kw:["コーヒー","チョコ","キャラメル","ナッツ","ビスケット","シナモン","ブラウンシュガー","ピスタチオ"], scene:"紅葉の落ち着いた秋の森", title:"オータムフォレスト" },
+  { kw:["コットン","キャンディー","マカロン","ピンク","ポップコーン"], scene:"夢かわいいパステルカラーの花畑", title:"スイートガーデン" },
+  { kw:["コーラ","ツイスト","エナジー"], scene:"陽気な真夏のピクニック広場", title:"サニーピクニック" },
+];
+function shScene_(combo){
+  const sorted=combo.slice().sort((a,b)=>b.ratio-a.ratio);
+  const names=sorted.map(c=>c.name).join("");
+  for(const m of SCENE_MAP){ if(m.kw.some(k=>names.includes(k))) return m; }
+  const cool=shAvg(combo,2), sweet=shAvg(combo,0), sour=shAvg(combo,1);
+  if(cool>=6) return { scene:"爽やかな水辺の高原", title:"クールブリーズ" };
+  if(sour>=6) return { scene:"陽光あふれる柑橘畑", title:"サニーシトラス" };
+  if(sweet>=6) return { scene:"やさしい光の花畑と果樹園", title:"スイートガーデン" };
+  return { scene:"明るく爽やかな自然の庭", title:"ナチュラルブレンド" };
+}
+function naturePrompt_(combo){
+  const sc=shScene_(combo);
+  const flavors=combo.map(c=>c.name).join("、");
+  return "ナチュラルで季節感あふれる、明るく清潔感のあるシーシャ紹介写真。背景は"+sc.scene+"。画面の右側〜中央右に透明感のあるガラス製のシーシャを置き、綺麗な軽い煙と清潔なホース。シーシャの周りに"+flavors+"の新鮮な果物・ハーブ・花を盛りすぎず自然でリアルに配置。画面の左側は文字を入れるため大きく空けておく。自然光のやわらかく爽やかでフレッシュな光、季節のカフェメニューのような可愛く明るい世界観。高級ホテル・夜のバー・黒背景・強いネオン・大理石・派手な装飾は使わない。文字やロゴは一切入れない。";
+}
 /* 透明ガラス風の立体的な星を描く */
 function drawGlassStar_(ctx, cx, cy, r) {
   ctx.save();
@@ -2169,34 +2201,35 @@ function composeShishaImage_(bg, opts) {
         const W=1024,H=1024, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
         const ctx=cv.getContext("2d");
         ctx.drawImage(img,0,0,W,H);
-        /* 暗幕は控えめに(画像の明るさ・フレッシュ感を保つ。文字の所だけ軽く) */
-        let g=ctx.createLinearGradient(0,0,0,210); g.addColorStop(0,"rgba(0,0,0,0.32)"); g.addColorStop(1,"rgba(0,0,0,0)");
-        ctx.fillStyle=g; ctx.fillRect(0,0,W,210);
-        g=ctx.createLinearGradient(0,650,0,H); g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,0.5)");
-        ctx.fillStyle=g; ctx.fillRect(0,650,W,H-650);
-        ctx.textAlign="center";
-        /* 上: 今日の気分(細めの明朝・透明感) */
-        ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=18;
-        ctx.font="300 italic 40px 'Hiragino Mincho ProN','YuMincho',serif"; ctx.fillStyle="rgba(255,255,255,0.9)";
-        ctx.fillText(opts.mood||"今日の気分", W/2, 92);
-        /* 中央下: ◯◯なあなたに(細めの明朝・上品で透明感のある白) */
-        ctx.shadowColor="rgba(0,0,0,0.55)"; ctx.shadowBlur=20;
-        ctx.font="300 58px 'Hiragino Mincho ProN','YuMincho',serif"; ctx.fillStyle="rgba(255,255,255,0.96)";
-        ctx.fillText(opts.phrase||"特別な夜に", W/2, 742);
+        /* 左側に文字を載せるので、左だけ淡い縦帯のヴェール(明るさは保つ) */
+        let g=ctx.createLinearGradient(0,0,560,0); g.addColorStop(0,"rgba(0,0,0,0.42)"); g.addColorStop(1,"rgba(0,0,0,0)");
+        ctx.fillStyle=g; ctx.fillRect(0,0,560,H);
+        const LX=70; ctx.textAlign="left";
+        /* 白フチ+淡い光で読みやすく描くヘルパー */
+        const drawTxt=(t,x,y,font,fill,strokeW)=>{
+          ctx.font=font; ctx.lineJoin="round";
+          if(strokeW){ ctx.lineWidth=strokeW; ctx.strokeStyle="rgba(255,255,255,0.92)"; ctx.shadowColor="rgba(255,255,255,0.6)"; ctx.shadowBlur=12; ctx.strokeText(t,x,y); }
+          ctx.shadowColor="rgba(0,0,0,0.35)"; ctx.shadowBlur=8; ctx.fillStyle=fill; ctx.fillText(t,x,y); ctx.shadowBlur=0;
+        };
+        /* 上: 今日の気分(小・やわらか) */
+        drawTxt(opts.mood||"今日の気分", LX, 110, "300 italic 36px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(70,55,45,0.92)", 5);
+        /* タイトル(大・やわらか日本語) */
+        drawTxt(opts.title||"ナチュラルブレンド", LX, 188, "400 66px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(60,45,38,0.95)", 7);
         /* オススメ度🌟 + 透明ガラス星 */
         if (opts.stars) {
-          ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=14;
-          ctx.font="300 30px 'Hiragino Mincho ProN','YuMincho',serif"; ctx.fillStyle="rgba(255,255,255,0.9)";
-          ctx.fillText("オススメ度🌟", W/2, 808);
-          ctx.shadowBlur=0;
-          const n=Math.max(1,Math.min(6,opts.stars)); const gap=58; const sx=W/2-(n-1)*gap/2;
-          for (let i=0;i<n;i++) drawGlassStar_(ctx, sx+i*gap, 858, 24);
+          drawTxt("オススメ度🌟", LX, 250, "300 26px 'Hiragino Mincho ProN',serif", "rgba(70,55,45,0.9)", 4);
+          const n=Math.max(1,Math.min(6,opts.stars));
+          for (let i=0;i<n;i++) drawGlassStar_(ctx, LX+22+i*46, 290, 20);
         }
-        /* 下: 店名(細めゴシック・透明感) */
-        ctx.shadowColor="rgba(0,0,0,0.5)"; ctx.shadowBlur=14;
-        ctx.font="300 36px 'Hiragino Kaku Gothic ProN','YuGothic',sans-serif"; ctx.fillStyle="rgba(255,255,255,0.92)";
-        ctx.fillText(opts.shop||"噂のシーシャBar", W/2, 958);
-        ctx.shadowBlur=0;
+        /* 使用フレーバー名を縦に並べる(左下) */
+        if (opts.flavors && opts.flavors.length) {
+          drawTxt("使用フレーバー", LX, H-260, "300 24px 'Hiragino Kaku Gothic ProN',sans-serif", "rgba(70,55,45,0.9)", 4);
+          opts.flavors.slice(0,5).forEach((f,i)=>{
+            drawTxt("・"+f, LX, H-210+i*42, "300 30px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(60,45,38,0.95)", 5);
+          });
+        }
+        /* 店名(最下部) */
+        drawTxt(opts.shop||"噂のシーシャBar", LX, H-30, "300 30px 'Hiragino Kaku Gothic ProN','YuGothic',sans-serif", "rgba(60,45,38,0.92)", 5);
         resolve(cv.toDataURL("image/jpeg",0.92).split(",")[1]);
       } catch(e){ reject(e); }
     };
@@ -2243,16 +2276,15 @@ function renderMixCard(p, audience) {
     const imgWrap = document.createElement("div"); imgWrap.style.marginTop="8px";
     ig.onclick = async () => {
       ig.disabled=true; const ob=ig.textContent; ig.textContent="生成中…(15秒ほど)";
-      const flavors = p.combo.map(c=>c.name).join("、");
-      const moods = [];
-      if (sweet>=6) moods.push("甘い"); if (sour>=6) moods.push("爽やかな酸味"); if (cool>=6) moods.push("清涼感のある"); if (heavy>=6) moods.push("濃厚な");
-      const prompt = "明るくフレッシュな雰囲気の、おしゃれな水たばこ(シーシャ)バーのプロのフードフォト。テーブル中央にガラス製のシーシャを置き、その手前に"+flavors+"の新鮮な果物や材料(カットフルーツ・ベリー・ミントの葉・柑橘など)をみずみずしく美しく配置。"+(moods.join("・")||"")+"自然光のように柔らかく明るいライティング、透明感とフレッシュ感あふれる色彩、清潔感のある明るい背景、ほんのり立ち上る軽い煙。高級感とおしゃれさのある、さわやかでクリアな印象。文字やロゴは一切入れない。";
+      const prompt = naturePrompt_(p.combo);
       try {
         const r = await gasFetch_("shishaImage", { prompt });
         const bg = (r && r.b64) ? r.b64 : ((r && r.url) ? r.url : null);
         if (bg) {
           const osusume = p.sc>=90?6:(p.sc>=85?5:4);
-          const composed = await composeShishaImage_(bg, { mood:"今日の気分", phrase:(AUD_PHRASE[audience]||AUD_PHRASE["おまかせ"]), shop:"噂のシーシャBar", stars:osusume });
+          const sc = shScene_(p.combo);
+          const flist = p.combo.slice().sort((a,b)=>b.ratio-a.ratio).map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio);
+          const composed = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume });
           imgWrap.innerHTML = '<img src="data:image/jpeg;base64,'+composed+'" style="width:100%;border-radius:10px;margin-top:4px" alt="mix"><div style="font-size:10px;color:var(--muted);margin-top:2px">長押しで保存できます</div>';
           imgWrap.dataset.composed = composed;
           ig.textContent="🎨 もう一度生成";
@@ -2277,14 +2309,15 @@ function renderMixCard(p, audience) {
         if (!res || !res.thread || !res.thread.length) { pbWrap.innerHTML='<div class="err" style="font-size:12px">投稿文の生成に失敗</div>'; pb.disabled=false; pb.textContent=ob; return; }
         let mediaB64 = null;
         if (CFG.mixImage) {
-          const flavors = p.combo.map(c=>c.name).join("、");
-          const prompt = "明るくフレッシュな雰囲気の、おしゃれな水たばこ(シーシャ)バーのプロのフードフォト。テーブル中央にガラス製のシーシャを置き、その手前に"+flavors+"の新鮮な果物や材料(カットフルーツ・ベリー・ミントの葉・柑橘など)をみずみずしく美しく配置。自然光のように柔らかく明るいライティング、透明感とフレッシュ感あふれる色彩、清潔感のある明るい背景、ほんのり立ち上る軽い煙。高級感とおしゃれさのある、さわやかでクリアな印象。文字やロゴは一切入れない。";
+          const prompt = naturePrompt_(p.combo);
           pb.textContent="画像を生成して投稿中…(30秒ほど)";
           const ir = await gasFetch_("shishaImage", { prompt });
           const bg = (ir && ir.b64) ? ir.b64 : ((ir && ir.url) ? ir.url : null);
           if (bg) {
             const osusume = p.sc>=90?6:(p.sc>=85?5:4);
-            mediaB64 = await composeShishaImage_(bg, { mood:"今日の気分", phrase:(AUD_PHRASE[audience]||AUD_PHRASE["おまかせ"]), shop:"噂のシーシャBar", stars:osusume });
+            const sc = shScene_(p.combo);
+            const flist = p.combo.slice().sort((a,b)=>b.ratio-a.ratio).map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio);
+            mediaB64 = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume });
           }
         } else { pb.textContent="投稿中…"; }
         const r = await gasFetch_("postMixImage", { screen_name: S.activeAccount, text: res.thread[0], thread: res.thread.length>1?res.thread:null, media_b64: mediaB64 });
