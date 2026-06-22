@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "87";
+const APP_VERSION = "89";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2216,38 +2216,35 @@ function composeShishaImage_(bg, opts) {
         const W=1024,H=1024, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
         const ctx=cv.getContext("2d");
         ctx.drawImage(img,0,0,W,H);
-        /* 左の文字エリア: うっすら白の半透明グラデで可読性を上げる(明るさは保つ) */
-        let g=ctx.createLinearGradient(0,0,540,0); g.addColorStop(0,"rgba(255,255,255,0.5)"); g.addColorStop(0.7,"rgba(255,255,255,0.2)"); g.addColorStop(1,"rgba(255,255,255,0)");
-        ctx.fillStyle=g; ctx.fillRect(0,0,540,H);
-        /* 左下のフレーバー名エリアだけ少し明るく(果物が被っても読めるよう) */
-        let gb=ctx.createLinearGradient(0,H-330,0,H); gb.addColorStop(0,"rgba(255,255,255,0)"); gb.addColorStop(1,"rgba(255,255,255,0.42)");
-        ctx.fillStyle=gb; ctx.fillRect(0,H-330,520,330);
+        /* 左の文字エリア: なめらかなグラデーションだけ(帯にせず自然に消す) */
+        let g=ctx.createLinearGradient(0,0,580,0); g.addColorStop(0,"rgba(252,250,248,0.6)"); g.addColorStop(0.5,"rgba(252,250,248,0.35)"); g.addColorStop(0.8,"rgba(252,250,248,0.12)"); g.addColorStop(1,"rgba(252,250,248,0)");
+        ctx.fillStyle=g; ctx.fillRect(0,0,580,H);
         const LX=72; ctx.textAlign="left";
-        /* 上品でやわらかい文字: 細めの白フチ + 軽い影。濃い文字色ではっきり読ませる */
+        /* 上品でやわらかい文字: 濃い色ではっきり読ませる。細めの白フチ+軽い影 */
         const drawTxt=(t,x,y,font,fill,strokeW)=>{
           ctx.font=font; ctx.lineJoin="round";
-          if(strokeW){ ctx.lineWidth=strokeW; ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.shadowColor="rgba(255,255,255,0.5)"; ctx.shadowBlur=6; ctx.strokeText(t,x,y); }
-          ctx.shadowColor="rgba(0,0,0,0.22)"; ctx.shadowBlur=4; ctx.fillStyle=fill; ctx.fillText(t,x,y); ctx.shadowBlur=0;
+          if(strokeW){ ctx.lineWidth=strokeW; ctx.strokeStyle="rgba(255,255,255,0.7)"; ctx.shadowColor="rgba(255,255,255,0.4)"; ctx.shadowBlur=5; ctx.strokeText(t,x,y); }
+          ctx.shadowColor="rgba(0,0,0,0.25)"; ctx.shadowBlur=3; ctx.fillStyle=fill; ctx.fillText(t,x,y); ctx.shadowBlur=0;
         };
         /* 上: 今日の気分(小・やわらか) */
-        drawTxt(opts.mood||"今日の気分", LX, 108, "300 italic 34px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(80,65,55,0.95)", 3);
+        drawTxt(opts.mood||"今日の気分", LX, 108, "400 italic 34px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(40,32,28,1)", 3);
         /* タイトル(大・上品でやわらか・太すぎない) */
-        drawTxt(opts.title||"ナチュラルブレンド", LX, 184, "300 62px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(55,45,40,0.96)", 4);
+        drawTxt(opts.title||"ナチュラルブレンド", LX, 184, "400 62px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(30,24,20,1)", 3.5);
         /* オススメ度🌟 + 透明ガラス星 */
         if (opts.stars) {
-          drawTxt("オススメ度🌟", LX, 246, "300 26px 'Hiragino Mincho ProN',serif", "rgba(80,65,55,0.95)", 3);
+          drawTxt("オススメ度🌟", LX, 246, "400 26px 'Hiragino Mincho ProN',serif", "rgba(40,32,28,1)", 2.5);
           const n=Math.max(1,Math.min(6,opts.stars));
           for (let i=0;i<n;i++) drawGlassStar_(ctx, LX+22+i*46, 286, 20);
         }
         /* 使用フレーバー名を縦に並べる(左下) */
         if (opts.flavors && opts.flavors.length) {
-          drawTxt("使用フレーバー", LX, H-262, "300 23px 'Hiragino Kaku Gothic ProN',sans-serif", "rgba(80,65,55,0.95)", 3);
+          drawTxt("使用フレーバー", LX, H-262, "500 23px 'Hiragino Kaku Gothic ProN',sans-serif", "rgba(40,32,28,1)", 2.5);
           opts.flavors.slice(0,5).forEach((f,i)=>{
-            drawTxt("・"+f, LX, H-214+i*42, "300 28px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(55,45,40,0.96)", 3);
+            drawTxt("・"+f, LX, H-214+i*42, "400 28px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(30,24,20,1)", 2.5);
           });
         }
         /* 店名(最下部) */
-        drawTxt(opts.shop||"噂のシーシャBar", LX, H-30, "300 28px 'Hiragino Kaku Gothic ProN','YuGothic',sans-serif", "rgba(55,45,40,0.95)", 3);
+        drawTxt(opts.shop||"噂のシーシャBar", LX, H-30, "500 28px 'Hiragino Kaku Gothic ProN','YuGothic',sans-serif", "rgba(30,24,20,1)", 2.5);
         resolve(cv.toDataURL("image/jpeg",0.92).split(",")[1]);
       } catch(e){ reject(e); }
     };
