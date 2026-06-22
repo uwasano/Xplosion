@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "81";
+const APP_VERSION = "83";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -790,11 +790,11 @@ function pickJpEvent(dateStr){
 
 /* おすすめミックスを投稿文にする(噂のシーシャBar用)
    scene指定があればそのシチュエーションに寄せる。Haikuで高速生成・性格はCFGから */
-async function shMixPostText(audience, sceneObj){
+async function shMixPostText(audience, sceneObj, fixedMix){
   const aud = sceneObj ? sceneObj.aud : (audience||"おまかせ");
-  const picks = shGenerate(aud, 1);
-  if (!picks.length) return null;
-  const m = picks[0];
+  let m;
+  if (fixedMix) { m = fixedMix; }
+  else { const picks = shGenerate(aud, 1); if (!picks.length) return null; m = picks[0]; }
   const haigou = m.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ");
   const sweet=Math.round(shAvg(m.combo,0)), sour=Math.round(shAvg(m.combo,1)), cool=Math.round(shAvg(m.combo,2)), heavy=Math.round(shAvg(m.combo,3));
   const star = (v) => { const f=Math.max(1,Math.min(6,Math.round(v*6/10))); return "★".repeat(f)+"☆".repeat(6-f); };
@@ -2136,6 +2136,49 @@ BUILDERS.settings = (el) => {
 };
 
 /* ミックス結果カードを描画 */
+/* AI背景画像の上に文字(今日の気分/◯◯なあなたに/店名/星)をきれいに重ねる。base64を返す */
+const AUD_PHRASE = {
+  "初心者":"はじめての夜に","女性人気":"華やかな気分のあなたに","男性人気":"しっかり吸いたいあなたに",
+  "フルーツ系":"爽やかさを求めるあなたに","紅茶系":"落ち着きたいあなたに","スイーツ系":"甘く過ごしたいあなたに",
+  "重め":"濃厚を求めるあなたに","おまかせ":"特別な夜に",
+};
+function composeShishaImage_(bg, opts) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const W=1024,H=1024, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
+        const ctx=cv.getContext("2d");
+        ctx.drawImage(img,0,0,W,H);
+        /* 上下に暗幕(文字を読みやすく) */
+        let g=ctx.createLinearGradient(0,0,0,300); g.addColorStop(0,"rgba(0,0,0,0.55)"); g.addColorStop(1,"rgba(0,0,0,0)");
+        ctx.fillStyle=g; ctx.fillRect(0,0,W,300);
+        g=ctx.createLinearGradient(0,560,0,H); g.addColorStop(0,"rgba(0,0,0,0)"); g.addColorStop(1,"rgba(0,0,0,0.8)");
+        ctx.fillStyle=g; ctx.fillRect(0,520,W,H-520);
+        ctx.textAlign="center"; ctx.shadowColor="rgba(0,0,0,0.85)"; ctx.shadowBlur=14;
+        /* 上: 今日の気分 */
+        ctx.font="italic 42px 'Hiragino Mincho ProN','YuMincho',serif"; ctx.fillStyle="rgba(255,255,255,0.92)";
+        ctx.fillText(opts.mood||"今日の気分", W/2, 96);
+        /* 中央下: ◯◯なあなたに */
+        ctx.font="bold 60px 'Hiragino Mincho ProN','YuMincho',serif"; ctx.fillStyle="#ffffff";
+        ctx.fillText(opts.phrase||"特別な夜に", W/2, 730);
+        /* 星: オススメ度 */
+        if (opts.stars) {
+          ctx.font="46px sans-serif"; ctx.fillStyle="#ffd24a";
+          ctx.fillText("★".repeat(opts.stars)+"☆".repeat(Math.max(0,6-opts.stars)), W/2, 812);
+        }
+        /* 下: 店名 */
+        ctx.font="500 40px 'Hiragino Kaku Gothic ProN','YuGothic',sans-serif"; ctx.fillStyle="rgba(255,255,255,0.95)";
+        ctx.fillText(opts.shop||"噂のシーシャBar", W/2, 952);
+        ctx.shadowBlur=0;
+        resolve(cv.toDataURL("image/jpeg",0.9).split(",")[1]);
+      } catch(e){ reject(e); }
+    };
+    img.onerror = () => reject(new Error("画像読み込み失敗"));
+    img.src = (typeof bg==="string" && bg.indexOf("http")===0) ? bg : ("data:image/png;base64,"+bg);
+  });
+}
+
 function renderMixCard(p, audience) {
   const card = document.createElement("div");
   card.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-top:10px";
@@ -2180,13 +2223,50 @@ function renderMixCard(p, audience) {
       const prompt = "おしゃれな水タバコ(シーシャ)バーの幻想的な情景写真。"+flavors+"のフレーバーをイメージした"+(moods.join("・")||"心地よい")+"色彩と立ち上る煙。ムーディーな照明、ガラスのシーシャ、高級感のある雰囲気、湯気。プロのフードフォト風。文字やロゴは一切入れない。";
       try {
         const r = await gasFetch_("shishaImage", { prompt });
-        const src = (r && r.b64) ? ("data:image/png;base64," + r.b64) : ((r && r.url) ? r.url : null);
-        if (src) { imgWrap.innerHTML = '<img src="'+src+'" style="width:100%;border-radius:10px;margin-top:4px" alt="mix"><div style="font-size:10px;color:var(--muted);margin-top:2px">長押しで保存できます</div>'; ig.textContent="🎨 もう一度生成"; }
+        const bg = (r && r.b64) ? r.b64 : ((r && r.url) ? r.url : null);
+        if (bg) {
+          const osusume = p.sc>=90?6:(p.sc>=85?5:4);
+          const composed = await composeShishaImage_(bg, { mood:"今日の気分", phrase:(AUD_PHRASE[audience]||AUD_PHRASE["おまかせ"]), shop:"噂のシーシャBar", stars:osusume });
+          imgWrap.innerHTML = '<img src="data:image/jpeg;base64,'+composed+'" style="width:100%;border-radius:10px;margin-top:4px" alt="mix"><div style="font-size:10px;color:var(--muted);margin-top:2px">長押しで保存できます</div>';
+          imgWrap.dataset.composed = composed;
+          ig.textContent="🎨 もう一度生成";
+        }
         else { imgWrap.innerHTML = '<div class="err" style="font-size:12px">'+esc((r&&r.error)||"生成に失敗しました")+'</div>'; ig.textContent=ob; }
       } catch(e) { imgWrap.innerHTML='<div class="err" style="font-size:12px">'+esc(e.message)+'</div>'; ig.textContent=ob; }
       ig.disabled=false;
     };
     card.appendChild(ig); card.appendChild(imgWrap);
+  }
+  /* 🚀 画像つきで即投稿(噂のシーシャBarアカのみ) */
+  if (typeof isUwasaShisha === "function" && isUwasaShisha(S.activeAccount, CFG.bizName)) {
+    const pb = document.createElement("button"); pb.className="mini";
+    pb.style.cssText="margin-top:8px;margin-left:8px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none";
+    pb.textContent = CFG.mixImage ? "🚀 画像つきで投稿" : "🚀 この内容で投稿";
+    const pbWrap = document.createElement("div"); pbWrap.style.marginTop="6px";
+    pb.onclick = async () => {
+      if (!confirm("この内容を @"+S.activeAccount+" に今すぐ投稿する？")) return;
+      pb.disabled=true; const ob=pb.textContent; pb.textContent="投稿文を準備中…";
+      try {
+        const res = await shMixPostText(audience||"おまかせ", null, p);
+        if (!res || !res.thread || !res.thread.length) { pbWrap.innerHTML='<div class="err" style="font-size:12px">投稿文の生成に失敗</div>'; pb.disabled=false; pb.textContent=ob; return; }
+        let mediaB64 = null;
+        if (CFG.mixImage) {
+          const flavors = p.combo.map(c=>c.name).join("、");
+          const prompt = "おしゃれな水タバコ(シーシャ)バーの幻想的な情景写真。"+flavors+"のフレーバーをイメージした色彩と立ち上る煙。ムーディーな照明、ガラスのシーシャ、高級感のある雰囲気、湯気。プロのフードフォト風。文字やロゴは一切入れない。";
+          pb.textContent="画像を生成して投稿中…(30秒ほど)";
+          const ir = await gasFetch_("shishaImage", { prompt });
+          const bg = (ir && ir.b64) ? ir.b64 : ((ir && ir.url) ? ir.url : null);
+          if (bg) {
+            const osusume = p.sc>=90?6:(p.sc>=85?5:4);
+            mediaB64 = await composeShishaImage_(bg, { mood:"今日の気分", phrase:(AUD_PHRASE[audience]||AUD_PHRASE["おまかせ"]), shop:"噂のシーシャBar", stars:osusume });
+          }
+        } else { pb.textContent="投稿中…"; }
+        const r = await gasFetch_("postMixImage", { screen_name: S.activeAccount, text: res.thread[0], thread: res.thread.length>1?res.thread:null, media_b64: mediaB64 });
+        if (r && r.ok) { pb.textContent = "✓ 投稿した！"+(r.hadImage?"(画像つき)":""); pbWrap.innerHTML='<div style="font-size:11px;color:#10b981;margin-top:4px">Xに投稿しました</div>'; }
+        else { pbWrap.innerHTML='<div class="err" style="font-size:12px">'+esc((r&&r.error)||"投稿に失敗")+'</div>'; pb.disabled=false; pb.textContent=ob; }
+      } catch(e) { pbWrap.innerHTML='<div class="err" style="font-size:12px">'+esc(e.message)+'</div>'; pb.disabled=false; pb.textContent=ob; }
+    };
+    card.appendChild(pb); card.appendChild(pbWrap);
   }
   return card;
 }
