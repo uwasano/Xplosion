@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "85";
+const APP_VERSION = "86";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2169,10 +2169,25 @@ function shScene_(combo){
   if(sweet>=6) return { scene:"やさしい光の花畑と果樹園", title:"スイートガーデン" };
   return { scene:"明るく爽やかな自然の庭", title:"ナチュラルブレンド" };
 }
+/* 今の時刻から時間帯の空気感を決める */
+function shTimeMood_(){
+  const h=new Date().getHours();
+  if(h>=4&&h<6)  return "明け方。朝日が差し込む直前〜差し込み始めたような、やわらかく透明感のある光。空気は少しひんやり澄んで静かでやさしい。淡い青・白・やわらかいオレンジ・薄いピンクを含む明け方らしい色味。爽やかで静かな始まりの雰囲気で、重さや暗さは出しすぎない";
+  if(h>=6&&h<11) return "朝。爽やかでみずみずしく、清潔感のある朝の光。空気は軽く澄んでいて明るく開放的";
+  if(h>=11&&h<16)return "昼。明るく晴れやかな自然光、開放感があり、フレッシュで清々しい昼下がり";
+  if(h>=16&&h<19)return "夕方。やわらかく暖かい夕日の余韻、オレンジや桜色のグラデーション、穏やかでやさしい光。ただし暗くなりすぎない";
+  return "夜。暗くしすぎず、おしゃれで落ち着いた空間。間接照明・やわらかいランプ・控えめな光・キャンドルのような暖かさで雰囲気を出す。黒く潰れた重い背景ではなく、やわらかい陰影と空気感のある上品な夜。ギラギラ・派手は避け、清潔感と見やすさを保つ";
+}
 function naturePrompt_(combo){
   const sc=shScene_(combo);
   const flavors=combo.map(c=>c.name).join("、");
-  return "ナチュラルで季節感あふれる、明るく清潔感のあるシーシャ紹介写真。背景は"+sc.scene+"。画面の右側〜中央右に透明感のあるガラス製のシーシャを置き、綺麗な軽い煙と清潔なホース。シーシャの周りに"+flavors+"の新鮮な果物・ハーブ・花を盛りすぎず自然でリアルに配置。画面の左側は文字を入れるため大きく空けておく。自然光のやわらかく爽やかでフレッシュな光、季節のカフェメニューのような可愛く明るい世界観。高級ホテル・夜のバー・黒背景・強いネオン・大理石・派手な装飾は使わない。文字やロゴは一切入れない。";
+  return "ナチュラルで季節感あふれる、明るく清潔感のあるシーシャ紹介写真(SNSやカフェメニュー向け)。"
+    + "テーマの風景は「"+sc.scene+"」。時間帯と空気感は「"+shTimeMood_()+"」。"
+    + "構図は明確に【画面の右側〜中央右にシーシャ、左側は文字用に大きく空ける】。"
+    + "右側に透明感のあるガラス製のシーシャを置き、綺麗で軽い煙、清潔なホース。シーシャの周りに"+flavors+"の新鮮な果物・ハーブ・花を盛りすぎず自然でリアルに配置(果物や小物は文字エリアの左側には置かない)。"
+    + "【左側の文字エリアはシンプルに保ち、木や果物や細かい模様を重ねず、やや明るく落ち着いた背景にして文字が置けるようにする】。"
+    + "色味は黄緑に寄りすぎず、明るく透明感のある爽やかな色調。みずみずしく、くすみやモヤを無くし少し明るめに補正。"
+    + "雰囲気と読みやすさを両立。重たく・暗すぎず・派手すぎず。高級ホテル・黒背景・強いネオン・大理石・セクシー・派手な装飾は避ける。文字やロゴは一切入れない。";
 }
 /* 透明ガラス風の立体的な星を描く */
 function drawGlassStar_(ctx, cx, cy, r) {
@@ -2201,35 +2216,35 @@ function composeShishaImage_(bg, opts) {
         const W=1024,H=1024, cv=document.createElement("canvas"); cv.width=W; cv.height=H;
         const ctx=cv.getContext("2d");
         ctx.drawImage(img,0,0,W,H);
-        /* 左側に文字を載せるので、左だけ淡い縦帯のヴェール(明るさは保つ) */
-        let g=ctx.createLinearGradient(0,0,560,0); g.addColorStop(0,"rgba(0,0,0,0.42)"); g.addColorStop(1,"rgba(0,0,0,0)");
-        ctx.fillStyle=g; ctx.fillRect(0,0,560,H);
-        const LX=70; ctx.textAlign="left";
-        /* 白フチ+淡い光で読みやすく描くヘルパー */
+        /* 左の文字エリア: うっすら白の半透明グラデで可読性を上げる(明るさは保つ) */
+        let g=ctx.createLinearGradient(0,0,540,0); g.addColorStop(0,"rgba(255,255,255,0.5)"); g.addColorStop(0.7,"rgba(255,255,255,0.2)"); g.addColorStop(1,"rgba(255,255,255,0)");
+        ctx.fillStyle=g; ctx.fillRect(0,0,540,H);
+        const LX=72; ctx.textAlign="left";
+        /* 上品でやわらかい文字: 細めの白フチ + 軽い影。濃い文字色ではっきり読ませる */
         const drawTxt=(t,x,y,font,fill,strokeW)=>{
           ctx.font=font; ctx.lineJoin="round";
-          if(strokeW){ ctx.lineWidth=strokeW; ctx.strokeStyle="rgba(255,255,255,0.92)"; ctx.shadowColor="rgba(255,255,255,0.6)"; ctx.shadowBlur=12; ctx.strokeText(t,x,y); }
-          ctx.shadowColor="rgba(0,0,0,0.35)"; ctx.shadowBlur=8; ctx.fillStyle=fill; ctx.fillText(t,x,y); ctx.shadowBlur=0;
+          if(strokeW){ ctx.lineWidth=strokeW; ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.shadowColor="rgba(255,255,255,0.5)"; ctx.shadowBlur=6; ctx.strokeText(t,x,y); }
+          ctx.shadowColor="rgba(0,0,0,0.22)"; ctx.shadowBlur=4; ctx.fillStyle=fill; ctx.fillText(t,x,y); ctx.shadowBlur=0;
         };
         /* 上: 今日の気分(小・やわらか) */
-        drawTxt(opts.mood||"今日の気分", LX, 110, "300 italic 36px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(70,55,45,0.92)", 5);
-        /* タイトル(大・やわらか日本語) */
-        drawTxt(opts.title||"ナチュラルブレンド", LX, 188, "400 66px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(60,45,38,0.95)", 7);
+        drawTxt(opts.mood||"今日の気分", LX, 108, "300 italic 34px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(80,65,55,0.95)", 3);
+        /* タイトル(大・上品でやわらか・太すぎない) */
+        drawTxt(opts.title||"ナチュラルブレンド", LX, 184, "300 62px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(55,45,40,0.96)", 4);
         /* オススメ度🌟 + 透明ガラス星 */
         if (opts.stars) {
-          drawTxt("オススメ度🌟", LX, 250, "300 26px 'Hiragino Mincho ProN',serif", "rgba(70,55,45,0.9)", 4);
+          drawTxt("オススメ度🌟", LX, 246, "300 26px 'Hiragino Mincho ProN',serif", "rgba(80,65,55,0.95)", 3);
           const n=Math.max(1,Math.min(6,opts.stars));
-          for (let i=0;i<n;i++) drawGlassStar_(ctx, LX+22+i*46, 290, 20);
+          for (let i=0;i<n;i++) drawGlassStar_(ctx, LX+22+i*46, 286, 20);
         }
         /* 使用フレーバー名を縦に並べる(左下) */
         if (opts.flavors && opts.flavors.length) {
-          drawTxt("使用フレーバー", LX, H-260, "300 24px 'Hiragino Kaku Gothic ProN',sans-serif", "rgba(70,55,45,0.9)", 4);
+          drawTxt("使用フレーバー", LX, H-262, "300 23px 'Hiragino Kaku Gothic ProN',sans-serif", "rgba(80,65,55,0.95)", 3);
           opts.flavors.slice(0,5).forEach((f,i)=>{
-            drawTxt("・"+f, LX, H-210+i*42, "300 30px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(60,45,38,0.95)", 5);
+            drawTxt("・"+f, LX, H-214+i*42, "300 28px 'Hiragino Mincho ProN','YuMincho',serif", "rgba(55,45,40,0.96)", 3);
           });
         }
         /* 店名(最下部) */
-        drawTxt(opts.shop||"噂のシーシャBar", LX, H-30, "300 30px 'Hiragino Kaku Gothic ProN','YuGothic',sans-serif", "rgba(60,45,38,0.92)", 5);
+        drawTxt(opts.shop||"噂のシーシャBar", LX, H-30, "300 28px 'Hiragino Kaku Gothic ProN','YuGothic',sans-serif", "rgba(55,45,40,0.95)", 3);
         resolve(cv.toDataURL("image/jpeg",0.92).split(",")[1]);
       } catch(e){ reject(e); }
     };
