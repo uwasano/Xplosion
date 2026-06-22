@@ -272,7 +272,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "75";
+const APP_VERSION = "76";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3226,7 +3226,8 @@ BUILDERS.unfollow = (el) => {
       const j = await gasFetch_("nonFollowBack", { userName: acct.value });
       if (j.error) { out.innerHTML = '<div class="err">'+esc(j.error)+'</div>'; goBtn.disabled=false; goBtn.textContent="🧹 非フォローバックを抽出"; return; }
       const cand = j.candidates || [];
-      statusEl.innerHTML = '<div class="desc">フォロー中: '+(j.followingCount||0)+' / フォロワー: '+(j.followerCount||0)+' / 非フォローバック: <b style="color:var(--accent)">'+cand.length+'件</b><br>今日の解除済み: '+(j.todayUnfollowed||0)+'/30件</div>';
+      statusEl.innerHTML = '<div class="desc">フォロー中: '+(j.followingCount||0)+' / フォロワー: '+(j.followerCount||0)+' / 非フォローバック: <b style="color:var(--accent)">'+cand.length+'件</b><br>今日の解除済み: '+(j.todayUnfollowed||0)+'/30件</div>'
+        + (j.warning ? '<div style="margin-top:6px;background:rgba(255,159,67,.12);border:1px solid #ff9f43;border-radius:8px;padding:8px;font-size:11.5px;color:#ff9f43">⚠️ '+esc(j.warning)+'</div>' : '');
       if (!cand.length) { out.innerHTML = '<div class="muted" style="padding:8px">非フォローバックは見つかりませんでした。きれいな状態です👍</div>'; goBtn.disabled=false; goBtn.textContent="🧹 非フォローバックを抽出"; return; }
       let todayCount = j.todayUnfollowed || 0;
       let followLog = {};
