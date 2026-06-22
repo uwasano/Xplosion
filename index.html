@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "86";
+const APP_VERSION = "87";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2183,9 +2183,9 @@ function naturePrompt_(combo){
   const flavors=combo.map(c=>c.name).join("、");
   return "ナチュラルで季節感あふれる、明るく清潔感のあるシーシャ紹介写真(SNSやカフェメニュー向け)。"
     + "テーマの風景は「"+sc.scene+"」。時間帯と空気感は「"+shTimeMood_()+"」。"
-    + "構図は明確に【画面の右側〜中央右にシーシャ、左側は文字用に大きく空ける】。"
-    + "右側に透明感のあるガラス製のシーシャを置き、綺麗で軽い煙、清潔なホース。シーシャの周りに"+flavors+"の新鮮な果物・ハーブ・花を盛りすぎず自然でリアルに配置(果物や小物は文字エリアの左側には置かない)。"
-    + "【左側の文字エリアはシンプルに保ち、木や果物や細かい模様を重ねず、やや明るく落ち着いた背景にして文字が置けるようにする】。"
+    + "【最重要の構図ルール】画面を左右に分け、シーシャ・果物・ハーブ・花・小物は全て画面の右半分にまとめて配置する。左半分は文字を置くため、物を一切置かず、すっきり空ける。"
+    + "右側に透明感のあるガラス製のシーシャを置き、綺麗で軽い煙、清潔なホース。その周り(右側)に"+flavors+"の新鮮な果物・ハーブ・花を盛りすぎず自然でリアルに添える。"
+    + "【左半分は果物も小物も木も細かい模様も置かず、ぼかした背景だけにして、やや明るく落ち着いた余白にする】。"
     + "色味は黄緑に寄りすぎず、明るく透明感のある爽やかな色調。みずみずしく、くすみやモヤを無くし少し明るめに補正。"
     + "雰囲気と読みやすさを両立。重たく・暗すぎず・派手すぎず。高級ホテル・黒背景・強いネオン・大理石・セクシー・派手な装飾は避ける。文字やロゴは一切入れない。";
 }
@@ -2219,6 +2219,9 @@ function composeShishaImage_(bg, opts) {
         /* 左の文字エリア: うっすら白の半透明グラデで可読性を上げる(明るさは保つ) */
         let g=ctx.createLinearGradient(0,0,540,0); g.addColorStop(0,"rgba(255,255,255,0.5)"); g.addColorStop(0.7,"rgba(255,255,255,0.2)"); g.addColorStop(1,"rgba(255,255,255,0)");
         ctx.fillStyle=g; ctx.fillRect(0,0,540,H);
+        /* 左下のフレーバー名エリアだけ少し明るく(果物が被っても読めるよう) */
+        let gb=ctx.createLinearGradient(0,H-330,0,H); gb.addColorStop(0,"rgba(255,255,255,0)"); gb.addColorStop(1,"rgba(255,255,255,0.42)");
+        ctx.fillStyle=gb; ctx.fillRect(0,H-330,520,330);
         const LX=72; ctx.textAlign="left";
         /* 上品でやわらかい文字: 細めの白フチ + 軽い影。濃い文字色ではっきり読ませる */
         const drawTxt=(t,x,y,font,fill,strokeW)=>{
