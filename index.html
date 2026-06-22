@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "89";
+const APP_VERSION = "90";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2162,12 +2162,22 @@ const SCENE_MAP = [
 function shScene_(combo){
   const sorted=combo.slice().sort((a,b)=>b.ratio-a.ratio);
   const names=sorted.map(c=>c.name).join("");
-  for(const m of SCENE_MAP){ if(m.kw.some(k=>names.includes(k))) return m; }
-  const cool=shAvg(combo,2), sweet=shAvg(combo,0), sour=shAvg(combo,1);
-  if(cool>=6) return { scene:"爽やかな水辺の高原", title:"クールブリーズ" };
-  if(sour>=6) return { scene:"陽光あふれる柑橘畑", title:"サニーシトラス" };
-  if(sweet>=6) return { scene:"やさしい光の花畑と果樹園", title:"スイートガーデン" };
-  return { scene:"明るく爽やかな自然の庭", title:"ナチュラルブレンド" };
+  const lead=sorted[0]?sorted[0].name:"";
+  /* 風景はキーワードで決める(フォールバックは属性) */
+  let scene="明るく爽やかな自然の庭";
+  for(const m of SCENE_MAP){ if(m.kw.some(k=>names.includes(k))){ scene=m.scene; break; } }
+  if(scene==="明るく爽やかな自然の庭"){
+    const cool=shAvg(combo,2), sweet=shAvg(combo,0), sour=shAvg(combo,1);
+    if(cool>=6) scene="爽やかな水辺の高原"; else if(sour>=6) scene="陽光あふれる柑橘畑"; else if(sweet>=6) scene="やさしい光の花畑と果樹園";
+  }
+  /* タイトル: リードフレーバー名 + 雰囲気語。配合内容から確定的に選ぶので毎回違いつつ同じ配合は同じになる */
+  const MOODWORDS=["の午後","薫る午前","のひととき","日和","の余韻","ブレンド","の小休止","薫る一服","のしらべ","の物語","に誘われて","の風景","咲くテラス","の彩り","の息吹","に揺れて","の隠れ家","のごほうび","とまどろみ","の贈りもの"];
+  /* 配合(名前+比率)からハッシュ→雰囲気語インデックス(同じ配合は毎回同じ、違えば必ず変わる) */
+  let hash=0; const seed=sorted.map(c=>c.name+c.ratio).join("|");
+  for(let i=0;i<seed.length;i++){ hash=((hash<<5)-hash+seed.charCodeAt(i))|0; }
+  const word=MOODWORDS[Math.abs(hash)%MOODWORDS.length];
+  const title=lead+word;
+  return { scene, title };
 }
 /* 今の時刻から時間帯の空気感を決める */
 function shTimeMood_(){
