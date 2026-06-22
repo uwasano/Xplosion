@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "79";
+const APP_VERSION = "80";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -858,7 +858,7 @@ function defaultCfg() {
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
-    mixOn: false, mixFreq: 30, mixDB: null, mixImage: false,
+    mixOn: false, mixFreq: 30, mixDB: null, mixImage: false, mixImageAuto: false, mixImageAuto: false,
   };
 }
 
@@ -1995,16 +1995,27 @@ BUILDERS.settings = (el) => {
     fwrap.appendChild(sl); updHint(); fwrap.appendChild(fhint);
     mixBox.appendChild(fwrap);
 
-    /* 🎨 AI画像生成 on/off(DALL-E 3・GAS経由・onの時だけ課金) */
+    /* 🎨 手動の画像生成 on/off(生成ボタンを押した時だけ作る) */
     const imgTg = document.createElement("div");
     imgTg.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-top:12px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
-    imgTg.innerHTML = '<div><div style="font-weight:700;font-size:13px">🎨 AI画像生成</div><div style="font-size:11px;color:var(--muted)">DALL-E 3でミックスのイメージ画像。onの時だけ課金(1枚約6円)</div></div>';
+    imgTg.innerHTML = '<div><div style="font-weight:700;font-size:13px">🎨 手動の画像生成</div><div style="font-size:11px;color:var(--muted)">下の「生成」結果に画像ボタンを出す。押した時だけ課金(1枚約6円)</div></div>';
     const isw = document.createElement("button");
     isw.style.cssText = "flex:0 0 auto;width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;transition:.2s;position:relative;" + (CFG.mixImage ? "background:linear-gradient(135deg,#ff2d95,#a855f7)" : "background:#3a3a4a");
     isw.innerHTML = '<span style="position:absolute;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;'+(CFG.mixImage?"left:27px":"left:3px")+'"></span>';
     isw.onclick = async () => { CFG.mixImage = !CFG.mixImage; await save(); drawMix(); };
     imgTg.appendChild(isw);
     mixBox.appendChild(imgTg);
+
+    /* 🤖 自動投稿の画像生成 on/off(自動で流れるミックス投稿に画像を付ける) */
+    const imgTgA = document.createElement("div");
+    imgTgA.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-top:8px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
+    imgTgA.innerHTML = '<div><div style="font-weight:700;font-size:13px">🤖 自動投稿の画像生成</div><div style="font-size:11px;color:var(--muted)">自動ミックス投稿のたびに画像を作る。投稿数ぶん課金(1枚約6円)</div></div>';
+    const iswA = document.createElement("button");
+    iswA.style.cssText = "flex:0 0 auto;width:52px;height:28px;border-radius:14px;border:none;cursor:pointer;transition:.2s;position:relative;" + (CFG.mixImageAuto ? "background:linear-gradient(135deg,#10b981,#059669)" : "background:#3a3a4a");
+    iswA.innerHTML = '<span style="position:absolute;top:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:.2s;'+(CFG.mixImageAuto?"left:27px":"left:3px")+'"></span>';
+    iswA.onclick = async () => { CFG.mixImageAuto = !CFG.mixImageAuto; await save(); drawMix(); };
+    imgTgA.appendChild(iswA);
+    mixBox.appendChild(imgTgA);
 
     /* 客層選択 */
     fld(mixBox, "客層を選んで生成");
