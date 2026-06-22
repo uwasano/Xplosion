@@ -261,7 +261,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "72";
+const APP_VERSION = "73";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5393,7 +5393,11 @@ BUILDERS.followers = (el) => {
       h += '<h3 style="font-size:15px;margin:0 0 4px">📍 フォロー獲得の出どころ</h3>';
       h += '<p class="desc" style="font-size:11px;margin:0 0 12px">Xは「誰がなぜフォローしたか」を開示しません。ただしXPLOSIONは<b>自分がリプした相手のフォロー</b>を全て追跡しています。下はそのリプ経由で取れたフォローの内訳です:</p>';
       if (!r.followed) {
-        h += '<div class="muted" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px">まだリプ経由のフォロー獲得は記録がありません。リプハンターや先回りリプで絡んだ相手がフォローしてくれると、ここに「誰が・どのリプで・どの競合経由か」が溜まっていきます。</div>';
+        if (!r.total) {
+          h += '<div class="muted" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px">このアカウントでのリプ接触記録がまだ<b>0件</b>です。リプハンターや先回りリプで誰かに絡むと、その相手がフォローし返してくれたかを自動で追跡し、ここに「誰が・どのリプで・どの競合経由か」が出ます。<br><br>※まずはリプハンターPROで競合のファンに絡むのが起点になります。</div>';
+        } else {
+          h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px"><div style="font-size:13px;margin-bottom:6px">リプで接触した相手: <b style="color:#7CC0FF;font-size:17px">' + r.total + '人</b> 記録済み</div><div style="color:var(--muted)">ただし、その中からの<b>フォロー返しはまだ0件</b>です。照合は毎日6時に自動で走ります。相手がフォローし返してくれると、ここに出どころが出ます。' + (r.pending ? '<br><br>現在' + r.pending + '人をフォロー返し待ちとして監視中。' : '') + '</div></div>';
+        }
       } else {
         h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px"><div style="font-size:13px">リプした相手がフォローしてくれた数: <b style="color:#3DFFA8;font-size:18px">' + r.followed + '人</b></div>';
         h += '<div style="font-size:11px;color:var(--muted);margin-top:4px">接触した' + r.total + '人のうち / フォロー率 ' + r.followRate + '%' + (r.avgHours != null ? ' ・ 平均' + r.avgHours + '時間でフォロー返し' : '') + '</div></div>';
