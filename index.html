@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "90";
+const APP_VERSION = "94";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -858,7 +858,7 @@ function defaultCfg() {
     useHours: false, openTime: "19:00", closeTime: "02:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
-    mixOn: false, mixFreq: 30, mixDB: null, mixImage: false, mixImageAuto: false, mixImageAuto: false,
+    mixOn: false, mixFreq: 30, mixDB: null, mixImage: false, mixImageAuto: false, mixAutoRefill: false,
   };
 }
 
@@ -2017,6 +2017,32 @@ BUILDERS.settings = (el) => {
     imgTgA.appendChild(iswA);
     mixBox.appendChild(imgTgA);
 
+    /* 🤖自動ONの時: 画像つき投稿の作り置きボタン(フロントで文字入り画像つきの予約をまとめて作る) */
+    if (CFG.mixImageAuto) {
+      const stockWrap = document.createElement("div"); stockWrap.style.cssText="margin-top:8px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
+      stockWrap.innerHTML = '<div style="font-weight:700;font-size:13px">📅 画像つき投稿を作り置き</div><div style="font-size:11px;color:var(--muted);margin:4px 0 8px">手動と同じ文字入り画像つきの投稿を、数本まとめて作って予約。あとは時間が来たら自動で投稿される(GASは文字合成できないのでこの方式)。</div>';
+      const stockRow = document.createElement("div"); stockRow.style.cssText="display:flex;gap:8px;flex-wrap:wrap";
+      [3,5,7].forEach(cnt=>{
+        const b=document.createElement("button"); b.className="mini"; b.textContent=cnt+"本作る";
+        b.style.cssText="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;flex:1";
+        b.onclick=()=>prepareFlavorPosts(cnt, stockWrap);
+        stockRow.appendChild(b);
+      });
+      stockWrap.appendChild(stockRow);
+      /* 🔄 開いた時に自動補充トグル */
+      const rfRow=document.createElement("div"); rfRow.style.cssText="display:flex;align-items:center;justify-content:space-between;margin-top:10px";
+      rfRow.innerHTML='<div style="font-size:12px;font-weight:600">🔄 開いた時に自動補充<div style="font-size:10px;color:var(--muted);font-weight:400">在庫が3本未満ならアプリを開いた時に裏で自動で作る</div></div>';
+      const rfSw=document.createElement("button");
+      rfSw.style.cssText="flex:0 0 auto;width:48px;height:26px;border-radius:13px;border:none;cursor:pointer;position:relative;"+(CFG.mixAutoRefill?"background:linear-gradient(135deg,#10b981,#059669)":"background:#3a3a4a");
+      rfSw.innerHTML='<span style="position:absolute;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;'+(CFG.mixAutoRefill?"left:25px":"left:3px")+'"></span>';
+      rfSw.onclick=async()=>{ CFG.mixAutoRefill=!CFG.mixAutoRefill; await save(); drawMix(); };
+      rfRow.appendChild(rfSw); stockWrap.appendChild(rfRow);
+      const stockOut=document.createElement("div"); stockOut.id="stockOut"; stockOut.style.cssText="font-size:11px;margin-top:6px"; stockWrap.appendChild(stockOut);
+      mixBox.appendChild(stockWrap);
+      /* 自動補充ONなら、設定を開いたタイミングで在庫チェック→不足分を裏で補充 */
+      if (CFG.mixAutoRefill) setTimeout(()=>checkAndRefillStock(stockWrap), 800);
+    }
+
     /* 客層選択 */
     fld(mixBox, "客層を選んで生成");
     const audWrap = document.createElement("div"); audWrap.style.cssText="display:flex;flex-wrap:wrap;gap:6px";
@@ -2217,6 +2243,52 @@ function drawGlassStar_(ctx, cx, cy, r) {
   ctx.shadowBlur=0; ctx.lineWidth=1.5; ctx.strokeStyle="rgba(255,255,255,0.92)"; ctx.stroke();
   ctx.beginPath(); ctx.arc(cx-r*0.28,cy-r*0.32,r*0.14,0,Math.PI*2); ctx.fillStyle="rgba(255,255,255,0.96)"; ctx.fill();
   ctx.restore();
+}
+/* 自動補充: 1日1回まで・未来のpending在庫が3本未満なら不足分を裏で作って予約(開くたびの課金を防ぐ) */
+async function checkAndRefillStock(wrapEl){
+  try {
+    const today = new Date().toISOString().slice(0,10);
+    if (localStorage.getItem("xpl_refill_day") === today) return; /* 今日もう補充チェック済み→何もしない(課金ゼロ) */
+    const screen = (typeof S!=="undefined" && S.activeAccount) ? S.activeAccount : (CFG.account||"");
+    if (!screen) return;
+    const nowIso = new Date().toISOString();
+    const { data } = await sb.from("scheduled_posts").select("id").eq("screen_name", screen).eq("status","pending").gte("scheduled_at", nowIso);
+    const stock = (data||[]).length;
+    localStorage.setItem("xpl_refill_day", today); /* チェックした事実を記録。今日はもう走らせない */
+    if (stock < 3) { await prepareFlavorPosts(5 - stock, wrapEl); }
+  } catch(e) {}
+}
+/* 画像つきシーシャ投稿を数本まとめて作って予約(作り置き)。背景生成→文字合成→scheduled_postsに予約 */
+async function prepareFlavorPosts(count, wrapEl){
+  const out = wrapEl ? wrapEl.querySelector("#stockOut") : null;
+  const setMsg = (m,err)=>{ if(out) out.innerHTML = '<div style="color:'+(err?"#ff6b6b":"#10b981")+'">'+esc(m)+'</div>'; };
+  const screen = (typeof S!=="undefined" && S.activeAccount) ? S.activeAccount : (CFG.account||"");
+  if (!screen) { setMsg("アカウントが選べてない",1); return; }
+  let made=0;
+  let cursor = Date.now() + 2*3600*1000;
+  for (let i=0;i<count;i++){
+    setMsg("生成中… "+(i+1)+"/"+count+"本目（画像に時間かかります）");
+    try {
+      const picks = shGenerate("おまかせ", 1);
+      if (!picks.length) continue;
+      const p = picks[0];
+      const res = await shMixPostText("おまかせ", null, p);
+      if (!res || !res.thread || !res.thread.length) continue;
+      let media = null;
+      const ir = await gasFetch_("shishaImage", { prompt: naturePrompt_(p.combo) });
+      const bg = (ir && ir.b64) ? ir.b64 : ((ir && ir.url) ? ir.url : null);
+      if (bg) {
+        const sc = shScene_(p.combo);
+        const flist = p.combo.slice().sort((a,b)=>b.ratio-a.ratio).map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio);
+        const osusume = p.sc>=90?6:(p.sc>=85?5:4);
+        media = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume });
+      }
+      cursor += (2 + Math.random()*2) * 3600 * 1000;
+      await gasFetch_("scheduleMixPost", { screen_name: screen, text: res.thread[0], thread: res.thread.length>1?res.thread:null, media_b64: media, scheduled_at: new Date(cursor).toISOString() });
+      made++;
+    } catch(e) {}
+  }
+  setMsg(made>0 ? ("✓ "+made+"本を画像つきで予約したで！時間が来たら自動で投稿される") : "予約に失敗した。もう一度試して", made===0);
 }
 function composeShishaImage_(bg, opts) {
   return new Promise((resolve, reject) => {
@@ -3514,7 +3586,7 @@ BUILDERS.outreach = (el) => {
   fld(el, "投稿の本文(任意・貼るとより刺さるリプに)");
   const bodyIn = ta(el, 4, "その投稿の本文をコピペ(空でもOK)");
   fld(el, "トーン");
-  const toneRef = chipsSingle(el, ["丁寧","共感","タメ口","ツッコミ"], "丁寧");
+  const toneRef = chipsSingle(el, ["丁寧","共感","タメ口","ツッコミ","ボケ"], "丁寧");
   fld(el, "作るもの");
   const kindRef = chipsSingle(el, ["リプ(返信で絡む)","引用RT(拡散狙い)","DM誘導(LINEへ)"], "リプ(返信で絡む)", false, () => updateBtnLabel());
   fld(el, "誘導先LINE(DM誘導の時だけ使う・任意)");
@@ -3604,6 +3676,7 @@ BUILDERS.outreach = (el) => {
         "共感": "相手の気持ちに寄り添い、共感を示す。優しく柔らかい言葉。",
         "タメ口": "フランクなタメ口。ただし失礼・馴れ馴れしすぎはNG。親しみやすく。",
         "ツッコミ": "軽妙なツッコミ・ユーモアを一言。相手を不快にさせない範囲で、クスッとさせる。",
+        "ボケ": "クスッと笑えるボケ・ネタ・ユーモアで返す。シュールな冗談や軽い自虐・とぼけた一言で親しみを出す。例『茎3年集めて吸った者です』みたいな、真面目なフリして面白い一言。下品・失礼・無理に笑わせにいく寒さはNG。自然でセンスのある笑い。",
       };
       const toneRule = (TONE_RULE[tone] || TONE_RULE["丁寧"]) + " 1つの文の中で敬語とタメ口を混ぜず、このトーンで最初から最後まで統一する。";
       const ctx = body
@@ -4765,7 +4838,7 @@ BUILDERS.calendar = (el) => {
           hOut.innerHTML = "";
           /* トーン選択チップ */
           const toneRow=document.createElement("div"); toneRow.style.cssText="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0";
-          ["丁寧","共感","タメ口","ツッコミ"].forEach(tn=>{
+          ["丁寧","共感","タメ口","ツッコミ","ボケ"].forEach(tn=>{
             const c=document.createElement("button"); c.className="mini"; c.textContent=tn;
             c.style.cssText = "padding:5px 10px;border-radius:14px;font-size:12px;"+(curTone===tn?"background:rgba(0,229,255,.18);color:var(--accent2);border:1px solid var(--accent2)":"background:transparent;border:1px solid var(--border)");
             c.onclick=()=>{ curTone=tn; run(false); };
@@ -4795,6 +4868,7 @@ BUILDERS.calendar = (el) => {
       "共感": "相手の気持ちに寄り添い、共感を示す。優しく柔らかい言葉。",
       "タメ口": "フランクなタメ口。ただし失礼・馴れ馴れしすぎはNG。親しみやすく。",
       "ツッコミ": "軽妙なツッコミ・ユーモアを一言。相手を不快にさせない範囲で、クスッとさせる。",
+      "ボケ": "クスッと笑えるボケ・ネタ・ユーモアで返す。真面目なフリして面白い一言、シュールな冗談や軽い自虐で親しみを出す。下品・失礼・無理に笑わせにいく寒さはNG。自然でセンスのある笑い。",
     };
     const rule = TONE_RULE[tone] || TONE_RULE["丁寧"];
     return `次のXのポストに対する「リプライ」を3案作る。これは投稿を見てる人の目に留まって、自分に興味を持ってもらうのが狙い。\n`
