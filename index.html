@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "96";
+const APP_VERSION = "98";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4886,6 +4886,9 @@ BUILDERS.calendar = (el) => {
       + `- そのポストを見てる人に「お、この人いいこと言うな」と思わせる、中身のある一言\n`
       + `- テンプレ褒め(「素敵です!」だけ等)や、無関係な持論はNG\n`
       + `- 設定された性格は活かしつつ、上の指定トーンを最優先。1案40〜80字、絵文字は0〜1個\n`
+      + `\n【お手本(この品質を目指す)】\n`
+      + `相手『あじさいを見に三ヶ根山へ。慰霊碑も一つ一つ参拝しました』→ ○『三ヶ根山のあじさい、本当に綺麗でしょうね。慰霊碑にも一つひとつ参拝された姿勢が素敵です』\n`
+      + `↑固有の点(三ヶ根山/慰霊碑に参拝)を具体的に拾い、対等な共感で、テンプレ褒めでなく相手の行動に触れてる。この具体性と温度を真似る。\n`
       + (shuffle ? `- 前回と違う角度で\n` : "")
       + `\n出力形式(厳守): 前置きなし。3案を「===」だけの行で区切って本文のみ。`;
   }
@@ -5755,6 +5758,21 @@ BUILDERS.followers = (el) => {
       let h = '<div style="margin-top:24px;padding-top:18px;border-top:1px solid var(--border)">';
       h += '<h3 style="font-size:15px;margin:0 0 4px">📍 フォロー獲得の出どころ</h3>';
       h += '<p class="desc" style="font-size:11px;margin:0 0 12px">Xは「誰がなぜフォローしたか」を開示しません。ただしXPLOSIONは<b>自分がリプした相手のフォロー</b>を全て追跡しています。下はそのリプ経由で取れたフォローの内訳です:</p>';
+      /* 実際のフォロワー増加と並べて、内訳を正しく見せる */
+      const _fs = (records || []).filter((x) => x.platform === "X:フォロワー").sort((a, b) => a.date.localeCompare(b.date));
+      if (_fs.length >= 2) {
+        const gain = _fs[_fs.length - 1].count - _fs[0].count;
+        if (gain > 0) {
+          const via = r.followed || 0;
+          const organic = Math.max(0, gain - via);
+          const orgPct = gain > 0 ? Math.round(organic / gain * 100) : 0;
+          h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">';
+          h += '<div style="font-size:13px;margin-bottom:6px">この期間のフォロワー増加: <b style="color:#3DFFA8;font-size:18px">+' + gain + '人</b></div>';
+          h += '<div style="font-size:12px;color:var(--muted);line-height:1.8">・リプ経由(追跡できた分): <b>' + via + '人</b><br>・投稿/プロフを見てのフォロー: <b style="color:#7CC0FF">約' + organic + '人(' + orgPct + '%)</b></div>';
+          h += '<div style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.6">フォローの大半は<b>あなたの投稿やプロフを見てのフォロー</b>。リプはきっかけの一部で、本体は投稿の中身が効いてる証拠です。</div>';
+          h += '</div>';
+        }
+      }
       if (!r.followed) {
         if (!r.total) {
           h += '<div class="muted" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:12px">このアカウントでのリプ接触記録がまだ<b>0件</b>です。リプハンターや先回りリプで誰かに絡むと、その相手がフォローし返してくれたかを自動で追跡し、ここに「誰が・どのリプで・どの競合経由か」が出ます。<br><br>※まずはリプハンターPROで競合のファンに絡むのが起点になります。</div>';
@@ -5913,8 +5931,21 @@ BUILDERS.followers = (el) => {
     const fs = fSeries(); if (fs.length < 3) return;
     const b = document.createElement("button"); b.className = "btn btn-ghost"; b.textContent = "AIに推移を分析させる"; aiEl.appendChild(b);
     const out = outArea(aiEl);
-    b.onclick = () => runAI(b, out, () =>
-      `${S.sns}アカウントのフォロワー推移:\n${fs.map((r) => r.date + ": " + r.count).join("\n")}\n目標: ${goals[S.sns] || "未設定"}\n\nこのデータから日本語で簡潔に:\n■伸びの評価(加速中/横ばい/鈍化+理由)\n■原因の仮説2つ\n■今週の打ち手3つ(${S.sns}の機能を使った具体策)\n前置き不要。`);
+    b.onclick = async () => {
+      /* 最も伸びた日を特定し、その日の投稿を取得して「何が効いたか」を分析させる */
+      let maxGainDay = null, maxGain = 0;
+      for (let i = 1; i < fs.length; i++) { const g = fs[i].count - fs[i - 1].count; if (g > maxGain) { maxGain = g; maxGainDay = fs[i].date; } }
+      let postsBlock = "";
+      if (maxGainDay) {
+        try {
+          const tname = target();
+          const { data } = await sb.from("scheduled_posts").select("text").eq("screen_name", tname).eq("status", "done").gte("scheduled_at", maxGainDay + "T00:00:00").lte("scheduled_at", maxGainDay + "T23:59:59").limit(10);
+          if (data && data.length) postsBlock = "\n\n最も伸びた日(" + maxGainDay + "、+" + maxGain + "人)に投稿した内容:\n" + data.map((p) => "・" + String(p.text || "").slice(0, 80)).join("\n");
+        } catch (e) {}
+      }
+      const prompt = `${S.sns}アカウントのフォロワー推移:\n${fs.map((r) => r.date + ": " + r.count).join("\n")}\n目標: ${goals[S.sns] || "未設定"}${postsBlock}\n\nこのデータから日本語で簡潔に:\n■伸びの評価(加速中/横ばい/鈍化+理由)\n${postsBlock ? "■最も伸びた日に何が効いたか(その日の投稿内容から具体的に推測。どんな切り口・話題・トーンが反応されたか)\n" : ""}■原因の仮説2つ\n■今週の打ち手3つ(${S.sns}の機能を使った具体策)\n前置き不要。`;
+      runAI(b, out, () => prompt);
+    };
   }
 
   function drawHist() {
