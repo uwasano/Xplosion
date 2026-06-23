@@ -220,6 +220,65 @@ function gasBeacon_(action, extra) {
   } catch (e) { return false; }
 }
 /* ===== フォローペース管理: 1時間あたりのフォロー数を記録してロックリスクを表示 ===== */
+/* 👋 フォローした人に挨拶: 7日以内にフォローした未挨拶の人へ、AIが相手の最新投稿を読んで挨拶案を作る。送信は人間確認(半自動・スパム化防止) */
+async function openFollowGreeting(out) {
+  const screen = (typeof S !== "undefined" && S.activeAccount) ? S.activeAccount : "";
+  if (!screen) { out.innerHTML = '<div class="muted" style="font-size:12px">先にアカウントを選んでください。</div>'; return; }
+  let log = {}, greeted = {}, skipped = {};
+  try { log = JSON.parse(localStorage.getItem("xpl_follow_log") || "{}"); } catch (e) {}
+  try { greeted = JSON.parse(localStorage.getItem("xpl_greeted") || "{}"); } catch (e) {}
+  try { skipped = JSON.parse(localStorage.getItem("xpl_greet_skip") || "{}"); } catch (e) {}
+  const now = Date.now();
+  const cands = Object.keys(log).filter(function (n) { const k = n.toLowerCase(); return (now - log[n]) < 7 * 86400000 && !greeted[k] && !skipped[k]; }).sort(function (a, b) { return log[b] - log[a]; }).slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  let sentMap = {}; try { sentMap = JSON.parse(localStorage.getItem("xpl_greet_sent") || "{}"); } catch (e) {}
+  const sentToday = sentMap[today] || 0;
+  if (!cands.length) { out.innerHTML = '<div class="muted" style="font-size:12px">挨拶対象がいません。7日以内にフォローした未挨拶の人が対象です(フォローはリプハンターのスワイプや「プロフ→」ボタンで記録されます)。</div>'; return; }
+  out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:4px">👋 フォローした人に挨拶</div><div class="muted" style="font-size:11px;margin-bottom:8px">相手の最新投稿を読んでAIが挨拶案を作ります。<b>送信は内容を確認してから</b>。本日送信 ' + sentToday + '/9件。</div>';
+  const listWrap = document.createElement("div"); out.appendChild(listWrap);
+  for (const name of cands) {
+    const card = document.createElement("div"); card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;font-size:13px";
+    card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted">の挨拶案を生成中…</span>';
+    listWrap.appendChild(card);
+    try {
+      const r = await gasFetch_("greetDraft", { userName: name, screen_name: screen });
+      const doSkip = () => { skipped[name.toLowerCase()] = now; localStorage.setItem("xpl_greet_skip", JSON.stringify(skipped)); card.remove(); };
+      if (!r || r.error) {
+        card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted" style="font-size:11px">' + esc((r && r.error) || "取得失敗") + '</span> ';
+        const sk = document.createElement("button"); sk.className = "mini"; sk.style.fontSize = "11px"; sk.textContent = "スキップ"; sk.onclick = doSkip; card.appendChild(sk);
+        continue;
+      }
+      let h = '<div style="display:flex;justify-content:space-between;align-items:center"><b>@' + esc(name) + '</b><a href="https://x.com/' + esc(name) + '" target="_blank" style="font-size:11px;color:var(--accent2);text-decoration:none">Xで開く→</a></div>';
+      h += '<div class="muted" style="font-size:11px;margin:4px 0;padding:6px;background:var(--bg);border-radius:6px">最新投稿: ' + esc(String(r.latestTweet || "").slice(0, 100)) + '</div><div class="gi"></div>';
+      card.innerHTML = h;
+      const gi = card.querySelector(".gi");
+      const labels = ["共感型", "応援型", "ユーモア型"];
+      (r.ideas || []).forEach(function (idea, i) {
+        const w = document.createElement("div"); w.style.cssText = "background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-top:6px";
+        w.innerHTML = '<div style="font-size:10px;color:var(--accent2);margin-bottom:3px">' + (labels[i] || "案" + (i + 1)) + '</div><div style="font-size:13px;line-height:1.5;white-space:pre-wrap">' + esc(idea) + '</div>';
+        const acts = document.createElement("div"); acts.style.cssText = "display:flex;gap:6px;margin-top:6px";
+        const sb = document.createElement("button"); sb.className = "mini"; sb.textContent = "この文で送信"; sb.style.cssText = "background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;font-size:11px";
+        sb.onclick = async () => {
+          let sm = {}; try { sm = JSON.parse(localStorage.getItem("xpl_greet_sent") || "{}"); } catch (e) {}
+          if ((sm[today] || 0) >= 9) { alert("本日の挨拶送信上限(9件)に達しました。明日また送れます。"); return; }
+          if (!confirm("@" + name + " にこの内容で返信する？\n\n" + idea)) return;
+          sb.disabled = true; sb.textContent = "送信中…";
+          try {
+            const sr = await gasFetch_("sendReply", { screen_name: screen, text: idea, replyToId: r.latestId });
+            if (sr && sr.ok) {
+              greeted[name.toLowerCase()] = now; localStorage.setItem("xpl_greeted", JSON.stringify(greeted));
+              sm[today] = (sm[today] || 0) + 1; localStorage.setItem("xpl_greet_sent", JSON.stringify(sm));
+              card.innerHTML = '<b>@' + esc(name) + '</b> <span style="color:#10b981;font-size:12px">✓ 挨拶を送信しました</span>';
+            } else { sb.disabled = false; sb.textContent = "この文で送信"; alert("送信失敗: " + ((sr && sr.error) || "不明")); }
+          } catch (e) { sb.disabled = false; sb.textContent = "この文で送信"; alert("送信エラー"); }
+        };
+        const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "📋コピー"; cp.style.fontSize = "11px"; cp.onclick = () => { navigator.clipboard.writeText(idea); cp.textContent = "✓"; setTimeout(() => cp.textContent = "📋コピー", 1200); };
+        acts.appendChild(sb); acts.appendChild(cp); w.appendChild(acts); gi.appendChild(w);
+      });
+      const sk2 = document.createElement("button"); sk2.className = "mini"; sk2.style.cssText = "font-size:11px;margin-top:6px"; sk2.textContent = "スキップ(今後出さない)"; sk2.onclick = doSkip; card.appendChild(sk2);
+    } catch (e) { card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted">エラー</span>'; }
+  }
+}
 function recordFollow_(name) {
   var now = Date.now();
   try {
@@ -285,7 +344,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "98";
+const APP_VERSION = "99";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4085,8 +4144,10 @@ BUILDERS.calendar = (el) => {
   const btnMirror = document.createElement("button"); btnMirror.className = "mini"; btnMirror.textContent = "🪞 バズってる投稿をマネする";
   const btnHunter = document.createElement("button"); btnHunter.className = "mini"; btnHunter.textContent = "🎯 バズってる投稿にリプする";
   const btnHunterPro = document.createElement("button"); btnHunterPro.className = "mini"; btnHunterPro.textContent = "🎯 リプハンターPRO(自動で溜めた投稿)";
+  const btnGreet = document.createElement("button"); btnGreet.className = "mini"; btnGreet.textContent = "👋 フォローした人に挨拶";
   trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote); trBtnRow.appendChild(btnEnjou);
-  trBtnRow.appendChild(btnMirror); trBtnRow.appendChild(btnHunter); trBtnRow.appendChild(btnHunterPro);
+  trBtnRow.appendChild(btnMirror); trBtnRow.appendChild(btnHunter); trBtnRow.appendChild(btnHunterPro); trBtnRow.appendChild(btnGreet);
+  btnGreet.onclick = () => openFollowGreeting(trOut);
   trFld.appendChild(trBtnRow);
   const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
   trFld.appendChild(trDate);
