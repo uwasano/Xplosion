@@ -285,7 +285,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "94";
+const APP_VERSION = "96";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -813,9 +813,12 @@ async function shMixPostText(audience, sceneObj, fixedMix){
     (sceneObj ? "マスターのオススメ度 "+star(8)+"\n" : "マスターのオススメ度 "+star(osusume*10/6)+"\n") +
     "激推し度 "+star(gekioshi*10/6)+"\n" +
     "甘さ "+star(sweet)+" / 酸味 "+star(sour)+"\n清涼感 "+star(cool)+" / 吸いごたえ "+star(heavy);
+  const hoursClause = CFG.useHours
+    ? `\n【営業時間】${CFG.openTime}〜${CFG.closeTime}。シーシャの来店はこの時間だけ。朝・昼など営業時間外に『今すぐ来て』『朝シーシャどうぞ』のような“今すぐ来店”を促す表現は絶対に書かない。来店に触れるなら営業時間(夜)を想定した自然な誘い方にする。基本はフレーバーの魅力を伝える内容でOK。\n`
+    : "";
   const prompt =
     `金沢・片町のシーシャ店の店長として、おすすめミックスを紹介する短いX投稿の「本文だけ」を書く。\n` +
-    persona +
+    persona + hoursClause +
     (sceneObj ? `\nこの投稿の切り口:「${sceneObj.scene}」という気分・状況の人に語りかける。この言葉を不自然に名詞化・言い換えせず、共感する一言から自然に始める。\n` : "") +
     `\nミックス: ${shMixName(m.combo)}\n配合: ${haigou}\n味: 甘さ${sweet}/酸味${sour}/清涼${cool}/吸いごたえ${heavy}(10段階)\n` +
     `\n書き方の注意(重要):\n` +
@@ -855,7 +858,7 @@ function defaultCfg() {
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
     competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare", notifyEmail: false,
-    useHours: false, openTime: "19:00", closeTime: "02:00",
+    useHours: true, openTime: "21:00", closeTime: "06:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
     mixOn: false, mixFreq: 30, mixDB: null, mixImage: false, mixImageAuto: false, mixAutoRefill: false,
