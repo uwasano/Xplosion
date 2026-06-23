@@ -220,29 +220,29 @@ function gasBeacon_(action, extra) {
   } catch (e) { return false; }
 }
 /* ===== フォローペース管理: 1時間あたりのフォロー数を記録してロックリスクを表示 ===== */
-/* 👋 フォローした人に挨拶: 7日以内にフォローした未挨拶の人へ、AIが相手の最新投稿を読んで挨拶案を作る。送信は人間確認(半自動・スパム化防止) */
+/* 👋 フォローした人に挨拶: 実際にXでフォロー中の人(最近順)から未挨拶の人を取得し、AIが相手の最新投稿を読んで挨拶案を作る。送信は人間確認(半自動) */
 async function openFollowGreeting(out) {
   const screen = (typeof S !== "undefined" && S.activeAccount) ? S.activeAccount : "";
   if (!screen) { out.innerHTML = '<div class="muted" style="font-size:12px">先にアカウントを選んでください。</div>'; return; }
-  let log = {}, greeted = {}, skipped = {};
-  try { log = JSON.parse(localStorage.getItem("xpl_follow_log") || "{}"); } catch (e) {}
-  try { greeted = JSON.parse(localStorage.getItem("xpl_greeted") || "{}"); } catch (e) {}
-  try { skipped = JSON.parse(localStorage.getItem("xpl_greet_skip") || "{}"); } catch (e) {}
-  const now = Date.now();
-  const cands = Object.keys(log).filter(function (n) { const k = n.toLowerCase(); return (now - log[n]) < 7 * 86400000 && !greeted[k] && !skipped[k]; }).sort(function (a, b) { return log[b] - log[a]; }).slice(0, 10);
+  out.innerHTML = '<div class="muted" style="font-size:12px">フォロー中リストから未挨拶の人を取得中…</div>';
+  let cj;
+  try { cj = await gasFetch_("greetCandidates", { screen_name: screen }); } catch (e) { out.innerHTML = '<div class="muted" style="font-size:12px">取得に失敗しました。</div>'; return; }
+  if (!cj || cj.error) { out.innerHTML = '<div class="muted" style="font-size:12px">' + esc((cj && cj.error) || "取得に失敗しました") + '</div>'; return; }
+  const cands = cj.candidates || [];
+  if (!cands.length) { out.innerHTML = '<div class="muted" style="font-size:12px">挨拶対象がいません(フォロー中の人は全員挨拶済み or スキップ済み)。</div>'; return; }
   const today = new Date().toISOString().slice(0, 10);
   let sentMap = {}; try { sentMap = JSON.parse(localStorage.getItem("xpl_greet_sent") || "{}"); } catch (e) {}
   const sentToday = sentMap[today] || 0;
-  if (!cands.length) { out.innerHTML = '<div class="muted" style="font-size:12px">挨拶対象がいません。7日以内にフォローした未挨拶の人が対象です(フォローはリプハンターのスワイプや「プロフ→」ボタンで記録されます)。</div>'; return; }
-  out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:4px">👋 フォローした人に挨拶</div><div class="muted" style="font-size:11px;margin-bottom:8px">相手の最新投稿を読んでAIが挨拶案を作ります。<b>送信は内容を確認してから</b>。本日送信 ' + sentToday + '/9件。</div>';
+  out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:4px">👋 フォローした人に挨拶</div><div class="muted" style="font-size:11px;margin-bottom:8px">実際にフォロー中の人(最近順)から未挨拶の人を表示。相手の最新投稿を読んでAIが挨拶案を作ります。<b>送信は内容を確認してから</b>。本日送信 ' + sentToday + '/9件。</div>';
   const listWrap = document.createElement("div"); out.appendChild(listWrap);
-  for (const name of cands) {
+  for (const c of cands) {
+    const name = c.userName;
     const card = document.createElement("div"); card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;font-size:13px";
     card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted">の挨拶案を生成中…</span>';
     listWrap.appendChild(card);
+    const doSkip = async () => { try { await gasFetch_("skipGreet", { screen_name: screen, userName: name }); } catch (e) {} card.remove(); };
     try {
       const r = await gasFetch_("greetDraft", { userName: name, screen_name: screen });
-      const doSkip = () => { skipped[name.toLowerCase()] = now; localStorage.setItem("xpl_greet_skip", JSON.stringify(skipped)); card.remove(); };
       if (!r || r.error) {
         card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted" style="font-size:11px">' + esc((r && r.error) || "取得失敗") + '</span> ';
         const sk = document.createElement("button"); sk.className = "mini"; sk.style.fontSize = "11px"; sk.textContent = "スキップ"; sk.onclick = doSkip; card.appendChild(sk);
@@ -264,9 +264,8 @@ async function openFollowGreeting(out) {
           if (!confirm("@" + name + " にこの内容で返信する？\n\n" + idea)) return;
           sb.disabled = true; sb.textContent = "送信中…";
           try {
-            const sr = await gasFetch_("sendReply", { screen_name: screen, text: idea, replyToId: r.latestId });
+            const sr = await gasFetch_("sendReply", { screen_name: screen, text: idea, replyToId: r.latestId, userName: name });
             if (sr && sr.ok) {
-              greeted[name.toLowerCase()] = now; localStorage.setItem("xpl_greeted", JSON.stringify(greeted));
               sm[today] = (sm[today] || 0) + 1; localStorage.setItem("xpl_greet_sent", JSON.stringify(sm));
               card.innerHTML = '<b>@' + esc(name) + '</b> <span style="color:#10b981;font-size:12px">✓ 挨拶を送信しました</span>';
             } else { sb.disabled = false; sb.textContent = "この文で送信"; alert("送信失敗: " + ((sr && sr.error) || "不明")); }
@@ -344,7 +343,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "101";
+const APP_VERSION = "102";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
