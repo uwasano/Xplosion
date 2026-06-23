@@ -344,7 +344,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "99";
+const APP_VERSION = "101";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3992,13 +3992,20 @@ BUILDERS.calendar = (el) => {
             const rows = (hj && hj.rows) ? hj.rows : [];
             const outEl = document.getElementById("hitCopyOut");
             if (!rows.length) { outEl.innerHTML = '<div class="muted" style="font-size:12px;margin-top:6px">まだ的中レースがありません。</div>'; hitBtn.disabled=false; hitBtn.textContent=ob; return; }
-            const NAME2 = { popular:"人気順", score:"直前スコア" };
             const lines = rows.map(r => {
               const d = String(r.race_date||""); const md = d.length===8 ? (parseInt(d.slice(4,6),10)+"/"+parseInt(d.slice(6,8),10)) : d;
-              const pay = r.payout ? " ¥"+Number(r.payout).toLocaleString() : "";
-              return md+" "+(r.venue||"")+r.rno+"R "+(r.result_combo||"")+pay+"（"+(NAME2[r.logic]||r.logic)+"）";
+              const yen = r.payout ? Number(r.payout) : 0;
+              const pay = yen ? " ¥"+yen.toLocaleString() : "";
+              const odds = yen ? "（"+(yen/100).toFixed(1)+"倍）" : "";
+              return md+" "+(r.venue||"")+r.rno+"R "+(r.result_combo||"")+pay+odds;
             });
-            const text = "【的中実績】\n" + lines.join("\n") + "\n\n的中"+hj.count+"レース／回収金合計 ¥"+Number(hj.totalPayout).toLocaleString();
+            const totalPay = Number(hj.totalPayout) || 0; /* 100円賭けの合計 */
+            const text = "【的中実績】\n" + lines.join("\n")
+              + "\n\n的中" + hj.count + "レース"
+              + "\n━━━━━━━━━\n回収金合計\n"
+              + "・100円ずつ買った場合: ¥" + totalPay.toLocaleString() + "\n"
+              + "・1,000円ずつ買った場合: ¥" + (totalPay * 10).toLocaleString() + "\n"
+              + "・10,000円ずつ買った場合: ¥" + (totalPay * 100).toLocaleString();
             let copied = false;
             try { await navigator.clipboard.writeText(text); copied = true; } catch(err) {}
             hitBtn.textContent = copied ? "✓ コピーした！" : ob;
