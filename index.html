@@ -220,6 +220,57 @@ function gasBeacon_(action, extra) {
   } catch (e) { return false; }
 }
 /* ===== フォローペース管理: 1時間あたりのフォロー数を記録してロックリスクを表示 ===== */
+/* 👋 挨拶をスワイプで1人ずつ捌く(右=次へ/左=スキップ、各案を送信) */
+async function openGreetSwipe(cands, screen) {
+  const box = (typeof fgOverlay_ === "function") ? fgOverlay_() : (function () { const d = document.createElement("div"); d.style.cssText = "position:fixed;inset:0;background:var(--bg);z-index:9999;overflow:auto;padding:16px"; document.body.appendChild(d); return d; })();
+  const today = new Date().toISOString().slice(0, 10);
+  let idx = 0;
+  const close = () => { try { box.remove(); } catch (e) { box.style.display = "none"; } };
+  async function showOne() {
+    if (idx >= cands.length) {
+      box.innerHTML = '<div style="padding:50px 20px;text-align:center"><div style="font-size:16px;margin-bottom:16px">👋 全員チェック完了！</div><button class="mini cyan" style="padding:10px 24px" id="gsClose">閉じる</button></div>';
+      box.querySelector("#gsClose").onclick = close; return;
+    }
+    const c = cands[idx]; const name = c.userName;
+    const head = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-size:13px;color:var(--muted)">' + (idx + 1) + ' / ' + cands.length + '</div><button class="mini" id="gsX" style="font-size:12px">閉じる</button></div>';
+    box.innerHTML = head + '<div style="padding:20px;text-align:center;color:var(--muted)">@' + esc(name) + ' の挨拶案を生成中…</div>';
+    box.querySelector("#gsX").onclick = close;
+    let r; try { r = await gasFetch_("greetDraft", { userName: name, screen_name: screen }); } catch (e) { r = { error: "取得エラー" }; }
+    const next = () => { idx++; showOne(); };
+    const skip = async () => { try { await gasFetch_("skipGreet", { screen_name: screen, userName: name }); } catch (e) {} next(); };
+    let h = head + '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center"><b style="font-size:16px">@' + esc(name) + '</b><a href="https://x.com/' + esc(name) + '" target="_blank" style="font-size:12px;color:var(--accent2);text-decoration:none">Xで開く→</a></div>';
+    if (!r || r.error) {
+      h += '<div class="muted" style="font-size:12px;margin-top:10px">' + esc((r && r.error) || "取得失敗") + '</div><div style="display:flex;gap:8px;margin-top:14px"><button class="mini" id="gsSkip" style="flex:1;padding:12px">スキップ →</button></div></div>';
+      box.innerHTML = h; box.querySelector("#gsX").onclick = close; box.querySelector("#gsSkip").onclick = skip; return;
+    }
+    h += '<div class="muted" style="font-size:12px;margin:8px 0;padding:8px;background:var(--bg);border-radius:8px">最新投稿: ' + esc(String(r.latestTweet || "").slice(0, 120)) + '</div>';
+    const labels = ["共感型", "応援型", "ユーモア型"];
+    (r.ideas || []).forEach(function (idea, i) {
+      h += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px"><div style="font-size:10px;color:var(--accent2);margin-bottom:4px">' + (labels[i] || "案") + '</div><div style="font-size:14px;line-height:1.6;white-space:pre-wrap">' + esc(idea) + '</div><button class="mini gsSend" data-idea="' + i + '" style="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;font-size:12px;margin-top:8px;width:100%;padding:10px">この文で送信</button></div>';
+    });
+    h += '<div style="display:flex;gap:8px;margin-top:14px"><button class="mini" id="gsSkip" style="flex:1;padding:12px">← スキップ</button><button class="mini cyan" id="gsNext" style="flex:1;padding:12px">次へ →</button></div></div>';
+    box.innerHTML = h;
+    box.querySelector("#gsX").onclick = close;
+    box.querySelector("#gsSkip").onclick = skip;
+    box.querySelector("#gsNext").onclick = next;
+    box.querySelectorAll(".gsSend").forEach(function (btn) {
+      btn.onclick = async () => {
+        const idea = (r.ideas || [])[Number(btn.dataset.idea)];
+        let sm = {}; try { sm = JSON.parse(localStorage.getItem("xpl_greet_sent") || "{}"); } catch (e) {}
+        if ((sm[today] || 0) >= 9) { alert("本日の挨拶送信上限(9件)に達しました。明日また送れます。"); return; }
+        if (!confirm("@" + name + " にこの内容で返信する？\n\n" + idea)) return;
+        btn.disabled = true; btn.textContent = "送信中…";
+        try {
+          const sr = await gasFetch_("sendReply", { screen_name: screen, text: idea, replyToId: r.latestId, userName: name });
+          if (sr && sr.ok) { sm[today] = (sm[today] || 0) + 1; localStorage.setItem("xpl_greet_sent", JSON.stringify(sm)); next(); }
+          else { btn.disabled = false; btn.textContent = "この文で送信"; alert("送信失敗: " + ((sr && sr.error) || "不明")); }
+        } catch (e) { btn.disabled = false; btn.textContent = "この文で送信"; alert("送信エラー"); }
+      };
+    });
+  }
+  showOne();
+}
 /* 👋 フォローした人に挨拶: 実際にXでフォロー中の人(最近順)から未挨拶の人を取得し、AIが相手の最新投稿を読んで挨拶案を作る。送信は人間確認(半自動) */
 async function openFollowGreeting(out) {
   const screen = (typeof S !== "undefined" && S.activeAccount) ? S.activeAccount : "";
@@ -234,6 +285,9 @@ async function openFollowGreeting(out) {
   let sentMap = {}; try { sentMap = JSON.parse(localStorage.getItem("xpl_greet_sent") || "{}"); } catch (e) {}
   const sentToday = sentMap[today] || 0;
   out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:4px">👋 フォローした人に挨拶</div><div class="muted" style="font-size:11px;margin-bottom:8px">実際にフォロー中の人(最近順)から未挨拶の人を表示。相手の最新投稿を読んでAIが挨拶案を作ります。<b>送信は内容を確認してから</b>。本日送信 ' + sentToday + '/9件。</div>';
+  const swBtn = document.createElement("button"); swBtn.className = "mini cyan"; swBtn.style.cssText = "width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px"; swBtn.textContent = "🃏 スワイプで一気に挨拶 (" + cands.length + "件)";
+  swBtn.onclick = () => openGreetSwipe(cands.slice(), screen);
+  out.appendChild(swBtn);
   const listWrap = document.createElement("div"); out.appendChild(listWrap);
   for (const c of cands) {
     const name = c.userName;
@@ -343,7 +397,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "102";
+const APP_VERSION = "105";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -916,6 +970,7 @@ function defaultCfg() {
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
     competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare", notifyEmail: false,
+    bigRaceFreq: 1,
     useHours: true, openTime: "21:00", closeTime: "06:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
@@ -1846,6 +1901,27 @@ BUILDERS.settings = (el) => {
   const notifyNote = document.createElement("p"); notifyNote.className = "desc"; notifyNote.style.margin = "6px 0 0";
   notifyNote.textContent = "このアカウントでチャンス75%以上の相手が見つかったら、登録メールに通知が届く(どのアカウント向けかも件名・本文に明記)。アカウントごとにON/OFFできる。先回りリプの頻度がONになってる必要あり。";
   el.appendChild(notifyNote);
+
+  /* 🚤 ビッグレース自動告知 頻度(競艇アカのみ表示。クライアントごとに切替・OFF含む) */
+  const _isBoatAcct = /競艇|ボート|舟券|予想|kyotei/i.test(String(CFG.bizType || "") + " " + String(CFG.bizName || "") + " " + String(CFG.origProfile || ""));
+  if (_isBoatAcct) {
+    fld(el, "🚤 ビッグレース自動告知");
+    const brChips = document.createElement("div"); brChips.className = "chips"; el.appendChild(brChips);
+    const _brFreq = () => (typeof CFG.bigRaceFreq === "number") ? CFG.bigRaceFreq : (CFG.bigRaceOn === false ? 0 : 1);
+    const drawBigRaceChips = () => {
+      brChips.innerHTML = "";
+      [["OFF", 0], ["1日1回", 1], ["1日2回", 2], ["1日3回", 3]].forEach(function (pair) {
+        const on = _brFreq() === pair[1];
+        const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = pair[0];
+        b.onclick = () => { CFG.bigRaceFreq = pair[1]; save(); drawBigRaceChips(); };
+        brChips.appendChild(b);
+      });
+    };
+    drawBigRaceChips();
+    const brNote = document.createElement("p"); brNote.className = "desc"; brNote.style.margin = "6px 0 0";
+    brNote.textContent = "SG・PG1(グランドチャンピオン等)の大会期間中、毎日その日の見どころ告知を自動投稿する(選手名は出さない・boatrace.jp公式から自動検出)。1日1回=朝のみ / 2回=朝+夜 / 3回=朝+昼+夜。OFFでこのアカウントは告知しない。競艇カテゴリのアカウントのみ。";
+    el.appendChild(brNote);
+  }
 
   /* 店名・エリア(任意・AIに教えるか選べる) */
   fld(el, "店名・エリアをAIに教える");
