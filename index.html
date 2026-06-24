@@ -397,7 +397,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "105";
+const APP_VERSION = "106";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -970,7 +970,6 @@ function defaultCfg() {
     url: "", urlFreq: 20, ngWords: "", origProfile: "",
     gender: "不問",
     competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare", notifyEmail: false,
-    bigRaceFreq: 1,
     useHours: true, openTime: "21:00", closeTime: "06:00",
     closedDays: [],
     /* 噂のシーシャBar専用: おすすめミックス機能 */
@@ -1901,27 +1900,6 @@ BUILDERS.settings = (el) => {
   const notifyNote = document.createElement("p"); notifyNote.className = "desc"; notifyNote.style.margin = "6px 0 0";
   notifyNote.textContent = "このアカウントでチャンス75%以上の相手が見つかったら、登録メールに通知が届く(どのアカウント向けかも件名・本文に明記)。アカウントごとにON/OFFできる。先回りリプの頻度がONになってる必要あり。";
   el.appendChild(notifyNote);
-
-  /* 🚤 ビッグレース自動告知 頻度(競艇アカのみ表示。クライアントごとに切替・OFF含む) */
-  const _isBoatAcct = /競艇|ボート|舟券|予想|kyotei/i.test(String(CFG.bizType || "") + " " + String(CFG.bizName || "") + " " + String(CFG.origProfile || ""));
-  if (_isBoatAcct) {
-    fld(el, "🚤 ビッグレース自動告知");
-    const brChips = document.createElement("div"); brChips.className = "chips"; el.appendChild(brChips);
-    const _brFreq = () => (typeof CFG.bigRaceFreq === "number") ? CFG.bigRaceFreq : (CFG.bigRaceOn === false ? 0 : 1);
-    const drawBigRaceChips = () => {
-      brChips.innerHTML = "";
-      [["OFF", 0], ["1日1回", 1], ["1日2回", 2], ["1日3回", 3]].forEach(function (pair) {
-        const on = _brFreq() === pair[1];
-        const b = document.createElement("button"); b.className = "chip" + (on ? " on" : ""); b.textContent = pair[0];
-        b.onclick = () => { CFG.bigRaceFreq = pair[1]; save(); drawBigRaceChips(); };
-        brChips.appendChild(b);
-      });
-    };
-    drawBigRaceChips();
-    const brNote = document.createElement("p"); brNote.className = "desc"; brNote.style.margin = "6px 0 0";
-    brNote.textContent = "SG・PG1(グランドチャンピオン等)の大会期間中、毎日その日の見どころ告知を自動投稿する(選手名は出さない・boatrace.jp公式から自動検出)。1日1回=朝のみ / 2回=朝+夜 / 3回=朝+昼+夜。OFFでこのアカウントは告知しない。競艇カテゴリのアカウントのみ。";
-    el.appendChild(brNote);
-  }
 
   /* 店名・エリア(任意・AIに教えるか選べる) */
   fld(el, "店名・エリアをAIに教える");
@@ -6676,6 +6654,7 @@ BUILDERS.clients = (el) => {
         d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想(人気順)", "毎日、締切が近いレースを人気順ロジックで自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
         d.appendChild(autoFeatureRow(c.screen_name, "yosou_score", "🎯 オート無料予想(直前スコア)", "締切直前の展示・ST・気象でスコアリングして本命6点を厳選し締切15分前に投稿。人気順と両方ONにすれば成績比較できる", "linear-gradient(135deg,#00e5ff,#22c55e)"));
         d.appendChild(autoFeatureRow(c.screen_name, "yokoku", "📣 オート明日の予告", "明日の開催情報を取得して『明日◯◯でレース!注目選手!』の集客予告を21時台に投稿(数字予想は出さない)", "linear-gradient(135deg,#00e5ff,#22c55e)", true));
+        d.appendChild(autoFeatureRow(c.screen_name, "bigrace", "🚤 オート ビッグレース告知", "SG・PG1(グランドチャンピオン等)の大会期間中だけ、その日の見どころ告知を自動投稿(選手名は出さない・boatrace.jp公式から自動検出)。大会が無い日は投稿なし", "linear-gradient(135deg,#00e5ff,#ff2d95)"));
       }
       /* シーシャ業種のみ: フレーバー(店名が「噂のシーシャBar」系の時だけ。ミックスDBが専用のため) */
       if (/(噂|ウワサ|うわさ|uwasa).{0,4}(シーシャ|sisha|shisha)/i.test(biz)) {
