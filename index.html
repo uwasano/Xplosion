@@ -248,7 +248,7 @@ async function openGreetSwipe(cands, screen) {
       const sr = await gasFetch_("sendReply", { screen_name: screen, text: idea, replyToId: replyToId, userName: name });
       if (sr && sr.ok) { bumpSent(); return "sent"; }
       const _em = String((sr && sr.error) || "");
-      if (/not allowed|Forbidden|403|mentioned or otherwise engaged/i.test(_em)) { alert("@" + name + " \u306f\u30ea\u30d7\u30e9\u30a4\u3092\u5236\u9650\u3057\u3066\u3044\u3066\u6328\u62f6\u3092\u9001\u308c\u307e\u305b\u3093\u3002\u30b9\u30ad\u30c3\u30d7\u3057\u307e\u3059\u3002"); await skip(name); return "skip"; }
+      if (/mentioned or otherwise engaged|Reply to this conversation is not allowed/i.test(_em)) { alert("@" + name + " \u306f\u30ea\u30d7\u30e9\u30a4\u3092\u5236\u9650\u3057\u3066\u3044\u3066\u6328\u62f6\u3092\u9001\u308c\u307e\u305b\u3093\u3002\u30b9\u30ad\u30c3\u30d7\u3057\u307e\u3059\u3002"); await skip(name); return "skip"; }
       alert("\u9001\u4fe1\u5931\u6557: " + (_em || "\u4e0d\u660e")); return false;
     } catch (e) { alert("\u9001\u4fe1\u30a8\u30e9\u30fc"); return false; }
   }
@@ -389,7 +389,7 @@ async function openFollowGreeting(out) {
               card.innerHTML = '<b>@' + esc(name) + '</b> <span style="color:#10b981;font-size:12px">✓ 挨拶を送信しました</span>';
             } else {
               const _em = String((sr && sr.error) || "");
-              if (/not allowed|Forbidden|403|mentioned or otherwise engaged/i.test(_em)) {
+              if (/mentioned or otherwise engaged|Reply to this conversation is not allowed/i.test(_em)) {
                 card.innerHTML = '<b>@' + esc(name) + '</b> <span style="color:var(--muted);font-size:12px">リプ制限のため送れません(スキップ)</span>';
                 try { await gasFetch_("skipGreet", { screen_name: screen, userName: name }); } catch (e) {}
               } else { sb.disabled = false; sb.textContent = "この文で送信"; alert("送信失敗: " + (_em || "不明")); }
@@ -468,7 +468,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "109";
+const APP_VERSION = "110";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
