@@ -291,12 +291,18 @@ async function openGreetSwipe(cands, screen) {
       return;
     }
     counter.textContent = (idx + 1) + " / " + cands.length + "\u3000(\u672c\u65e5\u9001\u4fe1 " + sentCount() + "/9)";
-    const name = cands[idx].userName;
+    const cand = cands[idx];
+    const name = cand.userName;
     const card = document.createElement("div");
     card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;overflow-y:auto;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55)";
-    card.innerHTML = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(name) + '</div><div style="padding:30px 10px;text-align:center;color:var(--muted)">\u6328\u62f6\u6848\u3092\u751f\u6210\u4e2d\u2026</div>';
     stack.appendChild(card);
-    let r; try { r = await gasFetch_("greetDraft", { userName: name, screen_name: screen }); } catch (e) { r = { error: "\u53d6\u5f97\u30a8\u30e9\u30fc" }; }
+    let r;
+    if (cand.ideas && cand.ideas.length) {
+      r = { ideas: cand.ideas, latestTweet: cand.latestTweet || "", latestId: cand.latestId || "", latestUrl: cand.latestUrl || "" };
+    } else {
+      card.innerHTML = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(name) + '</div><div style="padding:30px 10px;text-align:center;color:var(--muted)">\u6328\u62f6\u6848\u3092\u751f\u6210\u4e2d\u2026</div>';
+      try { r = await gasFetch_("greetDraft", { userName: name, screen_name: screen }); } catch (e) { r = { error: "\u53d6\u5f97\u30a8\u30e9\u30fc" }; }
+    }
     let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:16px">@' + esc(name) + '</b><a href="https://x.com/' + esc(name) + '" target="_blank" style="font-size:12px;color:var(--accent2);text-decoration:none">X\u3067\u958b\u304f\u2192</a></div>';
     if (!r || r.error) {
       html += '<div class="muted" style="font-size:12px;margin-top:6px">' + esc((r && r.error) || "\u53d6\u5f97\u5931\u6557") + '</div><div style="font-size:12px;color:var(--muted);margin-top:12px">\u2190 \u5de6\u30b9\u30ef\u30a4\u30d7\u3067\u30b9\u30ad\u30c3\u30d7</div>';
@@ -448,7 +454,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "111";
+const APP_VERSION = "112";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
