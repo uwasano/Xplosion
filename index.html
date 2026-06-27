@@ -320,7 +320,12 @@ async function openGreetSwipe(cands, screen) {
     }
     let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:16px">@' + esc(name) + '</b><a href="https://x.com/' + esc(name) + '" target="_blank" style="font-size:12px;color:var(--accent2);text-decoration:none">X\u3067\u958b\u304f\u2192</a></div>';
     if (!r || r.error) {
-      html += '<div class="muted" style="font-size:12px;margin-top:6px">' + esc((r && r.error) || "\u53d6\u5f97\u5931\u6557") + '</div><div style="font-size:12px;color:var(--muted);margin-top:12px">\u2190 \u5de6\u30b9\u30ef\u30a4\u30d7\u3067\u30b9\u30ad\u30c3\u30d7</div>';
+      const emsg = (r && r.error) || "\u53d6\u5f97\u5931\u6557";
+      /* 挨拶できない人(RTのみ/最近投稿なし/対象外)は自動スキップして次のカードへ(エラーカードを出さない) */
+      if (/\u30aa\u30ea\u30b8\u30ca\u30eb\u6295\u7a3f|\u5bfe\u8c61\u5916|\u6295\u7a3f\u304c\u898b\u3064\u304b|\u6295\u7a3f\u306a\u3057|30\u65e5/.test(emsg)) {
+        skip(name); idx++; renderCard(); return;
+      }
+      html += '<div class="muted" style="font-size:12px;margin-top:6px">' + esc(emsg) + '</div><div style="font-size:12px;color:var(--muted);margin-top:12px">\u2190 \u5de6\u30b9\u30ef\u30a4\u30d7\u3067\u30b9\u30ad\u30c3\u30d7</div>';
       card.innerHTML = html;
       const tintE = mkTint(), labelE = mkLabel(); card.appendChild(tintE); card.appendChild(labelE);
       attachSwipe(card, name, [], null, tintE, labelE);
@@ -373,9 +378,14 @@ async function openFollowGreeting(out) {
     listWrap.appendChild(card);
     const doSkip = async () => { try { await gasFetch_("skipGreet", { screen_name: screen, userName: name }); } catch (e) {} card.remove(); };
     try {
-      const r = await gasFetch_("greetDraft", { userName: name, screen_name: screen });
+      let r;
+      if (c.ideas && c.ideas.length) { r = { ideas: c.ideas, latestTweet: c.latestTweet || "", latestId: c.latestId || "", latestUrl: c.latestUrl || "" }; }
+      else { r = await gasFetch_("greetDraft", { userName: name, screen_name: screen }); }
       if (!r || r.error) {
-        card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted" style="font-size:11px">' + esc((r && r.error) || "取得失敗") + '</span> ';
+        const msg = (r && r.error) || "取得失敗";
+        /* 挨拶できない人(RTのみ/最近投稿なし/対象外)はエラー表示せず自動でスキップ */
+        if (/オリジナル投稿|対象外|投稿が見つか|投稿なし|30日/.test(msg)) { doSkip(); continue; }
+        card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted" style="font-size:11px">' + esc(msg) + '</span> ';
         const sk = document.createElement("button"); sk.className = "mini"; sk.style.fontSize = "11px"; sk.textContent = "スキップ"; sk.onclick = doSkip; card.appendChild(sk);
         continue;
       }
@@ -470,7 +480,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "118";
+const APP_VERSION = "119";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
