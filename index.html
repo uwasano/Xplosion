@@ -470,7 +470,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "116";
+const APP_VERSION = "118";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -635,7 +635,7 @@ function xReplyIntent(it, replyText, replyType) {
         tweet_url: it.tweet_url || "",
         post_age_min: (ageMin > 0 && ageMin < 100000) ? ageMin : 0
       };
-      if (!gasBeacon_("logContact", { contact: contact })) gasFetch_("logContact", { contact: contact });
+      try { gasReliable_("logContact", { contact: contact }); } catch (e) {}
     } catch (e) {}
   }
 }
