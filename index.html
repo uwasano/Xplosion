@@ -503,7 +503,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "121";
+const APP_VERSION = "122";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1092,11 +1092,20 @@ const CFG_CACHE = {};
 /* 指定アカウントの設定をSupabaseから読み込んでCFGにセット */
 async function loadCfgFor(account) {
   S.activeAccount = account || "_default_";
-  if (CFG_CACHE[S.activeAccount]) { CFG = CFG_CACHE[S.activeAccount]; return; }
+  if (CFG_CACHE[S.activeAccount]) { CFG = CFG_CACHE[S.activeAccount]; maybeAutoRefill_(); return; }
   const saved = await kvGet("gen_config:" + S.activeAccount, null);
   const c = Object.assign(defaultCfg(), saved || {});
   CFG_CACHE[S.activeAccount] = c;
   CFG = c;
+  maybeAutoRefill_();
+}
+/* シーシャ×画像つき×自動補充ONなら、アプリを開いた/アカウントを開いたタイミングで裏で在庫補充(ボタン不要) */
+function maybeAutoRefill_() {
+  try {
+    if (CFG && CFG.mixOn && CFG.mixImageAuto && CFG.mixAutoRefill && typeof checkAndRefillStock === "function") {
+      setTimeout(function () { checkAndRefillStock(null); }, 1200);
+    }
+  } catch (e) {}
 }
 /* キャッシュにあれば即CFGを差し替え(通信なし)。表示の即時切替に使う */
 function loadCfgSync(account) {
@@ -2241,18 +2250,16 @@ BUILDERS.settings = (el) => {
     /* 🤖自動ONの時: 画像つき投稿の作り置きボタン(フロントで文字入り画像つきの予約をまとめて作る) */
     if (CFG.mixImageAuto) {
       const stockWrap = document.createElement("div"); stockWrap.style.cssText="margin-top:8px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
-      stockWrap.innerHTML = '<div style="font-weight:700;font-size:13px">📅 画像つき投稿を作り置き</div><div style="font-size:11px;color:var(--muted);margin:4px 0 8px">手動と同じ文字入り画像つきの投稿を、数本まとめて作って予約。あとは時間が来たら自動で投稿される(GASは文字合成できないのでこの方式)。</div>';
+      stockWrap.innerHTML = '<div style="font-weight:700;font-size:13px">📅 画像つき投稿を自動作り置き</div><div style="font-size:11px;color:var(--muted);margin:4px 0 8px">アプリを開くだけで、在庫が0本になったら裏で自動的に7本まで作って予約(手動と同じ文字入り画像)。あとは時間が来たら自動投稿。GASは文字合成できないのでこの方式。</div>';
       const stockRow = document.createElement("div"); stockRow.style.cssText="display:flex;gap:8px;flex-wrap:wrap";
-      [3,5,7].forEach(cnt=>{
-        const b=document.createElement("button"); b.className="mini"; b.textContent=cnt+"本作る";
-        b.style.cssText="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;flex:1";
-        b.onclick=()=>prepareFlavorPosts(cnt, stockWrap);
-        stockRow.appendChild(b);
-      });
+      const b=document.createElement("button"); b.className="mini"; b.textContent="今すぐ作り置き(7本)";
+      b.style.cssText="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;flex:1";
+      b.onclick=()=>prepareFlavorPosts(7, stockWrap);
+      stockRow.appendChild(b);
       stockWrap.appendChild(stockRow);
       /* 🔄 開いた時に自動補充トグル */
       const rfRow=document.createElement("div"); rfRow.style.cssText="display:flex;align-items:center;justify-content:space-between;margin-top:10px";
-      rfRow.innerHTML='<div style="font-size:12px;font-weight:600">🔄 開いた時に自動補充<div style="font-size:10px;color:var(--muted);font-weight:400">在庫が3本未満ならアプリを開いた時に裏で自動で作る</div></div>';
+      rfRow.innerHTML='<div style="font-size:12px;font-weight:600">🔄 開いた時に自動補充<div style="font-size:10px;color:var(--muted);font-weight:400">在庫が0本になったらアプリを開いた時に裏で自動で7本作る(1時間に1回まで)</div></div>';
       const rfSw=document.createElement("button");
       rfSw.style.cssText="flex:0 0 auto;width:48px;height:26px;border-radius:13px;border:none;cursor:pointer;position:relative;"+(CFG.mixAutoRefill?"background:linear-gradient(135deg,#10b981,#059669)":"background:#3a3a4a");
       rfSw.innerHTML='<span style="position:absolute;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;'+(CFG.mixAutoRefill?"left:25px":"left:3px")+'"></span>';
@@ -2465,18 +2472,20 @@ function drawGlassStar_(ctx, cx, cy, r) {
   ctx.beginPath(); ctx.arc(cx-r*0.28,cy-r*0.32,r*0.14,0,Math.PI*2); ctx.fillStyle="rgba(255,255,255,0.96)"; ctx.fill();
   ctx.restore();
 }
-/* 自動補充: 1日1回まで・未来のpending在庫が3本未満なら不足分を裏で作って予約(開くたびの課金を防ぐ) */
+/* 自動補充: 在庫(未来のpending)が0本になったら7本まで作って予約。1時間に1回まで(連打・課金暴発を防ぐ。上限7本を超えては作らない) */
 async function checkAndRefillStock(wrapEl){
   try {
-    const today = new Date().toISOString().slice(0,10);
-    if (localStorage.getItem("xpl_refill_day") === today) return; /* 今日もう補充チェック済み→何もしない(課金ゼロ) */
     const screen = (typeof S!=="undefined" && S.activeAccount) ? S.activeAccount : (CFG.account||"");
     if (!screen) return;
+    const last = parseInt(localStorage.getItem("xpl_refill_ts_"+screen)||"0",10);
+    if (Date.now() - last < 3600*1000) return; /* 直近1時間に補充済みならスキップ */
     const nowIso = new Date().toISOString();
     const { data } = await sb.from("scheduled_posts").select("id").eq("screen_name", screen).eq("status","pending").gte("scheduled_at", nowIso);
     const stock = (data||[]).length;
-    localStorage.setItem("xpl_refill_day", today); /* チェックした事実を記録。今日はもう走らせない */
-    if (stock < 3) { await prepareFlavorPosts(5 - stock, wrapEl); }
+    if (stock < 1) { /* 在庫1未満(=0本)の時だけ、上限7本まで補充 */
+      localStorage.setItem("xpl_refill_ts_"+screen, String(Date.now()));
+      await prepareFlavorPosts(7 - stock, wrapEl);
+    }
   } catch(e) {}
 }
 /* 画像つきシーシャ投稿を数本まとめて作って予約(作り置き)。背景生成→文字合成→scheduled_postsに予約 */
