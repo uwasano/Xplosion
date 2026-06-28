@@ -523,7 +523,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "124";
+const APP_VERSION = "125";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2533,7 +2533,7 @@ async function prepareFlavorPosts(count, wrapEl){
         const osusume = p.sc>=90?6:(p.sc>=85?5:4);
         media = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume });
       }
-      cursor += (2 + Math.random()*2) * 3600 * 1000;
+      cursor += (22 + Math.random()*5) * 3600 * 1000; /* 約1日おき(22〜27h)に予約=1日1本ペース。時刻は自然にばらす */
       await gasFetch_("scheduleMixPost", { screen_name: screen, text: res.thread[0], thread: res.thread.length>1?res.thread:null, media_b64: media, scheduled_at: new Date(cursor).toISOString() });
       made++;
     } catch(e) {}
