@@ -251,6 +251,15 @@ async function openGreetSwipe(cands, screen) {
   const getGreeted = () => { try { return JSON.parse(localStorage.getItem(greetedKey) || "[]"); } catch (e) { return []; } };
   const addGreeted = (nm) => { try { const g = getGreeted(); const l = String(nm).toLowerCase(); if (g.indexOf(l) < 0) { g.push(l); localStorage.setItem(greetedKey, JSON.stringify(g.slice(-3000))); } } catch (e) {} };
   { const gset = getGreeted(); cands = (cands || []).filter(c => gset.indexOf(String(c.userName).toLowerCase()) < 0); }
+  /* 先読み: 表示中のカードの裏で次のカードの挨拶案を生成しておく(スワイプした瞬間に出る) */
+  const draftCache = {};
+  const prefetch = (i) => {
+    if (i < 0 || i >= cands.length) return;
+    const c = cands[i]; if (!c) return;
+    const nm = c.userName;
+    if ((c.ideas && c.ideas.length) || draftCache[nm]) return;
+    draftCache[nm] = gasFetch_("greetDraft", { userName: nm, screen_name: screen }).catch(() => ({ error: "取得エラー" }));
+  };
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
   const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "\u2715 \u9589\u3058\u308b";
@@ -337,8 +346,10 @@ async function openGreetSwipe(cands, screen) {
       r = { ideas: cand.ideas, latestTweet: cand.latestTweet || "", latestId: cand.latestId || "", latestUrl: cand.latestUrl || "" };
     } else {
       card.innerHTML = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(name) + '</div><div style="padding:30px 10px;text-align:center;color:var(--muted)">\u6328\u62f6\u6848\u3092\u751f\u6210\u4e2d\u2026</div>';
-      try { r = await gasFetch_("greetDraft", { userName: name, screen_name: screen }); } catch (e) { r = { error: "\u53d6\u5f97\u30a8\u30e9\u30fc" }; }
+      if (!draftCache[name]) prefetch(idx);
+      try { r = await draftCache[name]; } catch (e) { r = { error: "\u53d6\u5f97\u30a8\u30e9\u30fc" }; }
     }
+    prefetch(idx + 1); prefetch(idx + 2); /* 次の2枚を裏で先読み */
     let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:16px">@' + esc(name) + '</b><a href="https://x.com/' + esc(name) + '" target="_blank" style="font-size:12px;color:var(--accent2);text-decoration:none">X\u3067\u958b\u304f\u2192</a></div>';
     if (!r || r.error) {
       const emsg = (r && r.error) || "\u53d6\u5f97\u5931\u6557";
@@ -372,6 +383,7 @@ async function openGreetSwipe(cands, screen) {
     const tintE = mkTint(), labelE = mkLabel(); card.appendChild(tintE); card.appendChild(labelE);
     attachSwipe(card, name, ideas, target, tintE, labelE);
   }
+  prefetch(0); prefetch(1); /* 開いた直後に最初の2枚を先読み */
   renderCard();
 }
 /* 👋 フォローした人に挨拶: 実際にXでフォロー中の人(最近順)から未挨拶の人を取得し、AIが相手の最新投稿を読んで挨拶案を作る。送信は人間確認(半自動) */
@@ -503,7 +515,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "122";
+const APP_VERSION = "123";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2250,16 +2262,16 @@ BUILDERS.settings = (el) => {
     /* 🤖自動ONの時: 画像つき投稿の作り置きボタン(フロントで文字入り画像つきの予約をまとめて作る) */
     if (CFG.mixImageAuto) {
       const stockWrap = document.createElement("div"); stockWrap.style.cssText="margin-top:8px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
-      stockWrap.innerHTML = '<div style="font-weight:700;font-size:13px">📅 画像つき投稿を自動作り置き</div><div style="font-size:11px;color:var(--muted);margin:4px 0 8px">アプリを開くだけで、在庫が0本になったら裏で自動的に7本まで作って予約(手動と同じ文字入り画像)。あとは時間が来たら自動投稿。GASは文字合成できないのでこの方式。</div>';
+      stockWrap.innerHTML = '<div style="font-weight:700;font-size:13px">📅 画像つき投稿を自動作り置き</div><div style="font-size:11px;color:var(--muted);margin:4px 0 8px">アプリを開くだけで、在庫が0本になったら裏で自動的に1本作って予約(手動と同じ文字入り画像)。あとは時間が来たら自動投稿。まとめて作りたい時は下のボタンで。GASは文字合成できないのでこの方式。</div>';
       const stockRow = document.createElement("div"); stockRow.style.cssText="display:flex;gap:8px;flex-wrap:wrap";
-      const b=document.createElement("button"); b.className="mini"; b.textContent="今すぐ作り置き(7本)";
+      const b=document.createElement("button"); b.className="mini"; b.textContent="今すぐ作り置き(3本)";
       b.style.cssText="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;flex:1";
-      b.onclick=()=>prepareFlavorPosts(7, stockWrap);
+      b.onclick=()=>prepareFlavorPosts(3, stockWrap);
       stockRow.appendChild(b);
       stockWrap.appendChild(stockRow);
       /* 🔄 開いた時に自動補充トグル */
       const rfRow=document.createElement("div"); rfRow.style.cssText="display:flex;align-items:center;justify-content:space-between;margin-top:10px";
-      rfRow.innerHTML='<div style="font-size:12px;font-weight:600">🔄 開いた時に自動補充<div style="font-size:10px;color:var(--muted);font-weight:400">在庫が0本になったらアプリを開いた時に裏で自動で7本作る(1時間に1回まで)</div></div>';
+      rfRow.innerHTML='<div style="font-size:12px;font-weight:600">🔄 開いた時に自動補充<div style="font-size:10px;color:var(--muted);font-weight:400">在庫が0本になったらアプリを開いた時に裏で自動で1本作る(1時間に1回まで)</div></div>';
       const rfSw=document.createElement("button");
       rfSw.style.cssText="flex:0 0 auto;width:48px;height:26px;border-radius:13px;border:none;cursor:pointer;position:relative;"+(CFG.mixAutoRefill?"background:linear-gradient(135deg,#10b981,#059669)":"background:#3a3a4a");
       rfSw.innerHTML='<span style="position:absolute;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;'+(CFG.mixAutoRefill?"left:25px":"left:3px")+'"></span>';
@@ -2472,7 +2484,7 @@ function drawGlassStar_(ctx, cx, cy, r) {
   ctx.beginPath(); ctx.arc(cx-r*0.28,cy-r*0.32,r*0.14,0,Math.PI*2); ctx.fillStyle="rgba(255,255,255,0.96)"; ctx.fill();
   ctx.restore();
 }
-/* 自動補充: 在庫(未来のpending)が0本になったら7本まで作って予約。1時間に1回まで(連打・課金暴発を防ぐ。上限7本を超えては作らない) */
+/* 自動補充: 在庫(未来のpending)が0本になったら1本だけ作って予約。1時間に1回まで(連打・課金暴発を防ぐ) */
 async function checkAndRefillStock(wrapEl){
   try {
     const screen = (typeof S!=="undefined" && S.activeAccount) ? S.activeAccount : (CFG.account||"");
@@ -2482,9 +2494,9 @@ async function checkAndRefillStock(wrapEl){
     const nowIso = new Date().toISOString();
     const { data } = await sb.from("scheduled_posts").select("id").eq("screen_name", screen).eq("status","pending").gte("scheduled_at", nowIso);
     const stock = (data||[]).length;
-    if (stock < 1) { /* 在庫1未満(=0本)の時だけ、上限7本まで補充 */
+    if (stock < 1) { /* 在庫1未満(=0本)の時だけ、1本だけ作る(生成待ちを短く) */
       localStorage.setItem("xpl_refill_ts_"+screen, String(Date.now()));
-      await prepareFlavorPosts(7 - stock, wrapEl);
+      await prepareFlavorPosts(1, wrapEl);
     }
   } catch(e) {}
 }
