@@ -251,14 +251,16 @@ async function openGreetSwipe(cands, screen) {
   const getGreeted = () => { try { return JSON.parse(localStorage.getItem(greetedKey) || "[]"); } catch (e) { return []; } };
   const addGreeted = (nm) => { try { const g = getGreeted(); const l = String(nm).toLowerCase(); if (g.indexOf(l) < 0) { g.push(l); localStorage.setItem(greetedKey, JSON.stringify(g.slice(-3000))); } } catch (e) {} };
   { const gset = getGreeted(); cands = (cands || []).filter(c => gset.indexOf(String(c.userName).toLowerCase()) < 0); }
-  /* 先読み: 表示中のカードの裏で次のカードの挨拶案を生成しておく(スワイプした瞬間に出る) */
+  /* 先読み: 直列(1件ずつ)で次のカードを生成しておく。同時に叩くとレート制限で取得エラーになるため必ず順番に */
   const draftCache = {};
+  let prefetchChain = Promise.resolve();
   const prefetch = (i) => {
     if (i < 0 || i >= cands.length) return;
     const c = cands[i]; if (!c) return;
     const nm = c.userName;
     if ((c.ideas && c.ideas.length) || draftCache[nm]) return;
-    draftCache[nm] = gasFetch_("greetDraft", { userName: nm, screen_name: screen }).catch(() => ({ error: "取得エラー" }));
+    draftCache[nm] = prefetchChain.then(() => gasFetch_("greetDraft", { userName: nm, screen_name: screen }).catch(() => ({ error: "取得エラー" })));
+    prefetchChain = draftCache[nm].catch(() => {});
   };
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
@@ -348,8 +350,14 @@ async function openGreetSwipe(cands, screen) {
       card.innerHTML = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(name) + '</div><div style="padding:30px 10px;text-align:center;color:var(--muted)">\u6328\u62f6\u6848\u3092\u751f\u6210\u4e2d\u2026</div>';
       if (!draftCache[name]) prefetch(idx);
       try { r = await draftCache[name]; } catch (e) { r = { error: "\u53d6\u5f97\u30a8\u30e9\u30fc" }; }
+      /* レート制限等の一時的な取得エラーは、少し待って1回だけ再試行 */
+      if (r && r.error && /\u53d6\u5f97|HTTP|429/.test(r.error)) {
+        card.innerHTML = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(name) + '</div><div style="padding:30px 10px;text-align:center;color:var(--muted)">\u518d\u8a66\u884c\u4e2d\u2026</div>';
+        await new Promise(function (res) { setTimeout(res, 1300); });
+        try { delete draftCache[name]; r = await gasFetch_("greetDraft", { userName: name, screen_name: screen }); } catch (e) { r = { error: "\u53d6\u5f97\u30a8\u30e9\u30fc" }; }
+      }
     }
-    prefetch(idx + 1); prefetch(idx + 2); /* 次の2枚を裏で先読み */
+    prefetch(idx + 1); /* 次の1枚だけ裏で先読み(同時に叩かずレート制限を回避) */
     let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:16px">@' + esc(name) + '</b><a href="https://x.com/' + esc(name) + '" target="_blank" style="font-size:12px;color:var(--accent2);text-decoration:none">X\u3067\u958b\u304f\u2192</a></div>';
     if (!r || r.error) {
       const emsg = (r && r.error) || "\u53d6\u5f97\u5931\u6557";
@@ -515,7 +523,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "123";
+const APP_VERSION = "124";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
