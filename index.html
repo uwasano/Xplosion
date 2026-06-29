@@ -381,9 +381,10 @@ async function openGreetSwipe(cands, screen) {
     let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:16px">@' + esc(name) + '</b><a href="https://x.com/' + esc(name) + '" target="_blank" style="font-size:12px;color:var(--accent2);text-decoration:none">X\u3067\u958b\u304f\u2192</a></div>';
     if (!r || r.error) {
       const emsg = (r && r.error) || "\u53d6\u5f97\u5931\u6557";
-      /* 挨拶できない人(RTのみ/最近投稿なし/対象外)は自動スキップして次のカードへ(エラーカードを出さない) */
+      /* 挨拶案が作れない人(RTのみ/最近投稿なし等)は"その場だけ"スキップして次へ。
+         永久スキップ(skip)にすると、APIが一時的に投稿を取れなかっただけの人まで永久に消えてしまうため、idxを進めるだけにする(次回開けばまた出る) */
       if (/\u30aa\u30ea\u30b8\u30ca\u30eb\u6295\u7a3f|\u5bfe\u8c61\u5916|\u6295\u7a3f\u304c\u898b\u3064\u304b|\u6295\u7a3f\u306a\u3057|30\u65e5/.test(emsg)) {
-        skip(name); idx++; renderCard(); return;
+        idx++; renderCard(); return;
       }
       html += '<div class="muted" style="font-size:12px;margin-top:6px">' + esc(emsg) + '</div><div style="font-size:12px;color:var(--muted);margin-top:12px">\u2190 \u5de6\u30b9\u30ef\u30a4\u30d7\u3067\u30b9\u30ad\u30c3\u30d7</div>';
       card.innerHTML = html;
@@ -431,6 +432,19 @@ async function openFollowGreeting(out) {
   const swBtn = document.createElement("button"); swBtn.className = "mini cyan"; swBtn.style.cssText = "width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px"; swBtn.textContent = "🃏 スワイプで一気に挨拶 (" + cands.length + "件)";
   swBtn.onclick = () => openGreetSwipe(cands.slice(), screen);
   out.appendChild(swBtn);
+  /* 誤って永久スキップされた人を復活させるボタン */
+  const resetBtn = document.createElement("button"); resetBtn.className = "mini"; resetBtn.style.cssText = "width:100%;padding:9px;margin-bottom:10px;font-size:12px;color:var(--muted)";
+  resetBtn.textContent = "↩ 誤ってスキップされた人を復活";
+  resetBtn.onclick = async () => {
+    if (!confirm("過去にスキップ扱いになった未挨拶の人を、挨拶候補に戻します。よろしいですか？")) return;
+    resetBtn.disabled = true; resetBtn.textContent = "復活中…";
+    try {
+      const r = await gasFetch_("resetGreetSkips", { screen_name: screen });
+      if (r && r.ok) { resetBtn.textContent = "✓ 復活しました。開き直すと反映されます"; }
+      else { resetBtn.textContent = "失敗: " + ((r && r.error) || "もう一度試して"); resetBtn.disabled = false; }
+    } catch (e) { resetBtn.textContent = "失敗。もう一度試して"; resetBtn.disabled = false; }
+  };
+  out.appendChild(resetBtn);
   const listWrap = document.createElement("div"); out.appendChild(listWrap);
   for (const c of cands) {
     const name = c.userName;
@@ -446,8 +460,8 @@ async function openFollowGreeting(out) {
       else { r = await gasFetch_("greetDraft", { userName: name, screen_name: screen }); }
       if (!r || r.error) {
         const msg = (r && r.error) || "取得失敗";
-        /* 挨拶できない人(RTのみ/最近投稿なし/対象外)はエラー表示せず自動でスキップ */
-        if (/オリジナル投稿|対象外|投稿が見つか|投稿なし|30日/.test(msg)) { doSkip(); continue; }
+        /* 挨拶案が作れない人は永久スキップせず、カードを消すだけ(一時的な取得失敗で永久に消さない。次回また出る) */
+        if (/オリジナル投稿|対象外|投稿が見つか|投稿なし|30日/.test(msg)) { card.remove(); continue; }
         card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted" style="font-size:11px">' + esc(msg) + '</span> ';
         const sk = document.createElement("button"); sk.className = "mini"; sk.style.fontSize = "11px"; sk.textContent = "スキップ"; sk.onclick = doSkip; card.appendChild(sk);
         continue;
@@ -545,7 +559,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "129";
+const APP_VERSION = "130";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
