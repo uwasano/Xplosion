@@ -234,6 +234,19 @@ function greetPaceMark_(screen) {
     localStorage.setItem("xpl_greet_times_" + screen, JSON.stringify(arr.slice(-200)));
   } catch (e) {}
 }
+/* 送る相手にリプ済みかをX APIで直接確認(全ジャンル共通)。セッション内はキャッシュして無駄打ちしない */
+const _repliedCache = {};
+async function checkRepliedTo(screen, handle) {
+  if (!screen || !handle) return false;
+  const k = String(screen).toLowerCase() + "|" + String(handle).toLowerCase().replace(/^@/, "");
+  if (k in _repliedCache) return _repliedCache[k];
+  try {
+    const r = await gasFetch_("checkReplied", { screen_name: screen, handle: handle });
+    const v = !!(r && r.replied);
+    _repliedCache[k] = v;
+    return v;
+  } catch (e) { return false; }
+}
 /* 画面遷移(Xを開く等)が起きても完走する確実な送信。挨拶済み記録など"絶対に落としたくない"書き込みに使う */
 function gasReliable_(action, extra) {
   try {
@@ -343,6 +356,10 @@ async function openGreetSwipe(cands, screen) {
     counter.textContent = (idx + 1) + " / " + cands.length + "\u3000(\u672c\u65e5\u9001\u4fe1 " + sentCount() + "/50)";
     const cand = cands[idx];
     const name = cand.userName;
+    /* 送る前の最終本人確認: 既にこの相手にリプ済みなら、表示せずスキップして次へ(全ジャンル共通の最終関門) */
+    stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px">\u78ba\u8a8d\u4e2d\u2026</div>';
+    if (await checkRepliedTo(screen, name)) { skip(name); idx++; renderCard(); return; }
+    stack.innerHTML = "";
     const card = document.createElement("div");
     card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;overflow-y:auto;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55)";
     stack.appendChild(card);
@@ -417,6 +434,8 @@ async function openFollowGreeting(out) {
   const listWrap = document.createElement("div"); out.appendChild(listWrap);
   for (const c of cands) {
     const name = c.userName;
+    /* 送る前の本人確認: 既にリプ済みならカードを出さない */
+    if (await checkRepliedTo(screen, name)) { continue; }
     const card = document.createElement("div"); card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;font-size:13px";
     card.innerHTML = '<b>@' + esc(name) + '</b> <span class="muted">の挨拶案を生成中…</span>';
     listWrap.appendChild(card);
@@ -526,7 +545,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "126";
+const APP_VERSION = "127";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
