@@ -358,7 +358,7 @@ async function openGreetSwipe(cands, screen) {
     const name = cand.userName;
     /* 送る前の最終本人確認: 既にこの相手にリプ済みなら、表示せずスキップして次へ(全ジャンル共通の最終関門) */
     stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px">\u78ba\u8a8d\u4e2d\u2026</div>';
-    if (await checkRepliedTo(screen, name)) { skip(name); idx++; renderCard(); return; }
+    if (await checkRepliedTo(screen, name)) { idx++; renderCard(); return; }
     stack.innerHTML = "";
     const card = document.createElement("div");
     card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;overflow-y:auto;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55)";
@@ -545,7 +545,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "128";
+const APP_VERSION = "129";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
