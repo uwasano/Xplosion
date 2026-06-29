@@ -545,7 +545,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "127";
+const APP_VERSION = "128";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6287,6 +6287,29 @@ BUILDERS.followers = (el) => {
         '<span style="display:flex;gap:10px;align-items:center"><b style="font-family:var(--mono)">' + now + '</b>' +
         '<span style="font-family:var(--mono);color:' + dcol + ';min-width:66px;text-align:right;font-size:12px">' + dd + '/7日</span></span></div>' +
         '<div style="height:6px;border-radius:4px;background:var(--border);overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + (me ? "var(--accent)" : "#5b6bb0") + ';border-radius:4px"></div></div>';
+      if (!me) {
+        const rival = name.replace(/^@/, "");
+        row.style.cursor = "pointer";
+        const tapHint = document.createElement("div");
+        tapHint.style.cssText = "font-size:10.5px;color:var(--accent2);margin-top:7px";
+        tapHint.textContent = "▼ タップで「伸びた理由＋真似すべき動き」を分析";
+        row.appendChild(tapHint);
+        const panel = document.createElement("div");
+        panel.style.cssText = "display:none;margin-top:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px;font-size:12.5px;line-height:1.75;white-space:pre-wrap";
+        row.appendChild(panel);
+        let loaded = false;
+        row.onclick = async () => {
+          if (panel.style.display === "block") { panel.style.display = "none"; tapHint.textContent = "▼ タップで「伸びた理由＋真似すべき動き」を分析"; return; }
+          panel.style.display = "block"; tapHint.textContent = "▲ 閉じる";
+          if (loaded) return;
+          panel.textContent = "競合の投稿・リプを取得して分析中…（20秒ほどかかります）";
+          try {
+            const r = await gasFetch_("competitorAnalysis", { screen_name: tname, rival: rival, diff: d ? d.diff : null, now: d ? d.now : null });
+            if (r && r.text) { panel.textContent = r.text; loaded = true; }
+            else { panel.textContent = "分析できなかった: " + ((r && r.error) || "データ不足"); }
+          } catch (e) { panel.textContent = "分析に失敗した。少し待ってもう一度タップしてみて。"; }
+        };
+      }
       tbl.appendChild(row);
     });
     compEl.appendChild(tbl);
