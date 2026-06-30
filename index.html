@@ -566,7 +566,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "133";
+const APP_VERSION = "134";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1822,10 +1822,22 @@ BUILDERS.home = (el) => {
         } else { cFoll.val.textContent = "—"; cFoll.sub.textContent = "推移記録で取得"; }
       } catch (e) { cFoll.val.textContent = "—"; }
     } else { cFoll.val.textContent = "—"; }
+    /* token_usageは1日数百行貯まるため、Supabaseの1回1000行上限だと新しい日が切り捨てられる。1000行ずつ全件取得する */
+    async function fetchAllUsage(sel, sinceVal) {
+      let all = [], from = 0; const page = 1000;
+      for (let guard = 0; guard < 50; guard++) {
+        const { data, error } = await sb.from("token_usage").select(sel).gte("day", sinceVal).order("id", { ascending: true }).range(from, from + page - 1);
+        if (error || !data || !data.length) break;
+        all = all.concat(data);
+        if (data.length < page) break;
+        from += page;
+      }
+      return all;
+    }
     /* AI利用料を機能タグ別に集計して円グラフ表示(今月分) */
     try {
       const monthStart = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 8) + "01";
-      const { data: tu } = await sb.from("token_usage").select("tag,cost_usd,model").gte("day", monthStart);
+      const tu = await fetchAllUsage("tag,cost_usd,model", monthStart);
       const byTag = {};
       const byModel = { Haiku: 0, Sonnet: 0, "その他": 0 };
       (tu || []).forEach((r) => {
@@ -1845,7 +1857,7 @@ BUILDERS.home = (el) => {
     /* 直近7日間の日別利用料(棒グラフ) */
     try {
       const since7 = new Date(Date.now() + 9 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
-      const { data: tu7 } = await sb.from("token_usage").select("cost_usd,day,model").gte("day", since7);
+      const tu7 = await fetchAllUsage("cost_usd,day,model", since7);
       const byDayModel = {};
       (tu7 || []).forEach((r) => {
         const k = String(r.day).slice(0, 10);
