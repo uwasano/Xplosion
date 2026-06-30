@@ -430,6 +430,13 @@ async function openFollowGreeting(out) {
   const sentToday = sentMap[today] || 0;
   out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:4px">👋 フォローした人に挨拶</div><div class="muted" style="font-size:11px;margin-bottom:8px">実際にフォロー中の人(最近順)から未挨拶の人を表示。相手の最新投稿を読んでAIが挨拶案を作ります。<b>送信は内容を確認してから</b>。本日送信 ' + sentToday + '/50件。</div>';
   const swBtn = document.createElement("button"); swBtn.className = "mini cyan"; swBtn.style.cssText = "width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px"; swBtn.textContent = "🃏 スワイプで一気に挨拶 (" + cands.length + "件)";
+  /* 候補の内訳を表示(なぜこの件数なのかが分かるように) */
+  if (cj.diag) {
+    const dg = cj.diag;
+    const di = document.createElement("div"); di.className = "muted"; di.style.cssText = "font-size:10.5px;margin-bottom:8px;line-height:1.5";
+    di.textContent = "内訳: 最近フォロー" + dg.pool + "人中 / 挨拶済み・スキップ等で除外 " + dg.excluded + " / 挨拶文を用意 " + dg.ready + (dg.draftFail ? " / 投稿が取れず除外 " + dg.draftFail : "") + (dg.capReached ? " / 今回未生成(次回分) " + dg.capReached : "");
+    out.appendChild(di);
+  }
   swBtn.onclick = () => openGreetSwipe(cands.slice(), screen);
   out.appendChild(swBtn);
   /* 誤って永久スキップされた人を復活させるボタン */
@@ -559,7 +566,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "130";
+const APP_VERSION = "132";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5067,6 +5074,7 @@ BUILDERS.calendar = (el) => {
       if (it.description) html += '<div style="font-size:13.5px;line-height:1.65;margin-bottom:12px;white-space:pre-wrap;color:#dce7f5">' + esc(it.description) + '</div>';
       else html += '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">(プロフィール文なし)</div>';
       html += '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">フォロワー ' + (it.followers || 0) + ' ・ フォロー ' + (it.following || 0) + ' ・ 投稿 ' + (it.statuses || 0) + '</div>';
+      if (it.areaMatch) html += '<div style="display:inline-block;font-size:11px;font-weight:700;color:#7CFFB2;background:rgba(124,255,178,0.12);border:1px solid rgba(124,255,178,0.4);border-radius:6px;padding:2px 8px;margin-bottom:6px">📍 エリア一致</div>';
       if (it.location) html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">📍 ' + esc(it.location) + '</div>';
       html += '<div style="font-size:12px;color:var(--accent2)">@' + esc(it.from) + ' をフォロー中</div>';
       card.innerHTML = html;
