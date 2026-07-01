@@ -566,7 +566,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "141";
+const APP_VERSION = "142";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5257,7 +5257,7 @@ BUILDERS.calendar = (el) => {
     let h = tabs;
     if (isGenre) {
       h += '<h2 style="font-size:19px;margin:0 0 4px">🔁 業種をRTしてる人</h2>';
-      h += '<p class="muted" style="font-size:12px;margin:0 0 8px">「' + esc(r.keyword || "業種") + '」や関連ジャンルについて3回以上 投稿・RTして絡んでる人=関心の濃い見込み客です。合いそうな方に自分から絡みましょう。</p>';
+      h += '<p class="muted" style="font-size:12px;margin:0 0 8px">「' + esc(r.keyword || "業種") + '」や関連ジャンルに反応してる<b>客・ファン側</b>を抽出します（予想垢・店舗・有料アカなどの<b>同業/提供側は除外</b>）。RTしてる人＝拡散してくれる濃い見込み客を優先表示。</p>';
       if (r.keywords && r.keywords.length) h += '<p class="muted" style="font-size:11px;margin:-4px 0 8px;color:var(--accent2)">検索した関連ワード: ' + r.keywords.map(function (k) { return esc(k); }).join(" / ") + '</p>';
       if (r.debug) h += '<p class="muted" style="font-size:11px;margin:0 0 12px;color:var(--accent2)">RTユーザー ' + (r.debug.found || 0) + '人検出 → 3回以上の ' + (r.debug.shown || 0) + '人を表示</p>';
     } else {
