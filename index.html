@@ -566,7 +566,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "135";
+const APP_VERSION = "139";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4400,10 +4400,48 @@ BUILDERS.calendar = (el) => {
   const btnHunter = document.createElement("button"); btnHunter.className = "mini"; btnHunter.textContent = "🎯 バズってる投稿にリプする";
   const btnHunterPro = document.createElement("button"); btnHunterPro.className = "mini"; btnHunterPro.textContent = "🎯 リプハンターPRO(自動で溜めた投稿)";
   const btnGreet = document.createElement("button"); btnGreet.className = "mini"; btnGreet.textContent = "👋 フォローした人に挨拶";
-  trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote); trBtnRow.appendChild(btnEnjou);
-  trBtnRow.appendChild(btnMirror); trBtnRow.appendChild(btnHunter); trBtnRow.appendChild(btnHunterPro); trBtnRow.appendChild(btnGreet);
+  const mkMenuHead = (label) => { const s = document.createElement("div"); s.style.cssText = "font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--accent2);margin:12px 0 3px;font-family:var(--mono)"; s.textContent = label; return s; };
+  trBtnRow.appendChild(mkMenuHead("📝 投稿ネタを作る"));
+  trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote); trBtnRow.appendChild(btnEnjou); trBtnRow.appendChild(btnMirror);
+  trBtnRow.appendChild(mkMenuHead("🎯 リプで絡んで見つけてもらう"));
+  trBtnRow.appendChild(btnHunter); trBtnRow.appendChild(btnHunterPro);
+  trBtnRow.appendChild(mkMenuHead("👋 フォロワーを増やす"));
+  trBtnRow.appendChild(btnGreet);
   btnGreet.onclick = () => openFollowGreeting(trOut);
+  const btnLearn = document.createElement("button"); btnLearn.className = "mini"; btnLearn.textContent = "🧠 自分の勝ちパターンを学習";
+  trBtnRow.appendChild(mkMenuHead("📊 分析して伸ばす"));
+  trBtnRow.appendChild(btnLearn);
+  btnLearn.onclick = async () => {
+    const screen = (acct.value || "").replace(/^@/, "");
+    if (!screen) { trOut.innerHTML = '<div class="muted" style="padding:8px">先にアカウントを選んでください。</div>'; return; }
+    btnLearn.disabled = true; btnLearn.textContent = "自分の投稿を分析中…";
+    trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">過去の自分の投稿を伸び順に分析して、勝ちパターンを抽出中…(15秒ほど)</div>';
+    let r;
+    try { r = await gasFetch_("learnWinningStyle", { screen_name: screen }); }
+    catch (e) { trOut.innerHTML = '<div class="err">' + (e.message || "失敗") + '</div>'; btnLearn.disabled = false; btnLearn.textContent = "🧠 自分の勝ちパターンを学習"; return; }
+    btnLearn.disabled = false; btnLearn.textContent = "🧠 自分の勝ちパターンを学習";
+    if (!r || r.error) { trOut.innerHTML = '<div class="muted" style="padding:8px">' + esc((r && r.error) || "失敗") + '</div>'; return; }
+    trOut.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">'
+      + '<div style="font-weight:800;font-size:14px;margin-bottom:6px">🧠 学習した勝ちパターン</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">' + (r.analyzed || 0) + '件の投稿を分析(上位' + (r.top || 0) + '件を勝ちとして抽出)。<b style="color:#3DFFA8">この内容は今後の投稿生成に自動で反映されます。</b></div>'
+      + '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:#dce7f5">' + esc(r.style || "") + '</div></div>';
+  };
   trFld.appendChild(trBtnRow);
+  /* 各機能の折りたたみ説明(アコーディオン)。初心者でも何の機能か分かるように */
+  const helpBox = document.createElement("div");
+  helpBox.style.cssText = "margin-top:12px";
+  var _dsum = "cursor:pointer;font-size:12.5px;font-weight:700;padding:9px 10px;color:#dce7f5;list-style:none";
+  var _dbox = "background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:6px;overflow:hidden";
+  var _dtxt = "font-size:12px;line-height:1.7;color:var(--muted);padding:2px 12px 11px";
+  helpBox.innerHTML =
+    '<details style="' + _dbox + '"><summary style="' + _dsum + '">❓ 各機能の説明（タップで開く）</summary>'
+    + '<div style="padding:4px 8px 8px">'
+    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">📝 投稿ネタを作る</summary><div style="' + _dtxt + '">今Xで起きてること（トレンド・人気ポスト・炎上・バズ投稿）を見て、あなたの文体のままバズりそうな投稿案を作ります。気になったネタから3案つくって、良いのを予約・投稿するだけ。</div></details>'
+    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">🎯 リプで絡んで見つけてもらう</summary><div style="' + _dtxt + '">今伸びている競合の投稿に、気の利いたリプを返して、その投稿を見ている人たちに自分を見つけてもらう機能。左スワイプでスルー、右スワイプでリプ。「🚀早リプ狙い目」はバズる寸前の投稿＝一番乗りでリプすると一番目立てます。</div></details>'
+    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">👋 フォロワーを増やす</summary><div style="' + _dtxt + '">自分がフォローした人に、自然な挨拶リプを送る機能。相手の投稿やプロフィールを読んで挨拶文を自動生成します。競合フォロワー／業種をRTしてる人から、濃い見込み客も探せます。</div></details>'
+    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">📊 分析して伸ばす（自己学習）</summary><div style="' + _dtxt + '">あなたの過去投稿を「伸びた順」に分析して、伸びる投稿の“勝ちパターン”をAIが抽出します。<b style="color:#3DFFA8">抽出後は、今後の投稿生成に自動で反映</b>されるので、使うほど自分のウケ筋に最適化されていきます。まず何本か投稿が溜まってから押すと精度が上がります。</div></details>'
+    + '</div></details>';
+  trFld.appendChild(helpBox);
   const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
   trFld.appendChild(trDate);
   const trOut = document.createElement("div"); trFld.appendChild(trOut);
@@ -5070,7 +5108,7 @@ BUILDERS.calendar = (el) => {
       html += '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">フォロワー ' + (it.followers || 0) + ' ・ フォロー ' + (it.following || 0) + ' ・ 投稿 ' + (it.statuses || 0) + '</div>';
       if (it.areaMatch) html += '<div style="display:inline-block;font-size:11px;font-weight:700;color:#7CFFB2;background:rgba(124,255,178,0.12);border:1px solid rgba(124,255,178,0.4);border-radius:6px;padding:2px 8px;margin-bottom:6px">📍 エリア一致</div>';
       if (it.location) html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">📍 ' + esc(it.location) + '</div>';
-      html += '<div style="font-size:12px;color:var(--accent2)">@' + esc(it.from) + ' をフォロー中</div>';
+      html += '<div style="font-size:12px;color:var(--accent2)">' + (it.rtCount ? ('🔁 ' + esc(it.from) + 'を' + it.rtCount + '回RT') : ('@' + esc(it.from) + ' をフォロー中')) + '</div>';
       card.innerHTML = html;
       const pf = document.createElement("button"); pf.className = "mini cyan";
       pf.style.cssText = "display:block;width:100%;text-align:center;margin-top:16px;padding:12px;font-size:14px;font-weight:700;position:relative;z-index:2";
@@ -5158,7 +5196,7 @@ BUILDERS.calendar = (el) => {
       const it = items[idx];
       const card = document.createElement("div");
       card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:20px;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55);display:flex;flex-direction:column;overflow-y:auto";
-      let html = '<div style="font-weight:800;font-size:16px;margin-bottom:4px">@' + esc(it.author) + '</div>';
+      let html = '<div style="font-weight:800;font-size:16px;margin-bottom:4px">@' + esc(it.author) + (it.hot ? ' <span style="font-size:11px;font-weight:800;color:#ffd34d;background:rgba(255,211,77,.14);border:1px solid rgba(255,211,77,.5);border-radius:6px;padding:2px 7px;margin-left:4px">🚀 早リプ狙い目</span>' : '') + '</div>';
       html += '<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);margin-bottom:10px">'
         + '<span>❤ ' + (it.likes || 0) + '</span><span>🔁 ' + (it.retweets || 0) + '</span><span>💬 ' + (it.replies || 0) + '</span>'
         + (it.views ? '<span>👁 ' + it.views + '</span>' : '')
@@ -5200,41 +5238,62 @@ BUILDERS.calendar = (el) => {
     renderCard();
   }
 
-  async function openRivalFollowers() {
+  async function openRivalFollowers(mode) {
+    mode = mode || "competitor";
     const screen = (acct.value || "").replace(/^@/, "");
     const box = fgOverlay_();
-    box.innerHTML = '<div class="muted" style="text-align:center;padding:40px">競合のフォロワーを分析中…<br>(初回のみ20秒ほど。同日2回目以降はキャッシュで即表示)</div>';
+    const isGenre = mode === "genre";
+    box.innerHTML = '<div class="muted" style="text-align:center;padding:40px">' + (isGenre ? '業種ジャンルをRTしている人を探索中…<br>(20秒ほど)' : '競合のフォロワーを分析中…<br>(初回のみ20秒ほど。同日2回目以降はキャッシュで即表示)') + '</div>';
     if (!screen) { box.innerHTML = '<div class="muted" style="padding:20px">先にアカウントを選んでください。</div>'; return; }
+    /* モード切替タブ */
+    const tabs = '<div style="display:flex;gap:8px;margin-bottom:12px">'
+      + '<button id="rfTab0" class="mini' + (isGenre ? '' : ' cyan') + '" style="flex:1;padding:10px;font-size:12.5px;font-weight:700">🎯 競合フォロワー</button>'
+      + '<button id="rfTab1" class="mini' + (isGenre ? ' cyan' : '') + '" style="flex:1;padding:10px;font-size:12.5px;font-weight:700">🔁 業種をRTしてる人</button>'
+      + '</div>';
     let r;
-    try { r = await gasFetch_("rivalFollowers", { screenName: screen }); }
-    catch (e) { box.innerHTML = '<div class="err">' + e.message + '</div>'; return; }
-    if (!r || r.error) { box.innerHTML = '<div class="err">' + esc((r && r.error) || "取得に失敗") + '</div>'; return; }
-    /* フロント側でも見た人を除外(サーバーのseenが効かない時の保険) */
+    try { r = await gasFetch_(isGenre ? "genreRetweeters" : "rivalFollowers", { screenName: screen, screen_name: screen }); }
+    catch (e) { box.innerHTML = tabs + '<div class="err">' + e.message + '</div>'; wireTabs(); return; }
+    if (!r || r.error) { box.innerHTML = tabs + '<div class="err">' + esc((r && r.error) || "取得に失敗") + '</div>'; wireTabs(); return; }
     const _localSeen = rivalSeenLocal_();
     if (r.candidates && r.candidates.length) {
       r.candidates = r.candidates.filter(function (c) { return !_localSeen[String(c.userName || "").replace(/^@/, "").toLowerCase()]; });
     }
-    let h = '<h2 style="font-size:19px;margin:0 0 4px">🎯 競合フォロワー</h2>';
-    h += '<p class="muted" style="font-size:12px;margin:0 0 8px">競合をフォローしている人=あなたの濃い見込み客です。プロフィールを見て、合いそうな方に自分から絡みましょう。</p>';
-    var rivalLabel = (r.rivalsInfo && r.rivalsInfo.length)
-      ? r.rivalsInfo.map(function (x) { return x.name ? (esc(x.name) + '(@' + esc(x.userName) + ')') : ('@' + esc(x.userName)); }).join(' ')
-      : (r.rivals || []).map(function (x) { return "@" + esc(x); }).join(" ");
-    h += '<p class="muted" style="font-size:11px;margin:0 0 12px">対象: ' + rivalLabel + ' ／ 未フォローの個人を抽出' + (r.cached ? ' ・本日取得済み(キャッシュ/API消費なし)' : '') + '</p>';
-    if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → 今回 ' + (r.debug.shown || 0) + '人を表示（競合' + (r.debug.rivals || 0) + 'アカ）' + (typeof r.debug.remaining === 'number' ? '・まだ見てない残り' + r.debug.remaining + '人' : '') + '</p>';
+    let h = tabs;
+    if (isGenre) {
+      h += '<h2 style="font-size:19px;margin:0 0 4px">🔁 業種をRTしてる人</h2>';
+      h += '<p class="muted" style="font-size:12px;margin:0 0 8px">「' + esc(r.keyword || "業種") + '」や関連ジャンルを3回以上リツイートしている人=関心の濃い見込み客です。合いそうな方に自分から絡みましょう。</p>';
+      if (r.keywords && r.keywords.length) h += '<p class="muted" style="font-size:11px;margin:-4px 0 8px;color:var(--accent2)">検索した関連ワード: ' + r.keywords.map(function (k) { return esc(k); }).join(" / ") + '</p>';
+      if (r.debug) h += '<p class="muted" style="font-size:11px;margin:0 0 12px;color:var(--accent2)">RTユーザー ' + (r.debug.found || 0) + '人検出 → 3回以上の ' + (r.debug.shown || 0) + '人を表示</p>';
+    } else {
+      h += '<h2 style="font-size:19px;margin:0 0 4px">🎯 競合フォロワー</h2>';
+      h += '<p class="muted" style="font-size:12px;margin:0 0 8px">競合をフォローしている人=あなたの濃い見込み客です。プロフィールを見て、合いそうな方に自分から絡みましょう。</p>';
+      var rivalLabel = (r.rivalsInfo && r.rivalsInfo.length)
+        ? r.rivalsInfo.map(function (x) { return x.name ? (esc(x.name) + '(@' + esc(x.userName) + ')') : ('@' + esc(x.userName)); }).join(' ')
+        : (r.rivals || []).map(function (x) { return "@" + esc(x); }).join(" ");
+      h += '<p class="muted" style="font-size:11px;margin:0 0 12px">対象: ' + rivalLabel + ' ／ 未フォローの個人を抽出' + (r.cached ? ' ・本日取得済み(キャッシュ/API消費なし)' : '') + '</p>';
+      if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → 今回 ' + (r.debug.shown || 0) + '人を表示（競合' + (r.debug.rivals || 0) + 'アカ）' + (typeof r.debug.remaining === 'number' ? '・まだ見てない残り' + r.debug.remaining + '人' : '') + '</p>';
+    }
     if (!r.candidates || !r.candidates.length) {
-      h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。</div>';
-      box.innerHTML = h; return;
+      h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">' + (isGenre ? '3回以上RTしている人が見つかりませんでした。業種ジャンルの語を調整するか、時間を置いて試してください。' : '候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。') + '</div>';
+      box.innerHTML = h; wireTabs(); return;
     }
     h += followPaceHtml_();
     h += '<button id="rivalSwBtn" class="mini cyan" style="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px">🃏 スワイプで一気に見る (' + r.candidates.length + '件)</button>';
     r.candidates.forEach(function (c) {
+      var sourceLine = c.rtCount ? ('🔁 ' + esc(c.from) + 'を' + c.rtCount + '回RT') : ('@' + esc(c.from) + '由来');
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
-      h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · @' + esc(c.from) + '由来</div><div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span> <span style="color:' + ((c.risk || 0) >= 50 ? '#ff6b6b' : 'var(--muted)') + ';font-weight:700">⚠️' + (c.risk || 0) + '%</span></div></div>';
+      h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · ' + sourceLine + '</div>' + (c.areaMatch ? '<div style="font-size:10.5px;font-weight:700;color:#7CFFB2;margin-top:2px">📍 エリア一致</div>' : '') + '<div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span></div></div>';
       h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_(\'' + esc(c.userName) + '\');rivalMarkLocal_(\'' + esc(c.userName) + '\')" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
       h += '</div>';
     });
     box.innerHTML = h;
     const _rsb = box.querySelector("#rivalSwBtn"); if (_rsb) _rsb.onclick = () => openRivalSwipe(r.candidates.slice(), screen);
+    wireTabs();
+    function wireTabs() {
+      const t0 = box.querySelector("#rfTab0"), t1 = box.querySelector("#rfTab1");
+      if (t0) t0.onclick = () => openRivalFollowers("competitor");
+      if (t1) t1.onclick = () => openRivalFollowers("genre");
+    }
   }
 
   async function makeHunterReplies(host, p) {
