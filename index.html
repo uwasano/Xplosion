@@ -566,7 +566,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "139";
+const APP_VERSION = "141";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4400,17 +4400,28 @@ BUILDERS.calendar = (el) => {
   const btnHunter = document.createElement("button"); btnHunter.className = "mini"; btnHunter.textContent = "🎯 バズってる投稿にリプする";
   const btnHunterPro = document.createElement("button"); btnHunterPro.className = "mini"; btnHunterPro.textContent = "🎯 リプハンターPRO(自動で溜めた投稿)";
   const btnGreet = document.createElement("button"); btnGreet.className = "mini"; btnGreet.textContent = "👋 フォローした人に挨拶";
-  const mkMenuHead = (label) => { const s = document.createElement("div"); s.style.cssText = "font-size:10px;font-weight:800;letter-spacing:.14em;color:var(--accent2);margin:12px 0 3px;font-family:var(--mono)"; s.textContent = label; return s; };
-  trBtnRow.appendChild(mkMenuHead("📝 投稿ネタを作る"));
-  trBtnRow.appendChild(btnTrend); trBtnRow.appendChild(btnPop); trBtnRow.appendChild(btnQuote); trBtnRow.appendChild(btnEnjou); trBtnRow.appendChild(btnMirror);
-  trBtnRow.appendChild(mkMenuHead("🎯 リプで絡んで見つけてもらう"));
-  trBtnRow.appendChild(btnHunter); trBtnRow.appendChild(btnHunterPro);
-  trBtnRow.appendChild(mkMenuHead("👋 フォロワーを増やす"));
-  trBtnRow.appendChild(btnGreet);
+  const SEC = { post: "#38d4f0", reply: "#ff6fae", follow: "#3DFFA8", analyze: "#b98cff" };
+  const mbtn = (btn, accent) => { btn.className = "mini"; btn.style.cssText = "width:100%;text-align:left;padding:12px 14px;border-radius:10px;border:1px solid var(--border);border-left:3px solid " + accent + ";background:var(--surface);color:#e8f0fb;font-size:13.5px;font-weight:700;margin:0"; return btn; };
+  const mkMenuHead = (label, accent) => { const s = document.createElement("div"); s.style.cssText = "font-size:11px;font-weight:800;letter-spacing:.12em;color:" + accent + ";margin:16px 0 6px;font-family:var(--mono)"; s.textContent = label; return s; };
+  const mkMenuInfo = (html, accent) => { const d = document.createElement("details"); d.style.cssText = "margin:0 0 8px"; d.innerHTML = '<summary style="cursor:pointer;font-size:11.5px;color:var(--muted);list-style:none;padding:3px 0">ℹ️ この機能は？（タップで開く）</summary><div style="font-size:12px;line-height:1.75;color:#b9c6d8;padding:8px 11px;margin-top:5px;background:var(--surface2);border-radius:8px;border-left:2px solid ' + accent + '">' + html + '</div>'; return d; };
+
+  trBtnRow.appendChild(mkMenuHead("📝 投稿ネタを作る", SEC.post));
+  trBtnRow.appendChild(mkMenuInfo("あなたの文体のままバズりそうな投稿案を3つ作ります。中の項目：<br>・<b>🌏 世の中のトレンド</b>＝今Xで話題のワードから作る<br>・<b>📈 Xの人気ポスト</b>＝伸びてる投稿を参考に作る<br>・<b>💬 人気ポストを引用</b>＝引用リポスト用の一言を作る<br>・<b>🔥 炎上ニュース</b>＝今の炎上ネタから作る<br>・<b>🪞 バズってる投稿をマネ</b>＝競合の当たり投稿の型を自分用に変換", SEC.post));
+  [btnTrend, btnPop, btnQuote, btnEnjou, btnMirror].forEach(function (b) { mbtn(b, SEC.post); trBtnRow.appendChild(b); });
+
+  trBtnRow.appendChild(mkMenuHead("🎯 リプで絡んで見つけてもらう", SEC.reply));
+  trBtnRow.appendChild(mkMenuInfo("伸びてる投稿に気の利いたリプを返して見つけてもらう機能。中の項目：<br>・<b>🎯 バズってる投稿にリプする</b>＝競合の直近12時間の投稿を『勢い(時間あたりの伸び)＋インプレ』でランキング表示。<b style=\"color:#ffd34d\">🚀即バズ狙撃はここ</b>：バズる寸前の投稿が『🚀早リプ狙い目』として最上位に出る。左スワイプでスルー／右スワイプでリプ<br>・<b>🎯 リプハンターPRO</b>＝裏で自動的に溜めておいた『リプすべき投稿』の一覧。手動で探さなくても溜まったものにサッとリプできる", SEC.reply));
+  [btnHunter, btnHunterPro].forEach(function (b) { mbtn(b, SEC.reply); trBtnRow.appendChild(b); });
+
+  trBtnRow.appendChild(mkMenuHead("👋 フォロワーを増やす", SEC.follow));
+  trBtnRow.appendChild(mkMenuInfo("見込み客を見つけて自分から絡む機能。中の項目：<br>・<b>👋 フォローした人に挨拶</b>＝自分がフォローした人に、相手の投稿やプロフィールを読んだ自然な挨拶リプを自動生成して送る<br>・（この中の画面で切替）<b>🎯 競合フォロワー</b>＝競合をフォローしてる人から見込み客を抽出／<b>🔁 業種をRTしてる人</b>＝あなたの業種や関連ジャンルに投稿・RTで絡んでる人を抽出。どちらもエリア一致を優先＆業者を除外", SEC.follow));
+  mbtn(btnGreet, SEC.follow); trBtnRow.appendChild(btnGreet);
   btnGreet.onclick = () => openFollowGreeting(trOut);
-  const btnLearn = document.createElement("button"); btnLearn.className = "mini"; btnLearn.textContent = "🧠 自分の勝ちパターンを学習";
-  trBtnRow.appendChild(mkMenuHead("📊 分析して伸ばす"));
-  trBtnRow.appendChild(btnLearn);
+
+  const btnLearn = document.createElement("button"); btnLearn.textContent = "🧠 自分の勝ちパターンを学習";
+  trBtnRow.appendChild(mkMenuHead("📊 分析して伸ばす", SEC.analyze));
+  trBtnRow.appendChild(mkMenuInfo("使うほど賢くなる自己学習機能。中の項目：<br>・<b>🧠 自分の勝ちパターンを学習</b>＝あなたの過去投稿を『伸びた順』に分析して勝ちパターン(フックの型・文字数・効く話題・絵文字の使い方など)をAIが抽出。<b style=\"color:#3DFFA8\">抽出後は今後の投稿生成に自動で反映</b>され、自分のウケ筋に最適化されていく。投稿が何本か溜まってから押すと精度が上がります", SEC.analyze));
+  mbtn(btnLearn, SEC.analyze); trBtnRow.appendChild(btnLearn);
   btnLearn.onclick = async () => {
     const screen = (acct.value || "").replace(/^@/, "");
     if (!screen) { trOut.innerHTML = '<div class="muted" style="padding:8px">先にアカウントを選んでください。</div>'; return; }
@@ -4427,21 +4438,6 @@ BUILDERS.calendar = (el) => {
       + '<div style="font-size:13px;line-height:1.7;white-space:pre-wrap;color:#dce7f5">' + esc(r.style || "") + '</div></div>';
   };
   trFld.appendChild(trBtnRow);
-  /* 各機能の折りたたみ説明(アコーディオン)。初心者でも何の機能か分かるように */
-  const helpBox = document.createElement("div");
-  helpBox.style.cssText = "margin-top:12px";
-  var _dsum = "cursor:pointer;font-size:12.5px;font-weight:700;padding:9px 10px;color:#dce7f5;list-style:none";
-  var _dbox = "background:var(--surface);border:1px solid var(--border);border-radius:9px;margin-bottom:6px;overflow:hidden";
-  var _dtxt = "font-size:12px;line-height:1.7;color:var(--muted);padding:2px 12px 11px";
-  helpBox.innerHTML =
-    '<details style="' + _dbox + '"><summary style="' + _dsum + '">❓ 各機能の説明（タップで開く）</summary>'
-    + '<div style="padding:4px 8px 8px">'
-    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">📝 投稿ネタを作る</summary><div style="' + _dtxt + '">今Xで起きてること（トレンド・人気ポスト・炎上・バズ投稿）を見て、あなたの文体のままバズりそうな投稿案を作ります。気になったネタから3案つくって、良いのを予約・投稿するだけ。</div></details>'
-    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">🎯 リプで絡んで見つけてもらう</summary><div style="' + _dtxt + '">今伸びている競合の投稿に、気の利いたリプを返して、その投稿を見ている人たちに自分を見つけてもらう機能。左スワイプでスルー、右スワイプでリプ。「🚀早リプ狙い目」はバズる寸前の投稿＝一番乗りでリプすると一番目立てます。</div></details>'
-    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">👋 フォロワーを増やす</summary><div style="' + _dtxt + '">自分がフォローした人に、自然な挨拶リプを送る機能。相手の投稿やプロフィールを読んで挨拶文を自動生成します。競合フォロワー／業種をRTしてる人から、濃い見込み客も探せます。</div></details>'
-    + '<details style="' + _dbox + '"><summary style="' + _dsum + '">📊 分析して伸ばす（自己学習）</summary><div style="' + _dtxt + '">あなたの過去投稿を「伸びた順」に分析して、伸びる投稿の“勝ちパターン”をAIが抽出します。<b style="color:#3DFFA8">抽出後は、今後の投稿生成に自動で反映</b>されるので、使うほど自分のウケ筋に最適化されていきます。まず何本か投稿が溜まってから押すと精度が上がります。</div></details>'
-    + '</div></details>';
-  trFld.appendChild(helpBox);
   const trDate = document.createElement("input"); trDate.type = "datetime-local"; trDate.style.cssText = "margin-top:8px";
   trFld.appendChild(trDate);
   const trOut = document.createElement("div"); trFld.appendChild(trOut);
@@ -5108,7 +5104,7 @@ BUILDERS.calendar = (el) => {
       html += '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">フォロワー ' + (it.followers || 0) + ' ・ フォロー ' + (it.following || 0) + ' ・ 投稿 ' + (it.statuses || 0) + '</div>';
       if (it.areaMatch) html += '<div style="display:inline-block;font-size:11px;font-weight:700;color:#7CFFB2;background:rgba(124,255,178,0.12);border:1px solid rgba(124,255,178,0.4);border-radius:6px;padding:2px 8px;margin-bottom:6px">📍 エリア一致</div>';
       if (it.location) html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">📍 ' + esc(it.location) + '</div>';
-      html += '<div style="font-size:12px;color:var(--accent2)">' + (it.rtCount ? ('🔁 ' + esc(it.from) + 'を' + it.rtCount + '回RT') : ('@' + esc(it.from) + ' をフォロー中')) + '</div>';
+      html += '<div style="font-size:12px;color:var(--accent2)">' + (it.rtCount ? ('🔁 ' + esc(it.from) + '系に' + it.rtCount + '回 投稿/RT' + (it.rtOnly ? '(うちRT' + it.rtOnly + ')' : '')) : ('@' + esc(it.from) + ' をフォロー中')) + '</div>';
       card.innerHTML = html;
       const pf = document.createElement("button"); pf.className = "mini cyan";
       pf.style.cssText = "display:block;width:100%;text-align:center;margin-top:16px;padding:12px;font-size:14px;font-weight:700;position:relative;z-index:2";
@@ -5261,7 +5257,7 @@ BUILDERS.calendar = (el) => {
     let h = tabs;
     if (isGenre) {
       h += '<h2 style="font-size:19px;margin:0 0 4px">🔁 業種をRTしてる人</h2>';
-      h += '<p class="muted" style="font-size:12px;margin:0 0 8px">「' + esc(r.keyword || "業種") + '」や関連ジャンルを3回以上リツイートしている人=関心の濃い見込み客です。合いそうな方に自分から絡みましょう。</p>';
+      h += '<p class="muted" style="font-size:12px;margin:0 0 8px">「' + esc(r.keyword || "業種") + '」や関連ジャンルについて3回以上 投稿・RTして絡んでる人=関心の濃い見込み客です。合いそうな方に自分から絡みましょう。</p>';
       if (r.keywords && r.keywords.length) h += '<p class="muted" style="font-size:11px;margin:-4px 0 8px;color:var(--accent2)">検索した関連ワード: ' + r.keywords.map(function (k) { return esc(k); }).join(" / ") + '</p>';
       if (r.debug) h += '<p class="muted" style="font-size:11px;margin:0 0 12px;color:var(--accent2)">RTユーザー ' + (r.debug.found || 0) + '人検出 → 3回以上の ' + (r.debug.shown || 0) + '人を表示</p>';
     } else {
@@ -5274,13 +5270,13 @@ BUILDERS.calendar = (el) => {
       if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → 今回 ' + (r.debug.shown || 0) + '人を表示（競合' + (r.debug.rivals || 0) + 'アカ）' + (typeof r.debug.remaining === 'number' ? '・まだ見てない残り' + r.debug.remaining + '人' : '') + '</p>';
     }
     if (!r.candidates || !r.candidates.length) {
-      h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">' + (isGenre ? '3回以上RTしている人が見つかりませんでした。業種ジャンルの語を調整するか、時間を置いて試してください。' : '候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。') + '</div>';
+      h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">' + (isGenre ? '該当する人が見つかりませんでした。業種ジャンルの語がニッチすぎるか、直近の投稿が少ない可能性があります。生成設定の業種ジャンルを「競艇」「シーシャ」のようにシンプルな語にすると当たりやすくなります。' : '候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。') + '</div>';
       box.innerHTML = h; wireTabs(); return;
     }
     h += followPaceHtml_();
     h += '<button id="rivalSwBtn" class="mini cyan" style="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px">🃏 スワイプで一気に見る (' + r.candidates.length + '件)</button>';
     r.candidates.forEach(function (c) {
-      var sourceLine = c.rtCount ? ('🔁 ' + esc(c.from) + 'を' + c.rtCount + '回RT') : ('@' + esc(c.from) + '由来');
+      var sourceLine = c.rtCount ? ('🔁 ' + esc(c.from) + '系に' + c.rtCount + '回 投稿/RT' + (c.rtOnly ? '(うちRT' + c.rtOnly + ')' : '')) : ('@' + esc(c.from) + '由来');
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
       h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · ' + sourceLine + '</div>' + (c.areaMatch ? '<div style="font-size:10.5px;font-weight:700;color:#7CFFB2;margin-top:2px">📍 エリア一致</div>' : '') + '<div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span></div></div>';
       h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_(\'' + esc(c.userName) + '\');rivalMarkLocal_(\'' + esc(c.userName) + '\')" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
