@@ -430,6 +430,15 @@ async function openFollowGreeting(out) {
   let sentMap = {}; try { sentMap = JSON.parse(localStorage.getItem("xpl_greet_sent_" + screen) || "{}"); } catch (e) {}
   const sentToday = sentMap[today] || 0;
   out.innerHTML = '<div style="font-size:13px;font-weight:700;margin-bottom:4px">👋 フォローした人に挨拶</div><div class="muted" style="font-size:11px;margin-bottom:8px">実際にフォロー中の人(最近順)から未挨拶の人を表示。相手の最新投稿を読んでAIが挨拶案を作ります。<b>送信は内容を確認してから</b>。本日送信 ' + sentToday + '/120件。</div>';
+  /* 実測フォロバ率(適当な確率でなく、実際にフォロバされた割合を毎日計測した値) */
+  gasFetch_("followbackStats", { screen_name: screen }).then(function (fb) {
+    if (!fb || fb.rate == null || !fb.total) return;
+    const fbLine = document.createElement("div");
+    fbLine.style.cssText = "font-size:11.5px;font-weight:700;color:#9effd0;margin:-4px 0 8px";
+    fbLine.textContent = "🤝 実測フォロバ率: " + fb.rate + "%（このツールでフォローした" + fb.total + "人中 " + fb.backed + "人がフォロバ）";
+    const head = out.querySelector("div");
+    if (head && head.nextSibling) out.insertBefore(fbLine, head.nextSibling.nextSibling);
+  }).catch(function () {});
   const swBtn = document.createElement("button"); swBtn.className = "mini cyan"; swBtn.style.cssText = "width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px"; swBtn.textContent = "🃏 スワイプで一気に挨拶 (" + cands.length + "件)";
   /* 候補の内訳を表示(なぜこの件数なのかが分かるように) */
   if (cj.diag) {
@@ -567,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "144r2";
+const APP_VERSION = "145";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
