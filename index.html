@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "146r2";
+const APP_VERSION = "147";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4456,9 +4456,55 @@ BUILDERS.calendar = (el) => {
   [btnHunter, btnHunterPro].forEach(function (b) { mbtn(b, SEC.reply); trBtnRow.appendChild(b); });
 
   trBtnRow.appendChild(mkMenuHead("👋 フォロワーを増やす", SEC.follow));
-  trBtnRow.appendChild(mkMenuInfo("見込み客を見つけて自分から絡む機能。中の項目：<br>・<b>👋 フォローした人に挨拶</b>＝自分がフォローした人に、相手の投稿やプロフィールを読んだ自然な挨拶リプを自動生成して送る<br>・（この中の画面で切替）<b>🎯 競合フォロワー</b>＝競合をフォローしてる人から見込み客を抽出／<b>🔁 業種をRTしてる人</b>＝あなたの業種や関連ジャンルに投稿・RTで絡んでる人を抽出。どちらもエリア一致を優先＆業者を除外", SEC.follow));
+  trBtnRow.appendChild(mkMenuInfo("見込み客を見つけて自分から絡む機能。中の項目：<br>・<b>👋 フォローした人に挨拶</b>＝自分がフォローした人に、相手の投稿やプロフィールを読んだ自然な挨拶リプを自動生成して送る<br>・（この中の画面で切替）<b>🎯 競合フォロワー</b>＝競合をフォローしてる人から見込み客を抽出／<b>🔁 業種をRTしてる人</b>＝あなたの業種や関連ジャンルに投稿・RTで絡んでる人を抽出。どちらもエリア一致を優先＆業者を除外<br>・<b>🤝 仲を深める(今日の5人)</b>＝フォロバし合ってる相互フォロワーから今日絡むべき5人を実データで選定。過去の会話を記憶して『続きものの会話』を作り、関係を段階的に深めてファン化する(進行度%つき)", SEC.follow));
   mbtn(btnGreet, SEC.follow); trBtnRow.appendChild(btnGreet);
   btnGreet.onclick = () => openFollowGreeting(trOut);
+  const btnBond = document.createElement("button"); btnBond.textContent = "🤝 仲を深める(今日の5人)";
+  mbtn(btnBond, SEC.follow); trBtnRow.appendChild(btnBond);
+  btnBond.onclick = async () => {
+    const screen = (acct.value || "").replace(/^@/, "");
+    if (!screen) { trOut.innerHTML = '<div class="muted" style="padding:8px">先にアカウントを選んでください。</div>'; return; }
+    btnBond.disabled = true; btnBond.textContent = "相互フォロワーを分析中…";
+    trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">フォロバし合ってる人の中から、今日絡むべき5人を実データ(接触履歴・返信・経過日数)で選定中…(20秒ほど)</div>';
+    let r;
+    try { r = await gasFetch_("bondList", { screen_name: screen }); }
+    catch (e) { trOut.innerHTML = '<div class="err">' + (e.message || "取得失敗") + '</div>'; btnBond.disabled = false; btnBond.textContent = "🤝 仲を深める(今日の5人)"; return; }
+    btnBond.disabled = false; btnBond.textContent = "🤝 仲を深める(今日の5人)";
+    if (!r || r.error) { trOut.innerHTML = '<div class="muted" style="padding:8px">' + esc((r && r.error) || "取得失敗") + '</div>'; return; }
+    if (!r.items || !r.items.length) { trOut.innerHTML = '<div class="muted" style="padding:8px">今日絡める相手が見つかりませんでした(相手の投稿が無い等)。また明日試してください。</div>'; return; }
+    trOut.innerHTML = '<div class="desc" style="margin:6px 0">相互フォロー' + (r.mutual || 0) + '人の中から今日の' + r.items.length + '人。進行度は接触回数・相手からの返信・経過日数の実データ計算です。</div>';
+    r.items.forEach(function (it) {
+      const card = document.createElement("div");
+      card.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px;margin-top:10px";
+      let h = '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px">'
+        + '<div style="min-width:0"><span style="font-weight:800;font-size:14px">' + esc(it.name || it.userName) + '</span> <span class="muted" style="font-size:11px">@' + esc(it.userName) + '</span></div>'
+        + '<span style="flex-shrink:0;font-size:11px;font-weight:800;color:#9effd0;background:rgba(158,255,208,.1);border:1px solid rgba(158,255,208,.35);border-radius:6px;padding:2px 8px">' + esc(it.stage) + ' ' + it.progress + '%</span></div>';
+      h += '<div style="height:6px;background:rgba(255,255,255,.07);border-radius:3px;margin-bottom:8px"><div style="height:6px;width:' + it.progress + '%;border-radius:3px;background:linear-gradient(90deg,#3DFFA8,#7fd4ff)"></div></div>';
+      if (it.lastText) h += '<div class="muted" style="font-size:11px;margin-bottom:6px">🕘 前回' + (it.daysAgo != null ? '(' + it.daysAgo + '日前)' : '') + ': 「' + esc(it.lastText) + '…」' + (it.replied ? ' ・<b style="color:#3DFFA8">相手から返信あり</b>' : '') + '</div>';
+      h += '<div style="font-size:12.5px;line-height:1.55;color:#dce7f5;white-space:pre-wrap;margin-bottom:8px">' + esc(it.latest.text.length > 150 ? it.latest.text.slice(0, 150) + "…" : it.latest.text) + '</div>';
+      card.innerHTML = h;
+      const ib = document.createElement("div");
+      const genBtn = document.createElement("button"); genBtn.className = "mini cyan"; genBtn.textContent = "💬 続きの会話を作る"; genBtn.style.cssText = "width:100%;padding:9px";
+      genBtn.onclick = async () => {
+        genBtn.disabled = true; genBtn.textContent = "会話の記憶を読んで生成中…";
+        let ri;
+        try { ri = await gasFetch_("bondIdeas", { screen_name: screen, target: it.userName, postText: it.latest.text, history: it.history || [] }); }
+        catch (e) { genBtn.textContent = "失敗。もう一度"; genBtn.disabled = false; return; }
+        ib.innerHTML = "";
+        if (!ri || !ri.ideas || !ri.ideas.length) { ib.innerHTML = '<div class="muted" style="font-size:11px">案が作れませんでした</div>'; return; }
+        ri.ideas.forEach(function (idea) {
+          const b = document.createElement("button"); b.className = "mini";
+          b.style.cssText = "display:block;width:100%;text-align:left;margin-top:6px;padding:9px;font-size:12.5px;line-height:1.5;white-space:normal";
+          b.textContent = idea;
+          b.onclick = () => xReplyIntent({ tweet_id: it.latest.id, tweet_url: it.latest.url, screen_name: screen, author_handle: it.userName }, idea, "bond");
+          ib.appendChild(b);
+        });
+      };
+      ib.appendChild(genBtn);
+      card.appendChild(ib);
+      trOut.appendChild(card);
+    });
+  };
 
   const btnLearn = document.createElement("button"); btnLearn.textContent = "🧠 自分の勝ちパターンを学習";
   trBtnRow.appendChild(mkMenuHead("📊 分析して伸ばす", SEC.analyze));
