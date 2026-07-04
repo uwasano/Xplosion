@@ -566,7 +566,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "142";
+const APP_VERSION = "144";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2325,7 +2325,7 @@ BUILDERS.settings = (el) => {
     /* 🤖自動ONの時: 画像つき投稿の作り置きボタン(フロントで文字入り画像つきの予約をまとめて作る) */
     if (CFG.mixImageAuto) {
       const stockWrap = document.createElement("div"); stockWrap.style.cssText="margin-top:8px;padding:10px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px";
-      stockWrap.innerHTML = '<div style="font-weight:700;font-size:13px">📅 画像つき投稿を自動作り置き</div><div style="font-size:11px;color:var(--muted);margin:4px 0 8px">アプリを開くだけで、在庫が0本になったら裏で自動的に1本作って予約(手動と同じ文字入り画像)。あとは時間が来たら自動投稿。まとめて作りたい時は下のボタンで。GASは文字合成できないのでこの方式。</div>';
+      stockWrap.innerHTML = '<div style="font-weight:700;font-size:13px">📅 画像つき投稿を自動作り置き</div><div style="font-size:11px;color:var(--muted);margin:4px 0 8px">アプリを開くだけで、在庫が2本を切ったら裏で自動的に補充して予約(手動と同じ文字入り画像)。切れる前に足すのでエラーになりにくい。まとめて作りたい時は下のボタンで。GASは文字合成できないのでこの方式(＝アプリをたまに開けば在庫が保たれます)。</div>';
       const stockRow = document.createElement("div"); stockRow.style.cssText="display:flex;gap:8px;flex-wrap:wrap";
       const b=document.createElement("button"); b.className="mini"; b.textContent="今すぐ作り置き(3本)";
       b.style.cssText="background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;flex:1";
@@ -2334,7 +2334,7 @@ BUILDERS.settings = (el) => {
       stockWrap.appendChild(stockRow);
       /* 🔄 開いた時に自動補充トグル */
       const rfRow=document.createElement("div"); rfRow.style.cssText="display:flex;align-items:center;justify-content:space-between;margin-top:10px";
-      rfRow.innerHTML='<div style="font-size:12px;font-weight:600">🔄 開いた時に自動補充<div style="font-size:10px;color:var(--muted);font-weight:400">在庫が0本になったらアプリを開いた時に裏で自動で1本作る(1時間に1回まで)</div></div>';
+      rfRow.innerHTML='<div style="font-size:12px;font-weight:600">🔄 開いた時に自動補充<div style="font-size:10px;color:var(--muted);font-weight:400">在庫が2本を切ったらアプリを開いた時に裏で自動補充(1時間に1回まで)</div></div>';
       const rfSw=document.createElement("button");
       rfSw.style.cssText="flex:0 0 auto;width:48px;height:26px;border-radius:13px;border:none;cursor:pointer;position:relative;"+(CFG.mixAutoRefill?"background:linear-gradient(135deg,#10b981,#059669)":"background:#3a3a4a");
       rfSw.innerHTML='<span style="position:absolute;top:3px;width:20px;height:20px;border-radius:50%;background:#fff;'+(CFG.mixAutoRefill?"left:25px":"left:3px")+'"></span>';
@@ -2547,7 +2547,7 @@ function drawGlassStar_(ctx, cx, cy, r) {
   ctx.beginPath(); ctx.arc(cx-r*0.28,cy-r*0.32,r*0.14,0,Math.PI*2); ctx.fillStyle="rgba(255,255,255,0.96)"; ctx.fill();
   ctx.restore();
 }
-/* 自動補充: 在庫(未来のpending)が0本になったら1本だけ作って予約。1時間に1回まで(連打・課金暴発を防ぐ) */
+/* 自動補充: 在庫(未来のpending)を常に2本キープ。0になる前に補充するので切れてエラーになりにくい。1時間に1回まで(課金暴発を防ぐ) */
 async function checkAndRefillStock(wrapEl){
   try {
     const screen = (typeof S!=="undefined" && S.activeAccount) ? S.activeAccount : (CFG.account||"");
@@ -2557,16 +2557,17 @@ async function checkAndRefillStock(wrapEl){
     const nowIso = new Date().toISOString();
     const { data } = await sb.from("scheduled_posts").select("id").eq("screen_name", screen).eq("status","pending").gte("scheduled_at", nowIso);
     const stock = (data||[]).length;
-    if (stock < 1) { /* 在庫1未満(=0本)の時だけ、1本だけ作る(生成待ちを短く) */
+    const TARGET = 2; /* 常に2本の在庫をキープ(切れる前に補充するのでエラーになりにくい) */
+    if (stock < TARGET) {
       localStorage.setItem("xpl_refill_ts_"+screen, String(Date.now()));
-      await prepareFlavorPosts(1, wrapEl);
+      await prepareFlavorPosts(Math.min(2, TARGET - stock), wrapEl, true); /* 第3引数=静かに(自動補充では赤エラーを出さない) */
     }
   } catch(e) {}
 }
 /* 画像つきシーシャ投稿を数本まとめて作って予約(作り置き)。背景生成→文字合成→scheduled_postsに予約 */
-async function prepareFlavorPosts(count, wrapEl){
+async function prepareFlavorPosts(count, wrapEl, silent){
   const out = wrapEl ? wrapEl.querySelector("#stockOut") : null;
-  const setMsg = (m,err)=>{ if(out) out.innerHTML = '<div style="color:'+(err?"#ff6b6b":"#10b981")+'">'+esc(m)+'</div>'; };
+  const setMsg = (m,err)=>{ if(out && !(silent && err)) out.innerHTML = '<div style="color:'+(err?"#ff6b6b":"#10b981")+'">'+esc(m)+'</div>'; };
   const screen = (typeof S!=="undefined" && S.activeAccount) ? S.activeAccount : (CFG.account||"");
   if (!screen) { setMsg("アカウントが選べてない",1); return; }
   let made=0;
@@ -5103,6 +5104,7 @@ BUILDERS.calendar = (el) => {
       else html += '<div style="font-size:12.5px;color:var(--muted);margin-bottom:12px">(プロフィール文なし)</div>';
       html += '<div style="font-size:13px;color:var(--muted);margin-bottom:4px">フォロワー ' + (it.followers || 0) + ' ・ フォロー ' + (it.following || 0) + ' ・ 投稿 ' + (it.statuses || 0) + '</div>';
       if (it.areaMatch) html += '<div style="display:inline-block;font-size:11px;font-weight:700;color:#7CFFB2;background:rgba(124,255,178,0.12);border:1px solid rgba(124,255,178,0.4);border-radius:6px;padding:2px 8px;margin-bottom:6px">📍 エリア一致</div>';
+      if (it.fbHigh) html += '<div style="display:inline-block;font-size:11px;font-weight:700;color:#9effd0;background:rgba(158,255,208,0.10);border:1px solid rgba(158,255,208,0.4);border-radius:6px;padding:2px 8px;margin-bottom:6px;margin-left:6px">💚 フォロバ期待</div>';
       if (it.location) html += '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">📍 ' + esc(it.location) + '</div>';
       html += '<div style="font-size:12px;color:var(--accent2)">' + (it.rtCount ? ('🔁 ' + esc(it.from) + '系に' + it.rtCount + '回 投稿/RT' + (it.rtOnly ? '(うちRT' + it.rtOnly + ')' : '')) : ('@' + esc(it.from) + ' をフォロー中')) + '</div>';
       card.innerHTML = html;
@@ -5278,7 +5280,7 @@ BUILDERS.calendar = (el) => {
     r.candidates.forEach(function (c) {
       var sourceLine = c.rtCount ? ('🔁 ' + esc(c.from) + '系に' + c.rtCount + '回 投稿/RT' + (c.rtOnly ? '(うちRT' + c.rtOnly + ')' : '')) : ('@' + esc(c.from) + '由来');
       h += '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:8px">';
-      h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · ' + sourceLine + '</div>' + (c.areaMatch ? '<div style="font-size:10.5px;font-weight:700;color:#7CFFB2;margin-top:2px">📍 エリア一致</div>' : '') + '<div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span></div></div>';
+      h += '<div style="min-width:0">' + (c.name ? ('<div style="font-weight:700;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(c.name) + '</div><div style="font-size:11px;color:var(--muted)">@' + esc(c.userName) + '</div>') : ('<div style="font-weight:700;font-size:13px">@' + esc(c.userName) + '</div>')) + '<div class="muted" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">' + c.followers + 'フォロワー · ' + sourceLine + '</div>' + (c.areaMatch ? '<div style="font-size:10.5px;font-weight:700;color:#7CFFB2;margin-top:2px">📍 エリア一致</div>' : '') + (c.fbHigh ? '<div style="font-size:10.5px;font-weight:700;color:#9effd0;margin-top:2px">💚 フォロバ期待</div>' : '') + '<div style="font-size:11px;margin-top:3px"><span style="color:#3DFFA8;font-weight:700">👍' + (c.rec || 0) + '%</span></div></div>';
       h += '<a class="mini cyan" href="https://x.com/' + esc(c.userName) + '" target="_blank" onclick="recordFollow_(\'' + esc(c.userName) + '\');rivalMarkLocal_(\'' + esc(c.userName) + '\')" style="flex-shrink:0;text-decoration:none;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700">プロフ→</a>';
       h += '</div>';
     });
