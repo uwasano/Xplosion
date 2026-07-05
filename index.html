@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "154";
+const APP_VERSION = "155";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1529,15 +1529,13 @@ function xplGoFeature(label) {
   try {
     /* 「👋 挨拶 / 🎯 競合フォロワー」のような複合表記は分割して1個ずつ探す */
     const parts = String(label || "").replace(/[\[\]]/g, "").split("/").map(t => t.trim()).filter(Boolean);
-    const isRadar = parts.some(pt => pt.indexOf("競合フォロワー") >= 0 || pt.indexOf("業種をRT") >= 0);
-    const tab = isRadar ? "radar" : "calendar";
-    /* 開くタブに合う候補を先に試す(レーダーなら競合フォロワー系を優先) */
+    /* 競合フォロワー/業種RT(=候補一覧を直接開くツール)を最優先で探す。ツールは全て投稿タブ(calendar)内 */
     parts.sort((a, b) => {
       const ra = (a.indexOf("競合フォロワー") >= 0 || a.indexOf("業種をRT") >= 0) ? 1 : 0;
       const rb = (b.indexOf("競合フォロワー") >= 0 || b.indexOf("業種をRT") >= 0) ? 1 : 0;
-      return isRadar ? rb - ra : ra - rb;
+      return rb - ra;
     });
-    showTab(tab);
+    showTab("calendar");
     if (typeof renderNav === "function") renderNav();
     setTimeout(() => {
       const norm = (t) => String(t || "").replace(/\s+/g, "");
