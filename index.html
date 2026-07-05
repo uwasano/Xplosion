@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "147";
+const APP_VERSION = "148";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1710,6 +1710,68 @@ BUILDERS.home = (el) => {
   const autoErrBox = document.createElement("div"); autoErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(autoErrBox);
   const costPieBox = document.createElement("div"); costPieBox.style.cssText = "margin:14px 0 0"; el.appendChild(costPieBox);
   const costBarBox = document.createElement("div"); costBarBox.style.cssText = "margin:12px 0 0"; el.appendChild(costBarBox);
+  /* ── 📈 成長プラン(今日のやること)をホームに常設: クライアント切替チップ+当日キャッシュ ── */
+  (function () {
+    const box = document.createElement("div");
+    box.style.cssText = "background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;margin-top:14px";
+    box.innerHTML = '<div style="font-weight:800;font-size:15px;margin-bottom:8px">📈 今日の成長プラン</div>';
+    const chips = document.createElement("div"); chips.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px";
+    const body = document.createElement("div");
+    box.appendChild(chips); box.appendChild(body);
+    el.appendChild(box);
+    const clients = (S.clients || []).filter(c => c.status === "active");
+    if (!clients.length) { body.innerHTML = '<div class="muted" style="font-size:12px">クライアント(アカウント)を登録すると、ここに毎日の成長プランが出ます。</div>'; return; }
+    let cur = localStorage.getItem("xpl_home_acct") || clients[0].screen_name;
+    if (!clients.some(c => c.screen_name === cur)) cur = clients[0].screen_name;
+    function renderChips() {
+      chips.innerHTML = "";
+      clients.forEach(c => {
+        const b = document.createElement("button"); b.className = "mini";
+        b.textContent = "@" + c.screen_name;
+        b.style.cssText = "padding:7px 12px;border-radius:99px;font-size:12px;font-weight:700;border:1px solid " + (c.screen_name === cur ? "#3DFFA8" : "var(--border)") + ";color:" + (c.screen_name === cur ? "#3DFFA8" : "var(--muted)") + ";background:var(--card)";
+        b.onclick = () => { cur = c.screen_name; localStorage.setItem("xpl_home_acct", cur); renderChips(); loadPlan(); };
+        chips.appendChild(b);
+      });
+    }
+    async function loadPlan() {
+      const day = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+      const ckey = "xpl_gplan_" + cur + "_" + day;
+      let plan = null;
+      try { plan = JSON.parse(localStorage.getItem(ckey) || "null"); } catch (e) {}
+      if (!plan) {
+        body.innerHTML = '<div class="muted" style="font-size:12px;padding:6px 0">@' + esc(cur) + ' の今日のプランを生成中…(初回のみ20秒。以降は今日中キャッシュ)</div>';
+        try { plan = await gasFetch_("growthPlan", { screen_name: cur }); } catch (e) { body.innerHTML = '<div class="err" style="font-size:12px">' + (e.message || "取得失敗") + '</div>'; return; }
+        if (!plan || plan.error) { body.innerHTML = '<div class="muted" style="font-size:12px">' + esc((plan && plan.error) || "生成に失敗") + '</div>'; return; }
+        try { localStorage.setItem(ckey, JSON.stringify(plan)); } catch (e) {}
+      }
+      let h = '<div style="font-size:12px;color:var(--accent2);font-weight:700;margin-bottom:4px">' + esc(plan.stage || "") + ' ・ フォロワー' + (plan.followers || 0) + '人 ・ 相互' + (plan.mutual || 0) + '人</div>';
+      h += '<div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:10px">' + esc(plan.summary || "") + '</div>';
+      body.innerHTML = h;
+      (plan.actions || []).forEach((a, i) => {
+        const row = document.createElement("label");
+        row.style.cssText = "display:flex;gap:9px;align-items:flex-start;padding:8px 4px;border-top:1px solid rgba(255,255,255,.05);cursor:pointer";
+        const dk = ckey + "_done_" + i;
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = localStorage.getItem(dk) === "1"; cb.style.cssText = "margin-top:3px";
+        cb.onchange = () => localStorage.setItem(dk, cb.checked ? "1" : "0");
+        const tx = document.createElement("div");
+        tx.innerHTML = '<div style="font-size:13px;font-weight:700;color:#e8f0fb">' + esc(a.title || "") + (a.feature ? ' <span style="font-size:10.5px;color:#3DFFA8">[' + esc(a.feature) + ']</span>' : '') + '</div>' + (a.detail ? '<div class="muted" style="font-size:11.5px;line-height:1.55">' + esc(a.detail) + '</div>' : '');
+        row.appendChild(cb); row.appendChild(tx);
+        body.appendChild(row);
+      });
+      if (plan.campaign && plan.campaign.post_text) {
+        const cw = document.createElement("div");
+        cw.style.cssText = "margin-top:10px;padding:11px;border-radius:10px;border:1px solid rgba(255,211,77,.4);background:rgba(255,211,77,.06)";
+        cw.innerHTML = '<div style="font-size:12.5px;font-weight:800;color:#ffd34d;margin-bottom:4px">🎁 ' + esc(plan.campaign.title || "プレゼント企画") + '</div>'
+          + '<div class="muted" style="font-size:11.5px;margin-bottom:6px">賞品: ' + esc(plan.campaign.prize || "") + '</div>'
+          + '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#dce7f5;background:var(--card);border-radius:8px;padding:9px">' + esc(plan.campaign.post_text) + '</div>';
+        const cp = document.createElement("button"); cp.className = "mini cyan"; cp.textContent = "📋 企画の投稿文をコピー"; cp.style.cssText = "width:100%;margin-top:8px;padding:9px";
+        cp.onclick = () => { navigator.clipboard.writeText(plan.campaign.post_text).then(() => { cp.textContent = "✅ コピーした！Xに貼って投稿"; }); };
+        cw.appendChild(cp);
+        body.appendChild(cw);
+      }
+    }
+    renderChips(); loadPlan();
+  })();
   const verTag = document.createElement("div"); verTag.style.cssText = "text-align:center;font-size:10px;color:var(--muted);margin-top:18px;opacity:.55"; verTag.textContent = "XPLOSION v" + APP_VERSION; el.appendChild(verTag);
 
   fld(el, "クイック");
