@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "148";
+const APP_VERSION = "150";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1524,6 +1524,19 @@ function renderNav() {
   }
 }
 function showTab(id) { if (!BUILDERS[id]) id = "calendar"; S.tab = id; $("content").innerHTML = ""; BUILDERS[id]($("content")); }
+/* 成長プランの[機能名]タップでその機能の場所へ直ジャンプ(投稿タブに切替→該当ボタンをクリック&スクロール) */
+function xplGoFeature(label) {
+  try {
+    showTab("calendar");
+    if (typeof renderNav === "function") renderNav();
+    const key = String(label || "").replace(/[\[\]]/g, "").trim();
+    setTimeout(() => {
+      const btns = Array.from(document.querySelectorAll("button"));
+      const hit = btns.find(b => b.textContent && b.textContent.indexOf(key) >= 0);
+      if (hit) { hit.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => hit.click(), 350); }
+    }, 120);
+  } catch (e) {}
+}
 
 /* ============ 共通部品 ============ */
 let _toastTimer = null;
@@ -1751,10 +1764,11 @@ BUILDERS.home = (el) => {
         const row = document.createElement("label");
         row.style.cssText = "display:flex;gap:9px;align-items:flex-start;padding:8px 4px;border-top:1px solid rgba(255,255,255,.05);cursor:pointer";
         const dk = ckey + "_done_" + i;
-        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = localStorage.getItem(dk) === "1"; cb.style.cssText = "margin-top:3px";
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = localStorage.getItem(dk) === "1"; cb.style.cssText = "margin-top:3px;width:20px;height:20px;flex:0 0 20px;padding:0;accent-color:#3DFFA8"; /* 共通CSSのinput幅100%を打ち消す */
         cb.onchange = () => localStorage.setItem(dk, cb.checked ? "1" : "0");
-        const tx = document.createElement("div");
-        tx.innerHTML = '<div style="font-size:13px;font-weight:700;color:#e8f0fb">' + esc(a.title || "") + (a.feature ? ' <span style="font-size:10.5px;color:#3DFFA8">[' + esc(a.feature) + ']</span>' : '') + '</div>' + (a.detail ? '<div class="muted" style="font-size:11.5px;line-height:1.55">' + esc(a.detail) + '</div>' : '');
+        const tx = document.createElement("div"); tx.style.cssText = "flex:1;min-width:0";
+        tx.innerHTML = '<div style="font-size:13px;font-weight:700;color:#e8f0fb">' + esc(a.title || "") + (a.feature ? ' <span style="font-size:10.5px;color:#3DFFA8;text-decoration:underline">[' + esc(a.feature) + ' →ここでやる]</span>' : '') + '</div>' + (a.detail ? '<div class="muted" style="font-size:11.5px;line-height:1.55">' + esc(a.detail) + '</div>' : '');
+        if (a.feature) { tx.style.cursor = "pointer"; tx.onclick = (ev) => { ev.preventDefault(); xplGoFeature(a.feature); }; }
         row.appendChild(cb); row.appendChild(tx);
         body.appendChild(row);
       });
@@ -1764,8 +1778,12 @@ BUILDERS.home = (el) => {
         cw.innerHTML = '<div style="font-size:12.5px;font-weight:800;color:#ffd34d;margin-bottom:4px">🎁 ' + esc(plan.campaign.title || "プレゼント企画") + '</div>'
           + '<div class="muted" style="font-size:11.5px;margin-bottom:6px">賞品: ' + esc(plan.campaign.prize || "") + '</div>'
           + '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#dce7f5;background:var(--card);border-radius:8px;padding:9px">' + esc(plan.campaign.post_text) + '</div>';
-        const cp = document.createElement("button"); cp.className = "mini cyan"; cp.textContent = "📋 企画の投稿文をコピー"; cp.style.cssText = "width:100%;margin-top:8px;padding:9px";
-        cp.onclick = () => { navigator.clipboard.writeText(plan.campaign.post_text).then(() => { cp.textContent = "✅ コピーした！Xに貼って投稿"; }); };
+        const xl = document.createElement("a"); xl.className = "mini cyan"; xl.textContent = "🚀 この文章のままXの投稿画面を開く";
+        xl.style.cssText = "display:block;text-align:center;width:100%;margin-top:8px;padding:10px;border-radius:8px;text-decoration:none;font-weight:800";
+        xl.href = "https://x.com/intent/post?text=" + encodeURIComponent(plan.campaign.post_text); xl.target = "_blank";
+        cw.appendChild(xl);
+        const cp = document.createElement("button"); cp.className = "mini"; cp.textContent = "📋 文章だけコピー"; cp.style.cssText = "width:100%;margin-top:6px;padding:8px";
+        cp.onclick = () => { navigator.clipboard.writeText(plan.campaign.post_text).then(() => { cp.textContent = "✅ コピーした"; }); };
         cw.appendChild(cp);
         body.appendChild(cw);
       }
