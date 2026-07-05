@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "155";
+const APP_VERSION = "156";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1527,9 +1527,7 @@ function showTab(id) { if (!BUILDERS[id]) id = "calendar"; S.tab = id; $("conten
 /* 成長プランの[機能名]タップでその機能の場所へ直ジャンプ(投稿タブに切替→該当ボタンをクリック&スクロール) */
 function xplGoFeature(label) {
   try {
-    /* 「👋 挨拶 / 🎯 競合フォロワー」のような複合表記は分割して1個ずつ探す */
     const parts = String(label || "").replace(/[\[\]]/g, "").split("/").map(t => t.trim()).filter(Boolean);
-    /* 競合フォロワー/業種RT(=候補一覧を直接開くツール)を最優先で探す。ツールは全て投稿タブ(calendar)内 */
     parts.sort((a, b) => {
       const ra = (a.indexOf("競合フォロワー") >= 0 || a.indexOf("業種をRT") >= 0) ? 1 : 0;
       const rb = (b.indexOf("競合フォロワー") >= 0 || b.indexOf("業種をRT") >= 0) ? 1 : 0;
@@ -1537,16 +1535,30 @@ function xplGoFeature(label) {
     });
     showTab("calendar");
     if (typeof renderNav === "function") renderNav();
-    setTimeout(() => {
-      const norm = (t) => String(t || "").replace(/\s+/g, "");
-      const btns = Array.from(document.querySelectorAll("button"));
-      let hit = null;
-      for (const pt of parts) {
-        hit = btns.find(b => b.textContent && norm(b.textContent).indexOf(norm(pt)) >= 0);
-        if (hit) break;
+    const saved = localStorage.getItem("xpl_home_acct") || "";
+    let tries = 0;
+    const attempt = () => {
+      tries++;
+      if (window.XPL_CAL && window.XPL_CAL.hasAccounts()) {
+        window.XPL_CAL.setAccount(saved); /* ホームで選んだクライアントを紐付け */
+        setTimeout(() => {
+          let done = null;
+          for (const pt of parts) { done = window.XPL_CAL.openFeature(pt); if (done !== null) break; }
+          if (done === null) {
+            /* 未対応の機能名は従来のボタン探しにフォールバック */
+            const norm = (t) => String(t || "").replace(/\s+/g, "");
+            const btns = Array.from(document.querySelectorAll("button"));
+            for (const pt of parts) {
+              const hit = btns.find(b => b.textContent && norm(b.textContent).indexOf(norm(pt)) >= 0);
+              if (hit) { hit.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => hit.click(), 250); break; }
+            }
+          }
+        }, 200);
+      } else if (tries < 25) {
+        setTimeout(attempt, 200); /* アカウント一覧の読み込み待ち(最大5秒) */
       }
-      if (hit) { hit.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => hit.click(), 350); }
-    }, 150);
+    };
+    attempt();
   } catch (e) {}
 }
 
@@ -4581,6 +4593,25 @@ BUILDERS.calendar = (el) => {
   trBtnRow.appendChild(mkMenuHead("📊 分析して伸ばす", SEC.analyze));
   trBtnRow.appendChild(mkMenuInfo("使うほど賢くなる自己学習機能。中の項目：<br>・<b>🧠 自分の勝ちパターンを学習</b>＝あなたの過去投稿を『伸びた順』に分析して勝ちパターン(フックの型・文字数・効く話題・絵文字の使い方など)をAIが抽出。<b style=\"color:#3DFFA8\">抽出後は今後の投稿生成に自動で反映</b>され、自分のウケ筋に最適化されていく。投稿が何本か溜まってから押すと精度が上がります", SEC.analyze));
   mbtn(btnLearn, SEC.analyze); trBtnRow.appendChild(btnLearn);
+  /* ホームの成長プランから確実に飛ぶための正式な入口(疑似クリックでなく関数を直接実行) */
+  window.XPL_CAL = {
+    hasAccounts: () => acct.options.length > 0 && !!acct.options[0].value,
+    setAccount: (sn) => {
+      if (!sn) return;
+      for (const o of acct.options) { if (o.value === sn) { acct.value = sn; try { acct.dispatchEvent(new Event("change")); } catch (e) {} break; } }
+    },
+    openFeature: (key) => {
+      key = String(key || "");
+      if (key.indexOf("競合フォロワー") >= 0) return openRivalFollowers("competitor");
+      if (key.indexOf("業種をRT") >= 0) return openRivalFollowers("genre");
+      if (key.indexOf("仲を深める") >= 0) return btnBond.onclick();
+      if (key.indexOf("バズってる投稿にリプ") >= 0) return btnHunter.onclick();
+      if (key.indexOf("リプハンターPRO") >= 0) return (typeof btnHunterPro !== "undefined" && btnHunterPro.onclick) ? btnHunterPro.onclick() : null;
+      if (key.indexOf("挨拶") >= 0) return openFollowGreeting(trOut);
+      if (key.indexOf("勝ちパターン") >= 0) return btnLearn.onclick();
+      return null;
+    },
+  };
   btnLearn.onclick = async () => {
     const screen = (acct.value || "").replace(/^@/, "");
     if (!screen) { trOut.innerHTML = '<div class="muted" style="padding:8px">先にアカウントを選んでください。</div>'; return; }
