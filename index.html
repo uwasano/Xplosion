@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "153";
+const APP_VERSION = "154";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1527,17 +1527,28 @@ function showTab(id) { if (!BUILDERS[id]) id = "calendar"; S.tab = id; $("conten
 /* 成長プランの[機能名]タップでその機能の場所へ直ジャンプ(投稿タブに切替→該当ボタンをクリック&スクロール) */
 function xplGoFeature(label) {
   try {
-    const key0 = String(label || "");
-    /* 競合フォロワー/業種RTは見込み客レーダー内のツールなのでradarタブへ */
-    const tab = (key0.indexOf("競合フォロワー") >= 0 || key0.indexOf("業種をRT") >= 0) ? "radar" : "calendar";
+    /* 「👋 挨拶 / 🎯 競合フォロワー」のような複合表記は分割して1個ずつ探す */
+    const parts = String(label || "").replace(/[\[\]]/g, "").split("/").map(t => t.trim()).filter(Boolean);
+    const isRadar = parts.some(pt => pt.indexOf("競合フォロワー") >= 0 || pt.indexOf("業種をRT") >= 0);
+    const tab = isRadar ? "radar" : "calendar";
+    /* 開くタブに合う候補を先に試す(レーダーなら競合フォロワー系を優先) */
+    parts.sort((a, b) => {
+      const ra = (a.indexOf("競合フォロワー") >= 0 || a.indexOf("業種をRT") >= 0) ? 1 : 0;
+      const rb = (b.indexOf("競合フォロワー") >= 0 || b.indexOf("業種をRT") >= 0) ? 1 : 0;
+      return isRadar ? rb - ra : ra - rb;
+    });
     showTab(tab);
     if (typeof renderNav === "function") renderNav();
-    const key = String(label || "").replace(/[\[\]]/g, "").trim();
     setTimeout(() => {
+      const norm = (t) => String(t || "").replace(/\s+/g, "");
       const btns = Array.from(document.querySelectorAll("button"));
-      const hit = btns.find(b => b.textContent && b.textContent.indexOf(key) >= 0);
+      let hit = null;
+      for (const pt of parts) {
+        hit = btns.find(b => b.textContent && norm(b.textContent).indexOf(norm(pt)) >= 0);
+        if (hit) break;
+      }
       if (hit) { hit.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => hit.click(), 350); }
-    }, 120);
+    }, 150);
   } catch (e) {}
 }
 
