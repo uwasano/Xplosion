@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "157";
+const APP_VERSION = "158";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4595,9 +4595,16 @@ BUILDERS.calendar = (el) => {
   [btnHunter, btnHunterPro].forEach(function (b) { mbtn(b, SEC.reply); trBtnRow.appendChild(b); });
 
   trBtnRow.appendChild(mkMenuHead("👋 フォロワーを増やす", SEC.follow));
-  trBtnRow.appendChild(mkMenuInfo("見込み客を見つけて自分から絡む機能。中の項目：<br>・<b>👋 フォローした人に挨拶</b>＝自分がフォローした人に、相手の投稿やプロフィールを読んだ自然な挨拶リプを自動生成して送る<br>・（この中の画面で切替）<b>🎯 競合フォロワー</b>＝競合をフォローしてる人から見込み客を抽出／<b>🔁 業種をRTしてる人</b>＝あなたの業種や関連ジャンルに投稿・RTで絡んでる人を抽出。どちらもエリア一致を優先＆業者を除外<br>・<b>🤝 仲を深める(今日の5人)</b>＝フォロバし合ってる相互フォロワーから今日絡むべき5人を実データで選定。過去の会話を記憶して『続きものの会話』を作り、関係を段階的に深めてファン化する(進行度%つき)", SEC.follow));
+  trBtnRow.appendChild(mkMenuInfo("見込み客を見つけて自分から絡む機能。中の項目：<br>・<b>👋 フォローした人に挨拶</b>＝自分がフォローした人に、相手の投稿やプロフィールを読んだ自然な挨拶リプを自動生成して送る<br>・<b>🎯 競合フォロワーから見込み客</b>＝競合をフォローしてる人から見込み客を抽出<br>・<b>🔁 業種をRTしてる人</b>＝あなたの業種や関連ジャンルに投稿・RTで絡んでる人を抽出。どちらもエリア一致を優先＆業者を除外。<b>画面上部の対象アカウントを確認してから使う</b><br>・<b>🤝 仲を深める(今日の5人)</b>＝フォロバし合ってる相互フォロワーから今日絡むべき5人を実データで選定。過去の会話を記憶して『続きものの会話』を作り、関係を段階的に深めてファン化する(進行度%つき)", SEC.follow));
   mbtn(btnGreet, SEC.follow); trBtnRow.appendChild(btnGreet);
   btnGreet.onclick = () => openFollowGreeting(trOut);
+  /* v158: 競合フォロワー/業種RTをメニューに直接出す(以前は画面内タブのみで見つけづらかった) */
+  const btnRival = document.createElement("button"); btnRival.textContent = "🎯 競合フォロワーから見込み客";
+  mbtn(btnRival, SEC.follow); trBtnRow.appendChild(btnRival);
+  btnRival.onclick = () => openRivalFollowers("competitor");
+  const btnGenre = document.createElement("button"); btnGenre.textContent = "🔁 業種をRTしてる人";
+  mbtn(btnGenre, SEC.follow); trBtnRow.appendChild(btnGenre);
+  btnGenre.onclick = () => openRivalFollowers("genre");
   const btnBond = document.createElement("button"); btnBond.textContent = "🤝 仲を深める(今日の5人)";
   mbtn(btnBond, SEC.follow); trBtnRow.appendChild(btnBond);
   btnBond.onclick = async () => {
@@ -5565,10 +5572,27 @@ BUILDERS.calendar = (el) => {
     const screen = (acct.value || "").replace(/^@/, "");
     const box = fgOverlay_();
     const isGenre = mode === "genre";
-    box.innerHTML = '<div class="muted" style="text-align:center;padding:40px">' + (isGenre ? '業種ジャンルをRTしている人を探索中…<br>(20秒ほど)' : '競合のフォロワーを分析中…<br>(初回のみ20秒ほど。同日2回目以降はキャッシュで即表示)') + '</div>';
-    if (!screen) { box.innerHTML = '<div class="muted" style="padding:20px">先にアカウントを選んでください。</div>'; return; }
+    /* v158: どのアカウント対象か常時表示＋その場で切替(別垢の業種で検索される事故防止) */
+    const _rfClients = (S.clients || []).filter(c => c.status === "active");
+    const acctBar = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:10px"><div style="font-size:11px;color:var(--muted);margin-bottom:6px">👤 対象アカウント(タップで切替)</div><div style="display:flex;gap:6px;flex-wrap:wrap">'
+      + _rfClients.map(c => '<button class="mini rfAcctChip" data-sn="' + esc(c.screen_name) + '" style="padding:6px 11px;border-radius:99px;font-size:12px;font-weight:700;border:1px solid ' + (c.screen_name === screen ? '#3DFFA8' : 'var(--border)') + ';color:' + (c.screen_name === screen ? '#3DFFA8' : 'var(--muted)') + ';background:var(--card)">@' + esc(c.screen_name) + '</button>').join("")
+      + '</div></div>';
+    box.innerHTML = acctBar + '<div class="muted" style="text-align:center;padding:40px">' + (isGenre ? '業種ジャンルをRTしている人を探索中…<br>(20秒ほど)' : '競合のフォロワーを分析中…<br>(初回のみ20秒ほど。同日2回目以降はキャッシュで即表示)') + '</div>';
+    wireAcctChips();
+    function wireAcctChips() {
+      box.querySelectorAll(".rfAcctChip").forEach(b => {
+        b.onclick = () => {
+          const sn = b.dataset.sn;
+          if (!sn || sn === (acct.value || "").replace(/^@/, "")) return;
+          acct.value = sn;
+          try { acct.dispatchEvent(new Event("change")); } catch (e) {}
+          openRivalFollowers(mode);
+        };
+      });
+    }
+    if (!screen) { box.innerHTML = acctBar + '<div class="muted" style="padding:20px">先にアカウントを選んでください。</div>'; wireAcctChips(); return; }
     /* モード切替タブ */
-    const tabs = '<div style="display:flex;gap:8px;margin-bottom:12px">'
+    const tabs = acctBar + '<div style="display:flex;gap:8px;margin-bottom:12px">'
       + '<button id="rfTab0" class="mini' + (isGenre ? '' : ' cyan') + '" style="flex:1;padding:10px;font-size:12.5px;font-weight:700">🎯 競合フォロワー</button>'
       + '<button id="rfTab1" class="mini' + (isGenre ? ' cyan' : '') + '" style="flex:1;padding:10px;font-size:12.5px;font-weight:700">🔁 業種をRTしてる人</button>'
       + '</div>';
@@ -5615,6 +5639,7 @@ BUILDERS.calendar = (el) => {
       const t0 = box.querySelector("#rfTab0"), t1 = box.querySelector("#rfTab1");
       if (t0) t0.onclick = () => openRivalFollowers("competitor");
       if (t1) t1.onclick = () => openRivalFollowers("genre");
+      wireAcctChips(); /* v158: 再描画後もアカウント切替チップを効かせる */
     }
   }
 
