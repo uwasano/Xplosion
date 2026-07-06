@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "169";
+const APP_VERSION = "171";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4627,6 +4627,13 @@ BUILDERS.calendar = (el) => {
       else statBox.innerHTML = '<div class="muted" style="padding:10px">集計中…</div>';
       try {
         const j = await gasFetch_("predStats", { screen_name: acc || undefined, days });
+        try {
+          const [td, yd] = await Promise.all([
+            gasFetch_("predStatsDay", { screen_name: acc || undefined, dayOffset: 0 }),
+            gasFetch_("predStatsDay", { screen_name: acc || undefined, dayOffset: 1 }),
+          ]);
+          j._today = td; j._yday = yd;
+        } catch (e) {}
         _psCache[psKey] = j;
         paintStats(j, days, acc);
       } catch (e) { if (!_psCache[psKey]) statBox.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
@@ -4637,14 +4644,36 @@ BUILDERS.calendar = (el) => {
         const NAME = { popular:"人気順シンプル", score:"直前スコア厳選" };
         const periodLabel = days===7 ? "週間(7日)" : "月間(30日)";
         const fmt = (iso) => { if(!iso) return "—"; const d=new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
+        /* 📅 本日＋昨日パネル(常にトップに表示) */
+        const dayPanel = (d, label) => {
+          if (!d) return "";
+          if (d.races > 0) {
+            const roiColor = d.roi >= 100 ? "#33cc88" : "#ff8866";
+            const profColor = d.profit >= 0 ? "#3DFFA8" : "#ff8866";
+            const prof100 = Math.round(d.profit);
+            return '<div class="card" style="padding:12px;margin-top:8px;border:1px solid '+(label==="本日"?"var(--accent2)":"var(--border)")+'"><div style="font-weight:800;margin-bottom:6px">📅 '+label+'の成績 <span class="muted" style="font-size:11px;font-weight:400">('+(label==="本日"?"今日":"昨日")+'のレース)</span></div>'
+              + '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:14px"><div>的中率 <b>'+d.hitRate+'%</b></div>'
+              + '<div>回収率 <b style="color:'+roiColor+'">'+d.roi+'%</b></div>'
+              + '<div class="muted" style="font-size:13px">('+d.hits+'/'+d.races+'レース)</div></div>'
+              + '<div style="font-size:12px;margin-top:6px" class="muted">100円ずつ買った場合の収支: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+prof100.toLocaleString()+'</b>'
+              + (d.pending?'　/　結果待ち '+d.pending+'件':'')+'</div></div>';
+          } else if (d.pending > 0) {
+            return '<div class="card" style="padding:11px;margin-top:8px;border:1px solid var(--border)"><div style="font-weight:700;font-size:13px">📅 '+label+'の成績</div><div class="muted" style="font-size:12px;margin-top:3px">'+label+'の予想は結果待ち '+d.pending+'件（レース終了後に自動集計）</div></div>';
+          }
+          return "";
+        };
+        let todayHtml = dayPanel(j._today, "本日");
+        /* 本日がまだ0件のときだけ昨日を出す(朝イチで寂しくならないように)。本日に結果が出てるなら本日だけ */
+        if (!(j._today && j._today.races > 0)) todayHtml += dayPanel(j._yday, "昨日");
+        else if (j._yday && j._yday.races > 0) todayHtml += dayPanel(j._yday, "昨日");
         if (!stats.length) {
-          statBox.innerHTML = '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7;margin-top:8px">'+periodLabel+'はまだ確定した予想結果がない。<br>'
+          statBox.innerHTML = todayHtml + '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7;margin-top:8px">'+periodLabel+'はまだ確定した予想結果がない。<br>'
             + '結果待ち(未確定): <b>'+(j.pending||0)+'件</b><br>'
             + '🔍 結果確認の最終実行: <b>'+fmt(j.lastCheck)+'</b><br><br>'
             + '予想を投稿してレース結果が出た後、1日6回(13〜0時)自動で的中をチェックする。人気順・直前スコアの両オートをONにすると比較データが貯まる。</div>';
           return;
         }
-        let h = '<div class="card" style="padding:12px;margin-top:8px"><div style="font-weight:700;margin-bottom:8px">📊 '+periodLabel+'のロジック成績</div>';
+        let h = todayHtml + '<div class="card" style="padding:12px;margin-top:8px"><div style="font-weight:700;margin-bottom:8px">📊 '+periodLabel+'のロジック成績</div>';
         stats.forEach(s => {
           h += '<div style="border-top:1px solid var(--border);padding:8px 0"><div style="font-weight:700;color:var(--accent2)">'+(NAME[s.logic]||s.logic)+'</div>'
             + '<div style="font-size:13px;margin-top:2px">的中率 <b>'+s.hitRate+'%</b>　回収率 <b style="color:'+(s.roi>=100?"#33cc88":"#ff8866")+'">'+s.roi+'%</b>　<span class="muted">('+s.hits+'/'+s.races+'レース)</span></div></div>';
