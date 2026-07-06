@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "159";
+const APP_VERSION = "160";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -596,6 +596,14 @@ function diagnoseErr(msg) {
   /* 文字数オーバー */
   if (/\b403\b/.test(m) && /(280|文字|too long|length)/i.test(m))
     return { icon: "✂️", cause: "本文が長すぎる(280字オーバー)", fix: "本文を短くしてください" };
+  /* リプ先の投稿が消された(相手都合・異常やない) */
+  if (/リプ先の投稿が削除済み|deleted or not visible|replied to a Tweet that is deleted/i.test(m))
+    return { icon: "🗑️", cause: "リプ先の投稿が削除されてた(相手が消しただけ)", fix: "異常ではありません。スルーでOK" };
+  /* アカウント凍結・ロック疑い */
+  if (/アカウント凍結|suspended/i.test(m))
+    return { icon: "🧊", cause: "アカウント凍結の可能性", fix: "Xにログインして状態を確認してください(最優先)" };
+  if (/一時ロック|locked|temporarily restricted/i.test(m))
+    return { icon: "🔒", cause: "アカウントが一時ロックされている可能性", fix: "Xにログインしてロック解除の手続きをしてください" };
   /* 403 その他(規約/権限) */
   if (/\b403\b|forbidden/i.test(m))
     return { icon: "🚫", cause: "Xに投稿を拒否された(規約違反か権限不足の可能性)", fix: "本文の内容、またはアプリの読み書き権限を確認してください" };
