@@ -90,6 +90,14 @@
   .snsbtn{width:40px;height:34px;display:flex;align-items:center;justify-content:center;border-radius:999px;border:none;
     background:transparent;color:var(--muted);cursor:pointer}
   .snsbtn.on{background:linear-gradient(92deg,var(--accent),var(--violet));color:#fff;box-shadow:0 0 12px rgba(255,46,126,.45)}
+  /* v163: SNS切替スイープ演出。transform/opacityのみ(GPU合成・再レイアウトなし)＝低電力。0.45秒単発 */
+  @keyframes snsSweep{from{transform:translateX(-120%) skewX(-12deg)}to{transform:translateX(120%) skewX(-12deg)}}
+  .sns-sweep{position:fixed;inset:-10% -30%;z-index:99998;pointer-events:none;
+    background:linear-gradient(100deg,transparent 18%,rgba(56,212,240,.22) 42%,rgba(185,140,255,.3) 52%,rgba(61,255,168,.18) 62%,transparent 82%);
+    animation:snsSweep .45s cubic-bezier(.55,0,.15,1) forwards;will-change:transform}
+  @keyframes snsPop{0%{transform:scale(1)}40%{transform:scale(1.28) rotate(-8deg)}100%{transform:scale(1)}}
+  .snsbtn.pop{animation:snsPop .35s ease}
+  @media (prefers-reduced-motion:reduce){.sns-sweep{display:none}.snsbtn.pop{animation:none}}
   .modes{display:flex;align-items:center;gap:10px;margin-top:8px}
   .modes .lbl{font-size:9.5px;letter-spacing:.2em;color:var(--muted);font-family:var(--mono);flex-shrink:0}
   .buzz-mode{position:relative;overflow:visible}
@@ -256,11 +264,29 @@ function gasReliable_(action, extra) {
   } catch (e) { try { return gasFetch_(action, extra || {}); } catch (e2) {} }
 }
 
+/* v163: SNS切替のスイープ演出。transform/opacityのみ=GPU合成で低電力。
+   省電力設定(prefers-reduced-motion)の人には演出なしで即切替 */
+window.snsSwitchFx = function (btn, after) {
+  try {
+    if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) { after(); return; }
+    const v = document.createElement("div");
+    v.className = "sns-sweep";
+    document.body.appendChild(v);
+    if (btn) { btn.classList.add("pop"); setTimeout(() => { try { btn.classList.remove("pop"); } catch (e) {} }, 400); }
+    setTimeout(after, 180); /* スイープが画面を覆う中間で切替(切替の瞬間が隠れて気持ちいい) */
+    v.addEventListener("animationend", () => v.remove());
+    setTimeout(() => { try { v.remove(); } catch (e) {} }, 800); /* 保険 */
+  } catch (e) { after(); }
+};
+
 /* ============================================================
  * 📔 Noteモード(有料note工房) v162 — 既存機能から完全独立
  * 5ステップをプロ役AIとの対話で進める。状態はアカウント別にGAS経由で自動保存
  * ============================================================ */
 window.openNoteStudio = function () {
+  if (window._noteStudioOpen) return; /* 二重起動防止 */
+  window._noteStudioOpen = true;
+  try { renderTop(); } catch (e) {}
   const STEPS = [
     { n: 1, label: "①テーマ", dec: "theme", decLabel: "✅ 決定したテーマ", hint: "AIが1問ずつ質問してくる(10問目安)→素材整理→候補10個→採点→推薦まで自動で進む。最後にテーマを自分で決めて下の決定欄に書く" },
     { n: 2, label: "②読者", dec: "reason3", decLabel: "✅ 買う理由(3行)", hint: "①のテーマの読者を解像度MAXで言語化。最後に出る『買う理由3行』を決定欄へコピー" },
@@ -343,7 +369,14 @@ window.openNoteStudio = function () {
       + '<button id="nsSend" ' + (busy ? "disabled" : "") + ' style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:13px 16px;border-radius:10px;font-size:13px;white-space:nowrap">送信</button></div>';
     ov.innerHTML = h;
     /* 配線 */
-    ov.querySelector("#nsClose").onclick = () => { save(); ov.remove(); };
+    ov.querySelector("#nsClose").onclick = () => {
+      save();
+      window.snsSwitchFx(null, () => {
+        ov.remove();
+        window._noteStudioOpen = false;
+        try { renderTop(); } catch (e) {}
+      });
+    };
     ov.querySelectorAll(".nsAcct").forEach(b => b.onclick = () => { if (b.dataset.sn !== screen) { save(); screen = b.dataset.sn; load(); } });
     ov.querySelectorAll(".nsStep").forEach(b => b.onclick = () => { syncDec(); st.step = parseInt(b.dataset.n, 10); save(); render(); });
     const stBtn = ov.querySelector("#nsStart"); if (stBtn) stBtn.onclick = () => send("開始してください。進め方に沿ってお願いします。");
@@ -677,7 +710,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "162";
+const APP_VERSION = "163";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1555,14 +1588,23 @@ async function loadClients() {
 /* ============ ヘッダーUI ============ */
 function renderTop() {
   $("snsw").innerHTML = "";
-  ["X","Instagram"].forEach((s) => {
+  /* v163: Noteを第3のモードとして追加。切替は全SNS共通でスイープ演出(低電力・transformのみ) */
+  const SNS_ICON = {
+    "X": '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z"/></svg>',
+    "Instagram": '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>',
+    "Note": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>',
+  };
+  ["X", "Instagram", "Note"].forEach((s) => {
     const b = document.createElement("button");
-    b.className = "snsbtn" + (S.sns === s ? " on" : "");
+    const isOn = s === "Note" ? !!window._noteStudioOpen : (S.sns === s && !window._noteStudioOpen);
+    b.className = "snsbtn" + (isOn ? " on" : "");
     b.title = s;
-    b.innerHTML = s === "X"
-      ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z"/></svg>'
-      : '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>';
-    b.onclick = () => { S.sns = s; renderTop(); showTab(S.tab); };
+    b.innerHTML = SNS_ICON[s];
+    if (s === "Note") {
+      b.onclick = () => window.snsSwitchFx(b, () => window.openNoteStudio());
+    } else {
+      b.onclick = () => window.snsSwitchFx(b, () => { S.sns = s; renderTop(); showTab(S.tab); });
+    }
     $("snsw").appendChild(b);
   });
   $("modes").innerHTML = '<span class="lbl">MODE</span>';
@@ -4710,10 +4752,6 @@ BUILDERS.calendar = (el) => {
   trBtnRow.appendChild(mkMenuHead("📝 投稿ネタを作る", SEC.post));
   trBtnRow.appendChild(mkMenuInfo("あなたの文体のままバズりそうな投稿案を3つ作ります。中の項目：<br>・<b>🌏 世の中のトレンド</b>＝今Xで話題のワードから作る<br>・<b>📈 Xの人気ポスト</b>＝伸びてる投稿を参考に作る<br>・<b>💬 人気ポストを引用</b>＝引用リポスト用の一言を作る<br>・<b>🔥 炎上ニュース</b>＝今の炎上ネタから作る<br>・<b>🪞 バズってる投稿をマネ</b>＝競合の当たり投稿の型を自分用に変換", SEC.post));
   [btnTrend, btnPop, btnQuote, btnEnjou, btnMirror].forEach(function (b) { mbtn(b, SEC.post); trBtnRow.appendChild(b); });
-  /* v162: 📔 Noteモード(有料note工房)。既存機能から完全独立のモード切替 */
-  const btnNoteStudio = document.createElement("button"); btnNoteStudio.textContent = "📔 Noteモード(有料note工房)";
-  mbtn(btnNoteStudio, SEC.post); trBtnRow.appendChild(btnNoteStudio);
-  btnNoteStudio.onclick = () => window.openNoteStudio();
 
   trBtnRow.appendChild(mkMenuHead("🎯 リプで絡んで見つけてもらう", SEC.reply));
   trBtnRow.appendChild(mkMenuInfo("伸びてる投稿に気の利いたリプを返して見つけてもらう機能。中の項目：<br>・<b>🎯 バズってる投稿にリプする</b>＝競合の直近12時間の投稿を『勢い(時間あたりの伸び)＋インプレ』でランキング表示。<b style=\"color:#ffd34d\">🚀即バズ狙撃はここ</b>：バズる寸前の投稿が『🚀早リプ狙い目』として最上位に出る。左スワイプでスルー／右スワイプでリプ<br>・<b>🎯 リプハンターPRO</b>＝裏で自動的に溜めておいた『リプすべき投稿』の一覧。手動で探さなくても溜まったものにサッとリプできる", SEC.reply));
