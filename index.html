@@ -255,6 +255,107 @@ function gasReliable_(action, extra) {
     return fetch(GAS_URL, { method: "POST", keepalive: true, headers: { "Content-Type": "text/plain;charset=UTF-8" }, body: payload }).catch(function () {});
   } catch (e) { try { return gasFetch_(action, extra || {}); } catch (e2) {} }
 }
+
+/* ============================================================
+ * 📔 Noteモード(有料note工房) v162 — 既存機能から完全独立
+ * 5ステップをプロ役AIとの対話で進める。状態はアカウント別にGAS経由で自動保存
+ * ============================================================ */
+window.openNoteStudio = function () {
+  const STEPS = [
+    { n: 1, label: "①テーマ", dec: "theme", decLabel: "✅ 決定したテーマ", hint: "AIが1問ずつ質問してくる(10問目安)→素材整理→候補10個→採点→推薦まで自動で進む。最後にテーマを自分で決めて下の決定欄に書く" },
+    { n: 2, label: "②読者", dec: "reason3", decLabel: "✅ 買う理由(3行)", hint: "①のテーマの読者を解像度MAXで言語化。最後に出る『買う理由3行』を決定欄へコピー" },
+    { n: 3, label: "③構成", dec: "structure", decLabel: "✅ 採用する構成", hint: "無料/有料の境界線・価格帯まで設計。採用する構成を決定欄へコピー(④がこれを使う)" },
+    { n: 4, label: "④執筆", dec: "noteText", decLabel: "✅ note本文(完成稿)", hint: "最初に一次情報(実体験・数字・失敗談の箇条書き)と過去記事を貼って送信→配置表→本文まで書き切る" },
+    { n: 5, label: "⑤X集客", dec: "", decLabel: "", hint: "note全文(または無料部分)と過去投稿5本を貼って送信→2週間ぶん14本のX投稿計画が出る" },
+  ];
+  const nsEsc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  let clients = [];
+  try { clients = (S && S.clients ? S.clients : []).filter(c => c.status === "active").map(c => c.screen_name); } catch (e) {}
+  if (!clients.length) clients = ["default"];
+  let screen = clients[0];
+  let st = null;
+  let busy = false;
+  const blank = () => ({ step: 1, decisions: {}, chats: { 1: [], 2: [], 3: [], 4: [], 5: [] } });
+
+  const ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;inset:0;background:var(--bg,#05070e);z-index:99999;overflow-y:auto;padding:14px 14px 120px;-webkit-overflow-scrolling:touch";
+  document.body.appendChild(ov);
+
+  function save() { try { gasFetch_("noteStudioSave", { screen_name: screen, state: st }).catch(() => {}); } catch (e) {} }
+  async function load() {
+    ov.innerHTML = '<div class="muted" style="text-align:center;padding:60px">読み込み中…</div>';
+    st = blank();
+    try {
+      const j = await gasFetch_("noteStudioLoad", { screen_name: screen });
+      if (j && j.state && j.state.chats) st = Object.assign(blank(), j.state);
+    } catch (e) {}
+    render();
+  }
+
+  async function send(autoText) {
+    const inp = ov.querySelector("#nsInput");
+    const t = autoText || (inp ? inp.value.trim() : "");
+    if (!t || busy) return;
+    st.chats[st.step].push({ role: "user", text: t });
+    busy = true; render();
+    try {
+      const j = await gasFetch_("noteStudioChat", { screen_name: screen, step: st.step, decisions: st.decisions, messages: st.chats[st.step] });
+      st.chats[st.step].push({ role: "ai", text: (j && j.reply) ? j.reply : ("⚠️ " + ((j && j.error) || "生成に失敗。もう一度送信してください")) });
+    } catch (e) { st.chats[st.step].push({ role: "ai", text: "⚠️ 通信エラー: " + e.message + "(もう一度送信してください)" }); }
+    busy = false; save(); render();
+    const log = ov.querySelector("#nsLog"); if (log) log.scrollTop = log.scrollHeight;
+  }
+
+  function render() {
+    const stepDef = STEPS[st.step - 1];
+    const chat = st.chats[st.step] || [];
+    let h = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+      + '<div style="font-weight:800;font-size:17px">📔 Noteモード <span class="muted" style="font-size:11px">有料note工房</span></div>'
+      + '<button id="nsClose" class="mini" style="padding:8px 14px">× 閉じる</button></div>';
+    /* アカウント切替 */
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+      + clients.map(c => '<button class="mini nsAcct" data-sn="' + nsEsc(c) + '" style="padding:5px 10px;border-radius:99px;font-size:11.5px;border:1px solid ' + (c === screen ? '#b98cff' : 'var(--border)') + ';color:' + (c === screen ? '#b98cff' : 'var(--muted)') + '">@' + nsEsc(c) + '</button>').join("") + '</div>';
+    /* ステップタブ */
+    h += '<div style="display:flex;gap:5px;margin-bottom:10px;overflow-x:auto">'
+      + STEPS.map(s => '<button class="mini nsStep" data-n="' + s.n + '" style="flex:1;min-width:62px;padding:9px 4px;font-size:11.5px;font-weight:700;border-radius:9px;border:1px solid ' + (s.n === st.step ? '#b98cff' : 'var(--border)') + ';color:' + (s.n === st.step ? '#b98cff' : 'var(--muted)') + ';background:' + (s.n === st.step ? 'rgba(185,140,255,.12)' : 'transparent') + '">' + s.label + (st.decisions[s.dec] ? " ✓" : "") + '</button>').join("") + '</div>';
+    h += '<div class="muted" style="font-size:11.5px;line-height:1.6;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:10px">' + nsEsc(stepDef.hint) + '</div>';
+    /* チャットログ */
+    h += '<div id="nsLog" style="max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px">';
+    if (!chat.length) h += '<button id="nsStart" style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:13px;border-radius:10px;font-size:14px">▶ このステップを開始する</button>';
+    chat.forEach((m, mi) => {
+      if (m.role === "user") {
+        h += '<div style="align-self:flex-end;max-width:88%;background:rgba(56,212,240,.14);border:1px solid rgba(56,212,240,.4);border-radius:12px 12px 3px 12px;padding:9px 11px;font-size:12.5px;white-space:pre-wrap;word-break:break-word">' + nsEsc(m.text.length > 400 ? m.text.slice(0, 400) + "…(長文)" : m.text) + '</div>';
+      } else {
+        h += '<div style="align-self:flex-start;max-width:94%;background:var(--surface);border:1px solid var(--border);border-radius:12px 12px 12px 3px;padding:10px 12px;font-size:12.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word">' + nsEsc(m.text)
+          + '<div style="display:flex;gap:6px;margin-top:8px"><button class="mini nsCopy" data-i="' + mi + '" style="font-size:11px;padding:5px 10px">📋 コピー</button>'
+          + (stepDef.dec ? '<button class="mini nsToDec" data-i="' + mi + '" style="font-size:11px;padding:5px 10px">⬇ 決定欄へ</button>' : "") + '</div></div>';
+      }
+    });
+    if (busy) h += '<div class="muted" style="font-size:12px;padding:6px">✍️ 生成中…' + (st.step === 4 ? "(執筆は2〜3分かかることがあります。閉じずに待つ)" : "") + '</div>';
+    h += '</div>';
+    /* 決定欄 */
+    if (stepDef.dec) {
+      h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:4px">' + nsEsc(stepDef.decLabel) + '<span class="muted" style="font-weight:400">(次のステップがこれを使う)</span></div>'
+        + '<textarea id="nsDec" style="width:100%;min-height:64px;background:var(--card);border:1px solid var(--border);border-radius:9px;color:var(--ink);font-size:12px;padding:8px">' + nsEsc(st.decisions[stepDef.dec] || "") + '</textarea></div>';
+    }
+    /* 入力欄 */
+    h += '<div style="display:flex;gap:8px;align-items:flex-end"><textarea id="nsInput" placeholder="回答・素材の貼り付け・指示など" style="flex:1;min-height:52px;max-height:160px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:13px;padding:9px"></textarea>'
+      + '<button id="nsSend" ' + (busy ? "disabled" : "") + ' style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:13px 16px;border-radius:10px;font-size:13px;white-space:nowrap">送信</button></div>';
+    ov.innerHTML = h;
+    /* 配線 */
+    ov.querySelector("#nsClose").onclick = () => { save(); ov.remove(); };
+    ov.querySelectorAll(".nsAcct").forEach(b => b.onclick = () => { if (b.dataset.sn !== screen) { save(); screen = b.dataset.sn; load(); } });
+    ov.querySelectorAll(".nsStep").forEach(b => b.onclick = () => { syncDec(); st.step = parseInt(b.dataset.n, 10); save(); render(); });
+    const stBtn = ov.querySelector("#nsStart"); if (stBtn) stBtn.onclick = () => send("開始してください。進め方に沿ってお願いします。");
+    const sd = ov.querySelector("#nsSend"); if (sd) sd.onclick = () => { syncDec(); send(); };
+    const dec = ov.querySelector("#nsDec"); if (dec) dec.onchange = () => { syncDec(); save(); render(); };
+    ov.querySelectorAll(".nsCopy").forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(chat[b.dataset.i].text); b.textContent = "✓ コピー済"; } catch (e) {} });
+    ov.querySelectorAll(".nsToDec").forEach(b => b.onclick = () => { st.decisions[stepDef.dec] = chat[b.dataset.i].text; save(); render(); });
+    const log = ov.querySelector("#nsLog"); if (log) log.scrollTop = log.scrollHeight;
+    function syncDec() { const d = ov.querySelector("#nsDec"); if (d && stepDef.dec) st.decisions[stepDef.dec] = d.value; }
+  }
+  load();
+};
 /* ===== フォローペース管理: 1時間あたりのフォロー数を記録してロックリスクを表示 ===== */
 /* 👋 挨拶をスワイプで1人ずつ捌く(右=次へ/左=スキップ、各案を送信) */
 async function openGreetSwipe(cands, screen) {
@@ -576,7 +677,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "161";
+const APP_VERSION = "162";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4609,6 +4710,10 @@ BUILDERS.calendar = (el) => {
   trBtnRow.appendChild(mkMenuHead("📝 投稿ネタを作る", SEC.post));
   trBtnRow.appendChild(mkMenuInfo("あなたの文体のままバズりそうな投稿案を3つ作ります。中の項目：<br>・<b>🌏 世の中のトレンド</b>＝今Xで話題のワードから作る<br>・<b>📈 Xの人気ポスト</b>＝伸びてる投稿を参考に作る<br>・<b>💬 人気ポストを引用</b>＝引用リポスト用の一言を作る<br>・<b>🔥 炎上ニュース</b>＝今の炎上ネタから作る<br>・<b>🪞 バズってる投稿をマネ</b>＝競合の当たり投稿の型を自分用に変換", SEC.post));
   [btnTrend, btnPop, btnQuote, btnEnjou, btnMirror].forEach(function (b) { mbtn(b, SEC.post); trBtnRow.appendChild(b); });
+  /* v162: 📔 Noteモード(有料note工房)。既存機能から完全独立のモード切替 */
+  const btnNoteStudio = document.createElement("button"); btnNoteStudio.textContent = "📔 Noteモード(有料note工房)";
+  mbtn(btnNoteStudio, SEC.post); trBtnRow.appendChild(btnNoteStudio);
+  btnNoteStudio.onclick = () => window.openNoteStudio();
 
   trBtnRow.appendChild(mkMenuHead("🎯 リプで絡んで見つけてもらう", SEC.reply));
   trBtnRow.appendChild(mkMenuInfo("伸びてる投稿に気の利いたリプを返して見つけてもらう機能。中の項目：<br>・<b>🎯 バズってる投稿にリプする</b>＝競合の直近12時間の投稿を『勢い(時間あたりの伸び)＋インプレ』でランキング表示。<b style=\"color:#ffd34d\">🚀即バズ狙撃はここ</b>：バズる寸前の投稿が『🚀早リプ狙い目』として最上位に出る。左スワイプでスルー／右スワイプでリプ<br>・<b>🎯 リプハンターPRO</b>＝裏で自動的に溜めておいた『リプすべき投稿』の一覧。手動で探さなくても溜まったものにサッとリプできる", SEC.reply));
