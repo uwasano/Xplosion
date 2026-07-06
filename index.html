@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "160";
+const APP_VERSION = "161";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -596,6 +596,9 @@ function diagnoseErr(msg) {
   /* 文字数オーバー */
   if (/\b403\b/.test(m) && /(280|文字|too long|length)/i.test(m))
     return { icon: "✂️", cause: "本文が長すぎる(280字オーバー)", fix: "本文を短くしてください" };
+  /* 相手が返信制限中 or ブロックしてる(相手都合・異常やない) */
+  if (/not permitted to perform|返信を制限してる投稿かブロック/i.test(m))
+    return { icon: "🙅", cause: "相手が「返信できる人を制限」してる投稿(かブロックされてる)にリプしようとした", fix: "相手都合なのでスルーでOK。同じ相手で続くならその人はスキップしてください" };
   /* リプ先の投稿が消された(相手都合・異常やない) */
   if (/リプ先の投稿が削除済み|deleted or not visible|replied to a Tweet that is deleted/i.test(m))
     return { icon: "🗑️", cause: "リプ先の投稿が削除されてた(相手が消しただけ)", fix: "異常ではありません。スルーでOK" };
