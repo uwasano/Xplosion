@@ -317,12 +317,23 @@ window.openNoteStudio = function () {
   const blank = () => ({ step: 1, decisions: {}, form: {}, chats: { 1: [], 2: [], 3: [], 4: [], 5: [] } });
 
   const ov = document.createElement("div");
-  ov.style.cssText = "position:fixed;inset:0;background:var(--bg,#05070e);z-index:99999;overflow-y:auto;padding:14px 14px 170px;-webkit-overflow-scrolling:touch";
+  /* v166: iOSでfixed下固定バーがSafariツールバーに食われる問題の根本対策。
+     オーバーレイ自体をflex縦2層(スクロール本文+常設入力バー)にする=入力欄が絶対に隠れない */
+  ov.style.cssText = "position:fixed;inset:0;background:var(--bg,#05070e);z-index:99999;display:flex;flex-direction:column";
+  const body = document.createElement("div");
+  body.style.cssText = "flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px;min-height:0";
+  const bar = document.createElement("div");
+  bar.style.cssText = "flex:0 0 auto;background:var(--bg,#05070e);border-top:1px solid var(--border);padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:flex-end";
+  bar.innerHTML = '<textarea id="nsInput" placeholder="追加の回答・素材の貼り付け・修正指示など" style="flex:1;min-height:48px;max-height:140px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:16px;padding:10px"></textarea>'
+    + '<button id="nsSend" style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:14px 16px;border-radius:10px;font-size:14px;white-space:nowrap">送信</button>';
+  ov.appendChild(body);
+  ov.appendChild(bar);
   document.body.appendChild(ov);
+  bar.querySelector("#nsSend").onclick = () => { const d = ov.querySelector("#nsDec"); if (d) { const sd = STEPS[st.step - 1].dec; if (sd) st.decisions[sd] = d.value; } send(); };
 
   function save() { try { gasFetch_("noteStudioSave", { screen_name: screen, state: st }).catch(() => {}); } catch (e) {} }
   async function load() {
-    ov.innerHTML = '<div class="muted" style="text-align:center;padding:60px">読み込み中…</div>';
+    body.innerHTML = '<div class="muted" style="text-align:center;padding:60px">読み込み中…</div>';
     st = blank();
     try {
       const j = await gasFetch_("noteStudioLoad", { screen_name: screen });
@@ -335,6 +346,7 @@ window.openNoteStudio = function () {
     const inp = ov.querySelector("#nsInput");
     const t = autoText || (inp ? inp.value.trim() : "");
     if (!t || busy) return;
+    if (!autoText && inp) inp.value = ""; /* バーは常設になったので手動でクリア */
     st.chats[st.step].push({ role: "user", text: t });
     busy = true; render();
     try {
@@ -342,7 +354,7 @@ window.openNoteStudio = function () {
       st.chats[st.step].push({ role: "ai", text: (j && j.reply) ? j.reply : ("⚠️ " + ((j && j.error) || "生成に失敗。もう一度送信してください")) });
     } catch (e) { st.chats[st.step].push({ role: "ai", text: "⚠️ 通信エラー: " + e.message + "(もう一度送信してください)" }); }
     busy = false; save(); render();
-    ov.scrollTop = ov.scrollHeight; /* 返信が来たら一番下へ */
+    body.scrollTop = body.scrollHeight; /* 返信が来たら一番下へ */
   }
 
   function render() {
@@ -388,11 +400,8 @@ window.openNoteStudio = function () {
       h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:4px">' + nsEsc(stepDef.decLabel) + '<span class="muted" style="font-weight:400">(次のステップがこれを使う)</span></div>'
         + '<textarea id="nsDec" style="width:100%;min-height:64px;background:var(--card);border:1px solid var(--border);border-radius:9px;color:var(--ink);font-size:16px;padding:8px">' + nsEsc(st.decisions[stepDef.dec] || "") + '</textarea></div>';
     }
-    /* 入力欄(画面最下部に完全固定。stickyはiOS Safariで崩れるためfixed+セーフエリア対応) */
-    h += '<div style="height:8px"></div>';
-    h += '<div style="position:fixed;left:0;right:0;bottom:0;z-index:100000;background:var(--bg,#05070e);border-top:1px solid var(--border);padding:10px 14px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px;align-items:flex-end"><textarea id="nsInput" placeholder="追加の回答・素材の貼り付け・修正指示など" style="flex:1;min-height:52px;max-height:150px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:16px;padding:10px"></textarea>'
-      + '<button id="nsSend" ' + (busy ? "disabled" : "") + ' style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:14px 16px;border-radius:10px;font-size:14px;white-space:nowrap">送信</button></div>';
-    ov.innerHTML = h;
+    body.innerHTML = h;
+    bar.querySelector("#nsSend").disabled = !!busy; /* バーは常設・状態だけ同期 */
     /* 配線 */
     ov.querySelector("#nsClose").onclick = () => {
       save();
@@ -405,7 +414,6 @@ window.openNoteStudio = function () {
     ov.querySelectorAll(".nsAcct").forEach(b => b.onclick = () => { if (b.dataset.sn !== screen) { save(); screen = b.dataset.sn; load(); } });
     ov.querySelectorAll(".nsStep").forEach(b => b.onclick = () => { syncDec(); st.step = parseInt(b.dataset.n, 10); save(); render(); });
     const stBtn = ov.querySelector("#nsStart"); if (stBtn) stBtn.onclick = () => send("開始してください。進め方に沿ってお願いします。");
-    const sd = ov.querySelector("#nsSend"); if (sd) sd.onclick = () => { syncDec(); send(); };
     const dec = ov.querySelector("#nsDec"); if (dec) dec.onchange = () => { syncDec(); save(); render(); };
     const rs = ov.querySelector("#nsReset");
     if (rs) rs.onclick = () => { if (confirm("このステップの会話を全部消します。決定欄とアンケート回答は残ります。ええか？")) { st.chats[st.step] = []; save(); render(); } };
@@ -745,7 +753,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "165";
+const APP_VERSION = "166";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
