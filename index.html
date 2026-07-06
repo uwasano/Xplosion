@@ -576,7 +576,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "158";
+const APP_VERSION = "159";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4379,11 +4379,20 @@ BUILDERS.calendar = (el) => {
     yosouOut.appendChild(tabRow);
     yosouOut.appendChild(statBox);
 
+    const _psCache = {}; /* v159: 成績キャッシュ(新しい的中が入るまで内容は不変のため、タブ切替を即表示にする) */
     async function renderStats(days) {
-      statBox.innerHTML = '<div class="muted" style="padding:10px">集計中…</div>';
+      const acc = acct.value || null;
+      const psKey = (acc || "all") + "|" + days;
+      if (_psCache[psKey]) { paintStats(_psCache[psKey], days, acc); } /* キャッシュ即表示→裏で最新を取得して上書き */
+      else statBox.innerHTML = '<div class="muted" style="padding:10px">集計中…</div>';
       try {
-        const acc = acct.value || null;
         const j = await gasFetch_("predStats", { screen_name: acc || undefined, days });
+        _psCache[psKey] = j;
+        paintStats(j, days, acc);
+      } catch (e) { if (!_psCache[psKey]) statBox.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
+    }
+    function paintStats(j, days, acc) {
+      try {
         const stats = (j && j.stats) ? j.stats : [];
         const NAME = { popular:"人気順シンプル", score:"直前スコア厳選" };
         const periodLabel = days===7 ? "週間(7日)" : "月間(30日)";
