@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "171";
+const APP_VERSION = "175";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4655,8 +4655,11 @@ BUILDERS.calendar = (el) => {
               + '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:14px"><div>的中率 <b>'+d.hitRate+'%</b></div>'
               + '<div>回収率 <b style="color:'+roiColor+'">'+d.roi+'%</b></div>'
               + '<div class="muted" style="font-size:13px">('+d.hits+'/'+d.races+'レース)</div></div>'
-              + '<div style="font-size:12px;margin-top:6px" class="muted">100円ずつ買った場合の収支: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+prof100.toLocaleString()+'</b>'
-              + (d.pending?'　/　結果待ち '+d.pending+'件':'')+'</div></div>';
+              + '<div style="font-size:12px;margin-top:6px;line-height:1.8" class="muted">買い目を全部買った場合の収支:<br>'
+              + '・100円ずつ: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+prof100.toLocaleString()+'</b><br>'
+              + '・1,000円ずつ: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+(prof100*10).toLocaleString()+'</b><br>'
+              + '・10,000円ずつ: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+(prof100*100).toLocaleString()+'</b>'
+              + (d.pending?'<br>結果待ち '+d.pending+'件':'')+'</div></div>';
           } else if (d.pending > 0) {
             return '<div class="card" style="padding:11px;margin-top:8px;border:1px solid var(--border)"><div style="font-weight:700;font-size:13px">📅 '+label+'の成績</div><div class="muted" style="font-size:12px;margin-top:3px">'+label+'の予想は結果待ち '+d.pending+'件（レース終了後に自動集計）</div></div>';
           }
@@ -4707,7 +4710,7 @@ BUILDERS.calendar = (el) => {
               return md+" "+(r.venue||"")+r.rno+"R "+(r.result_combo||"")+pay+odds;
             });
             const totalPay = Number(hj.totalPayout) || 0; /* 100円賭けの合計 */
-            const text = "【的中実績】\n" + lines.join("\n")
+            const text = "【無料予想の的中実績】\n" + lines.join("\n")
               + "\n\n的中" + hj.count + "レース"
               + "\n━━━━━━━━━\n回収金合計\n"
               + "・100円ずつ買った場合: ¥" + totalPay.toLocaleString() + "\n"
