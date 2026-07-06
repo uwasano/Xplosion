@@ -380,6 +380,14 @@ window.openNoteStudio = function () {
       });
       h += '<button id="nsSendAll" ' + (busy ? "disabled" : "") + ' style="width:100%;margin-top:12px;background:linear-gradient(135deg,#3DFFA8,#38d4f0);color:#001;font-weight:800;border:none;padding:13px;border-radius:10px;font-size:13.5px">📨 回答をまとめてAIに送る(1回で候補10個〜推薦まで)</button></details>';
     }
+    /* ⑤X集客: フォロワー導線のワンタップ生成(押すだけ・貼り付け不要の定型指示) */
+    if (st.step === 5) {
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'
+        + '<button class="mini nsQuick" data-p="thread" style="padding:8px 11px;font-size:12px;border:1px solid #38d4f0;color:#38d4f0;border-radius:9px">🧵 無料部分をスレッド化</button>'
+        + '<button class="mini nsQuick" data-p="present" style="padding:8px 11px;font-size:12px;border:1px solid #3DFFA8;color:#3DFFA8;border-radius:9px">🎁 note連動プレゼント企画</button>'
+        + '<button class="mini nsQuick" data-p="pinned" style="padding:8px 11px;font-size:12px;border:1px solid #b98cff;color:#b98cff;border-radius:9px">📌 固定ツイート案</button>'
+        + '</div>';
+    }
     /* チャットログ(ページ全体でスクロール=二重スクロール廃止) */
     h += '<div id="nsLog" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">';
     if (!chat.length && st.step !== 1) h += '<button id="nsStart" style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:13px;border-radius:10px;font-size:14px">▶ このステップを開始する</button>';
@@ -415,14 +423,21 @@ window.openNoteStudio = function () {
     ov.querySelectorAll(".nsStep").forEach(b => b.onclick = () => { syncDec(); st.step = parseInt(b.dataset.n, 10); save(); render(); });
     const stBtn = ov.querySelector("#nsStart"); if (stBtn) stBtn.onclick = () => send("開始してください。進め方に沿ってお願いします。");
     const dec = ov.querySelector("#nsDec"); if (dec) dec.onchange = () => { syncDec(); save(); render(); };
+    /* ⑤のワンタップ生成: 定型指示を送るだけ(note全文は会話に貼り済みの前提。無ければAIが貼付を促す) */
+    const NS_QUICK = {
+      thread: "貼ってあるnoteの無料部分を、X用スレッド(1ツイート140字以内×5〜8ツイート)に変換してください。1ツイート目は手が止まるフックに、最後のツイートはnoteへの誘導とフォローのお願いで締めてください。",
+      present: "このnoteを使ったフォロワー獲得のプレゼント企画投稿を3パターン作ってください。参加条件は『フォロー＋いいね＋リポスト』。賞品はこのnote本編の無料プレゼント。締切・当選人数・DM送付の流れも入れて、140字以内で。",
+      pinned: "プロフィールの固定ツイート案を3パターン作ってください。私が何者か・フォローすると何が得られるか・note誘導、の3要素入りで140字以内。実績の数字は貼ってある素材にあるものだけ使ってください。",
+    };
+    ov.querySelectorAll(".nsQuick").forEach(b => b.onclick = () => { if (!busy) send(NS_QUICK[b.dataset.p]); });
     const rs = ov.querySelector("#nsReset");
-    if (rs) rs.onclick = () => { if (confirm("このステップの会話を全部消します。決定欄とアンケート回答は残ります。ええか？")) { st.chats[st.step] = []; save(); render(); } };
+    if (rs) rs.onclick = () => { if (confirm("このステップの会話をすべて削除します。決定欄とアンケート回答は残ります。よろしいですか？")) { st.chats[st.step] = []; save(); render(); } };
     ov.querySelectorAll(".nsQ").forEach(t => t.onchange = () => { st.form[t.dataset.q] = t.value; save(); });
     const sa = ov.querySelector("#nsSendAll");
     if (sa) sa.onclick = () => {
       ov.querySelectorAll(".nsQ").forEach(t => { st.form[t.dataset.q] = t.value; });
       const lines = NS_Q.map((q, qi) => (st.form[qi] || "").trim() ? ((qi + 1) + ". " + q + "\n→ " + st.form[qi].trim()) : "").filter(Boolean);
-      if (!lines.length) { alert("最低1つは回答を書いてや"); return; }
+      if (!lines.length) { alert("最低1つは回答を入力してください"); return; }
       save();
       send("【棚卸しアンケート回答】\n\n" + lines.join("\n\n"));
     };
@@ -753,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "166";
+const APP_VERSION = "169";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1968,6 +1983,34 @@ BUILDERS.home = (el) => {
       html += '</div>';
       wdBox.innerHTML = html;
       wdBox.style.display = "block";
+    })();
+  })();
+  /* ── 🎁 的中報告CTAの実測成績(競艇アカのみ・勝ち型を自動でハイライト) ── */
+  (function () {
+    const ctaBox = document.createElement("div");
+    ctaBox.style.cssText = "display:none;margin-top:14px";
+    el.appendChild(ctaBox);
+    (async () => {
+      let res;
+      try { res = await gasFetch_("hitCtaStats", {}); } catch (e) { return; }
+      const stats = (res && res.stats) ? res.stats : [];
+      const tried = stats.filter(s => s.n > 0);
+      if (tried.length < 2) return; /* データが2型以上たまってから表示 */
+      const maxAvg = Math.max.apply(null, tried.map(s => s.avg), 1);
+      let html = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px">'
+        + '<div style="font-weight:800;font-size:14px;margin-bottom:3px">🎁 的中報告プレゼント企画の成績</div>'
+        + '<div class="muted" style="font-size:11px;margin-bottom:10px">いいね＋RT＋返信の平均。成績のいい型を自動で多く出しています(手動操作は不要)</div>';
+      tried.forEach((s, i) => {
+        const pct = Math.round((s.avg / maxAvg) * 100);
+        const win = i === 0;
+        html += '<div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">'
+          + '<span>' + (win ? "👑 " : "") + esc(s.label) + '</span>'
+          + '<span style="color:' + (win ? "#3DFFA8" : "var(--muted)") + ';font-weight:700">平均' + s.avg + ' <span class="muted" style="font-weight:400">(' + s.n + '回)</span></span></div>'
+          + '<div style="height:6px;background:var(--card);border-radius:99px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + (win ? "linear-gradient(90deg,#3DFFA8,#38d4f0)" : "var(--border)") + '"></div></div></div>';
+      });
+      html += '</div>';
+      ctaBox.innerHTML = html;
+      ctaBox.style.display = "block";
     })();
   })();
   /* ── 📈 成長プラン(今日のやること)をホームに常設: クライアント切替チップ+当日キャッシュ ── */
