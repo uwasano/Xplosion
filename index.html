@@ -288,11 +288,24 @@ window.openNoteStudio = function () {
   window._noteStudioOpen = true;
   try { renderTop(); } catch (e) {}
   const STEPS = [
-    { n: 1, label: "①テーマ", dec: "theme", decLabel: "✅ 決定したテーマ", hint: "AIが1問ずつ質問してくる(10問目安)→素材整理→候補10個→採点→推薦まで自動で進む。最後にテーマを自分で決めて下の決定欄に書く" },
+    { n: 1, label: "①テーマ", dec: "theme", decLabel: "✅ 決定したテーマ", hint: "下のアンケートに書けるとこだけ書いて『まとめて送る』(1回のAI呼び出しで整理→候補10個→採点→推薦まで全部出る)。最後にテーマを自分で決めて決定欄へ" },
     { n: 2, label: "②読者", dec: "reason3", decLabel: "✅ 買う理由(3行)", hint: "①のテーマの読者を解像度MAXで言語化。最後に出る『買う理由3行』を決定欄へコピー" },
     { n: 3, label: "③構成", dec: "structure", decLabel: "✅ 採用する構成", hint: "無料/有料の境界線・価格帯まで設計。採用する構成を決定欄へコピー(④がこれを使う)" },
     { n: 4, label: "④執筆", dec: "noteText", decLabel: "✅ note本文(完成稿)", hint: "最初に一次情報(実体験・数字・失敗談の箇条書き)と過去記事を貼って送信→配置表→本文まで書き切る" },
     { n: 5, label: "⑤X集客", dec: "", decLabel: "", hint: "note全文(または無料部分)と過去投稿5本を貼って送信→2週間ぶん14本のX投稿計画が出る" },
+  ];
+  /* ①の棚卸し質問(固定=AIに質問を作らせない→API代ゼロ・往復ゼロ) */
+  const NS_Q = [
+    "今の(直近の)仕事・活動は？(職種・業種・年数)",
+    "お金や時間を大量に注ぎ込んだことは？(ざっくり金額・期間も)",
+    "人から『すごい』『教えて』と言われた経験は？",
+    "数字で語れる実績は？(売上・フォロワー・回数・年数など)",
+    "大きな失敗と、そこから学んだことは？",
+    "人より詳しい自信がある分野・ジャンルは？",
+    "昔の自分に教えてあげたいことは？",
+    "よく人から相談されること・聞かれることは？",
+    "自分には当たり前やけど、他人は知らなそうなことは？",
+    "これまで作ったもの・売ったものは？(あれば)",
   ];
   const nsEsc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   let clients = [];
@@ -301,7 +314,7 @@ window.openNoteStudio = function () {
   let screen = clients[0];
   let st = null;
   let busy = false;
-  const blank = () => ({ step: 1, decisions: {}, chats: { 1: [], 2: [], 3: [], 4: [], 5: [] } });
+  const blank = () => ({ step: 1, decisions: {}, form: {}, chats: { 1: [], 2: [], 3: [], 4: [], 5: [] } });
 
   const ov = document.createElement("div");
   ov.style.cssText = "position:fixed;inset:0;background:var(--bg,#05070e);z-index:99999;overflow-y:auto;padding:14px 14px 120px;-webkit-overflow-scrolling:touch";
@@ -329,7 +342,7 @@ window.openNoteStudio = function () {
       st.chats[st.step].push({ role: "ai", text: (j && j.reply) ? j.reply : ("⚠️ " + ((j && j.error) || "生成に失敗。もう一度送信してください")) });
     } catch (e) { st.chats[st.step].push({ role: "ai", text: "⚠️ 通信エラー: " + e.message + "(もう一度送信してください)" }); }
     busy = false; save(); render();
-    const log = ov.querySelector("#nsLog"); if (log) log.scrollTop = log.scrollHeight;
+    ov.scrollTop = ov.scrollHeight; /* 返信が来たら一番下へ */
   }
 
   function render() {
@@ -345,14 +358,24 @@ window.openNoteStudio = function () {
     h += '<div style="display:flex;gap:5px;margin-bottom:10px;overflow-x:auto">'
       + STEPS.map(s => '<button class="mini nsStep" data-n="' + s.n + '" style="flex:1;min-width:62px;padding:9px 4px;font-size:11.5px;font-weight:700;border-radius:9px;border:1px solid ' + (s.n === st.step ? '#b98cff' : 'var(--border)') + ';color:' + (s.n === st.step ? '#b98cff' : 'var(--muted)') + ';background:' + (s.n === st.step ? 'rgba(185,140,255,.12)' : 'transparent') + '">' + s.label + (st.decisions[s.dec] ? " ✓" : "") + '</button>').join("") + '</div>';
     h += '<div class="muted" style="font-size:11.5px;line-height:1.6;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin-bottom:10px">' + nsEsc(stepDef.hint) + '</div>';
-    /* チャットログ */
-    h += '<div id="nsLog" style="max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px">';
-    if (!chat.length) h += '<button id="nsStart" style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:13px;border-radius:10px;font-size:14px">▶ このステップを開始する</button>';
+    /* ①テーマ: 棚卸しアンケートフォーム(1回でまとめて送る=往復ゼロ・API代1回分) */
+    if (st.step === 1) {
+      h += '<details' + (chat.length ? "" : " open") + ' style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:10px"><summary style="font-weight:700;font-size:13px;color:#3DFFA8">📝 棚卸しアンケート(書けるとこだけでOK・タップで開閉)</summary>';
+      NS_Q.forEach((q, qi) => {
+        h += '<div style="margin-top:10px"><div style="font-size:12px;margin-bottom:3px;color:var(--ink)">' + (qi + 1) + '. ' + nsEsc(q) + '</div>'
+          + '<textarea class="nsQ" data-q="' + qi + '" style="width:100%;min-height:44px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:16px;padding:8px">' + nsEsc(st.form[qi] || "") + '</textarea></div>';
+      });
+      h += '<button id="nsSendAll" ' + (busy ? "disabled" : "") + ' style="width:100%;margin-top:12px;background:linear-gradient(135deg,#3DFFA8,#38d4f0);color:#001;font-weight:800;border:none;padding:13px;border-radius:10px;font-size:13.5px">📨 回答をまとめてAIに送る(1回で候補10個〜推薦まで)</button></details>';
+    }
+    /* チャットログ(ページ全体でスクロール=二重スクロール廃止) */
+    h += '<div id="nsLog" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">';
+    if (!chat.length && st.step !== 1) h += '<button id="nsStart" style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:13px;border-radius:10px;font-size:14px">▶ このステップを開始する</button>';
     chat.forEach((m, mi) => {
       if (m.role === "user") {
         h += '<div style="align-self:flex-end;max-width:88%;background:rgba(56,212,240,.14);border:1px solid rgba(56,212,240,.4);border-radius:12px 12px 3px 12px;padding:9px 11px;font-size:12.5px;white-space:pre-wrap;word-break:break-word">' + nsEsc(m.text.length > 400 ? m.text.slice(0, 400) + "…(長文)" : m.text) + '</div>';
       } else {
-        h += '<div style="align-self:flex-start;max-width:94%;background:var(--surface);border:1px solid var(--border);border-radius:12px 12px 12px 3px;padding:10px 12px;font-size:12.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word">' + nsEsc(m.text)
+        var shown = String(m.text).replace(/\*\*/g, "").replace(/^#{1,4}\s*/gm, "◆ ");
+        h += '<div style="align-self:flex-start;max-width:94%;background:var(--surface);border:1px solid var(--border);border-radius:12px 12px 12px 3px;padding:10px 12px;font-size:12.5px;line-height:1.75;white-space:pre-wrap;word-break:break-word">' + nsEsc(shown)
           + '<div style="display:flex;gap:6px;margin-top:8px"><button class="mini nsCopy" data-i="' + mi + '" style="font-size:11px;padding:5px 10px">📋 コピー</button>'
           + (stepDef.dec ? '<button class="mini nsToDec" data-i="' + mi + '" style="font-size:11px;padding:5px 10px">⬇ 決定欄へ</button>' : "") + '</div></div>';
       }
@@ -362,11 +385,11 @@ window.openNoteStudio = function () {
     /* 決定欄 */
     if (stepDef.dec) {
       h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:4px">' + nsEsc(stepDef.decLabel) + '<span class="muted" style="font-weight:400">(次のステップがこれを使う)</span></div>'
-        + '<textarea id="nsDec" style="width:100%;min-height:64px;background:var(--card);border:1px solid var(--border);border-radius:9px;color:var(--ink);font-size:12px;padding:8px">' + nsEsc(st.decisions[stepDef.dec] || "") + '</textarea></div>';
+        + '<textarea id="nsDec" style="width:100%;min-height:64px;background:var(--card);border:1px solid var(--border);border-radius:9px;color:var(--ink);font-size:16px;padding:8px">' + nsEsc(st.decisions[stepDef.dec] || "") + '</textarea></div>';
     }
-    /* 入力欄 */
-    h += '<div style="display:flex;gap:8px;align-items:flex-end"><textarea id="nsInput" placeholder="回答・素材の貼り付け・指示など" style="flex:1;min-height:52px;max-height:160px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:13px;padding:9px"></textarea>'
-      + '<button id="nsSend" ' + (busy ? "disabled" : "") + ' style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:13px 16px;border-radius:10px;font-size:13px;white-space:nowrap">送信</button></div>';
+    /* 入力欄(画面下に固定・font-size16px=iOSの自動ズーム暴発を防ぐ) */
+    h += '<div style="position:sticky;bottom:0;background:var(--bg,#05070e);padding:10px 0 6px;display:flex;gap:8px;align-items:flex-end"><textarea id="nsInput" placeholder="追加の回答・素材の貼り付け・修正指示など" style="flex:1;min-height:60px;max-height:180px;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:16px;padding:10px"></textarea>'
+      + '<button id="nsSend" ' + (busy ? "disabled" : "") + ' style="background:linear-gradient(135deg,#b98cff,#38d4f0);color:#001;font-weight:800;border:none;padding:14px 16px;border-radius:10px;font-size:14px;white-space:nowrap">送信</button></div>';
     ov.innerHTML = h;
     /* 配線 */
     ov.querySelector("#nsClose").onclick = () => {
@@ -382,9 +405,17 @@ window.openNoteStudio = function () {
     const stBtn = ov.querySelector("#nsStart"); if (stBtn) stBtn.onclick = () => send("開始してください。進め方に沿ってお願いします。");
     const sd = ov.querySelector("#nsSend"); if (sd) sd.onclick = () => { syncDec(); send(); };
     const dec = ov.querySelector("#nsDec"); if (dec) dec.onchange = () => { syncDec(); save(); render(); };
+    ov.querySelectorAll(".nsQ").forEach(t => t.onchange = () => { st.form[t.dataset.q] = t.value; save(); });
+    const sa = ov.querySelector("#nsSendAll");
+    if (sa) sa.onclick = () => {
+      ov.querySelectorAll(".nsQ").forEach(t => { st.form[t.dataset.q] = t.value; });
+      const lines = NS_Q.map((q, qi) => (st.form[qi] || "").trim() ? ((qi + 1) + ". " + q + "\n→ " + st.form[qi].trim()) : "").filter(Boolean);
+      if (!lines.length) { alert("最低1つは回答を書いてや"); return; }
+      save();
+      send("【棚卸しアンケート回答】\n\n" + lines.join("\n\n"));
+    };
     ov.querySelectorAll(".nsCopy").forEach(b => b.onclick = async () => { try { await navigator.clipboard.writeText(chat[b.dataset.i].text); b.textContent = "✓ コピー済"; } catch (e) {} });
     ov.querySelectorAll(".nsToDec").forEach(b => b.onclick = () => { st.decisions[stepDef.dec] = chat[b.dataset.i].text; save(); render(); });
-    const log = ov.querySelector("#nsLog"); if (log) log.scrollTop = log.scrollHeight;
     function syncDec() { const d = ov.querySelector("#nsDec"); if (d && stepDef.dec) st.decisions[stepDef.dec] = d.value; }
   }
   load();
@@ -710,7 +741,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "163";
+const APP_VERSION = "164";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
