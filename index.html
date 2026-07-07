@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "175";
+const APP_VERSION = "177";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1291,6 +1291,10 @@ async function shMixPostText(audience, sceneObj, fixedMix){
   else { const picks = shGenerate(aud, 1); if (!picks.length) return null; m = picks[0]; }
   const haigou = m.combo.map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio).join(" / ");
   const sweet=Math.round(shAvg(m.combo,0)), sour=Math.round(shAvg(m.combo,1)), cool=Math.round(shAvg(m.combo,2)), heavy=Math.round(shAvg(m.combo,3));
+  /* v177: 画像メーター(5ドット・0許容)と星の数を完全一致させる。
+     旧: 本文は6段階で最低★1保証→清涼感0でも★1が出て画像(0ドット)とズレていた。
+     新: 本文も5段階・0許容で、画像の drawMeter(Math.round(v/2)) と同じ数値に揃える */
+  const star5 = (v) => { const f=Math.max(0,Math.min(5,Math.round((v||0)/2))); return "★".repeat(f)+"☆".repeat(5-f); };
   const star = (v) => { const f=Math.max(1,Math.min(6,Math.round(v*6/10))); return "★".repeat(f)+"☆".repeat(6-f); };
   const osusume = m.sc>=90?6:(m.sc>=85?5:4);
   const gekioshi = m.ss>=3?6:(m.ss>=2?5:(m.ss>=1?4:3));
@@ -1306,7 +1310,7 @@ async function shMixPostText(audience, sceneObj, fixedMix){
   const starBlock =
     (sceneObj ? "マスターのオススメ度 "+star(8)+"\n" : "マスターのオススメ度 "+star(osusume*10/6)+"\n") +
     "激推し度 "+star(gekioshi*10/6)+"\n" +
-    "甘さ "+star(sweet)+" / 酸味 "+star(sour)+"\n清涼感 "+star(cool)+" / 吸いごたえ "+star(heavy);
+    "甘さ "+star5(sweet)+" / 酸味 "+star5(sour)+"\n清涼感 "+star5(cool)+" / 吸いごたえ "+star5(heavy);
   const hoursClause = CFG.useHours
     ? `\n【営業時間】${CFG.openTime}〜${CFG.closeTime}。シーシャの来店はこの時間だけ。朝・昼など営業時間外に『今すぐ来て』『朝シーシャどうぞ』のような“今すぐ来店”を促す表現は絶対に書かない。来店に触れるなら営業時間(夜)を想定した自然な誘い方にする。基本はフレーバーの魅力を伝える内容でOK。\n`
     : "";
@@ -2978,7 +2982,7 @@ async function prepareFlavorPosts(count, wrapEl, silent){
         const sc = shScene_(p.combo);
         const flist = p.combo.slice().sort((a,b)=>b.ratio-a.ratio).map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio);
         const osusume = p.sc>=90?6:(p.sc>=85?5:4);
-        media = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume, season:(new Date().getMonth()+1)+"月の推し", meters:{ 甘さ:shAvg(p.combo,0), 爽やか:shAvg(p.combo,1), 清涼感:shAvg(p.combo,2) } });
+        media = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume, season:(new Date().getMonth()+1)+"月の推し", meters:{ 甘さ:Math.round(shAvg(p.combo,0)), 酸味:Math.round(shAvg(p.combo,1)), 清涼感:Math.round(shAvg(p.combo,2)) } });
       }
       cursor += (22 + Math.random()*5) * 3600 * 1000; /* 約1日おき(22〜27h)に予約=1日1本ペース。時刻は自然にばらす */
       await gasFetch_("scheduleMixPost", { screen_name: screen, text: res.thread[0], thread: res.thread.length>1?res.thread:null, media_b64: media, scheduled_at: new Date(cursor).toISOString() });
@@ -3107,7 +3111,7 @@ function renderMixCard(p, audience) {
           const osusume = p.sc>=90?6:(p.sc>=85?5:4);
           const sc = shScene_(p.combo);
           const flist = p.combo.slice().sort((a,b)=>b.ratio-a.ratio).map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio);
-          const composed = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume, season:(new Date().getMonth()+1)+"月の推し", meters:{ 甘さ:shAvg(p.combo,0), 爽やか:shAvg(p.combo,1), 清涼感:shAvg(p.combo,2) } });
+          const composed = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume, season:(new Date().getMonth()+1)+"月の推し", meters:{ 甘さ:Math.round(shAvg(p.combo,0)), 酸味:Math.round(shAvg(p.combo,1)), 清涼感:Math.round(shAvg(p.combo,2)) } });
           imgWrap.innerHTML = '<img src="data:image/jpeg;base64,'+composed+'" style="width:100%;border-radius:10px;margin-top:4px" alt="mix"><div style="font-size:10px;color:var(--muted);margin-top:2px">長押しで保存できます</div>';
           imgWrap.dataset.composed = composed;
           ig.textContent="🎨 もう一度生成";
@@ -3140,7 +3144,7 @@ function renderMixCard(p, audience) {
             const osusume = p.sc>=90?6:(p.sc>=85?5:4);
             const sc = shScene_(p.combo);
             const flist = p.combo.slice().sort((a,b)=>b.ratio-a.ratio).map(c=>c.name+"("+shBrandOf(c.name)+") "+c.ratio);
-            mediaB64 = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume, season:(new Date().getMonth()+1)+"月の推し", meters:{ 甘さ:shAvg(p.combo,0), 爽やか:shAvg(p.combo,1), 清涼感:shAvg(p.combo,2) } });
+            mediaB64 = await composeShishaImage_(bg, { mood:"今日の気分", title:sc.title, flavors:flist, shop:"噂のシーシャBar", stars:osusume, season:(new Date().getMonth()+1)+"月の推し", meters:{ 甘さ:Math.round(shAvg(p.combo,0)), 酸味:Math.round(shAvg(p.combo,1)), 清涼感:Math.round(shAvg(p.combo,2)) } });
           }
         } else { pb.textContent="投稿中…"; }
         const r = await gasFetch_("postMixImage", { screen_name: S.activeAccount, text: res.thread[0], thread: res.thread.length>1?res.thread:null, media_b64: mediaB64 });
