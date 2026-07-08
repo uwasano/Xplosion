@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "177";
+const APP_VERSION = "181";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1397,6 +1397,20 @@ function loadCfgSync(account) {
 async function saveCfg() {
   CFG_CACHE[S.activeAccount] = CFG;
   await kvSet("gen_config:" + S.activeAccount, CFG);
+  /* v181: 保存のたびに設定が生成へ効く状態か自動チェック→トースト表示(runConfigCheckの手動実行を不要に) */
+  try { autoConfigCheck_(); } catch (e) {}
+}
+
+/* 生成設定が投稿生成に効くか自動確認。保存直後に呼ばれ、要点をトースト表示する */
+function autoConfigCheck_() {
+  const emoji = CFG.emoji || "少なめ";
+  const hours = (CFG.useHours && CFG.openTime && CFG.closeTime) ? (CFG.openTime + "〜" + CFG.closeTime) : "未設定";
+  const parts = ["✅ @" + S.activeAccount + " に反映しました",
+    "絵文字: " + emoji,
+    "営業時間: " + hours];
+  if (CFG.closedDays && CFG.closedDays.length) parts.push("定休日: " + CFG.closedDays.join("・"));
+  if (CFG.bizArea) parts.push("エリア: " + CFG.bizArea);
+  if (typeof toast === "function") toast(parts.join(" / "), "ok");
 }
 
 /* 店舗情報の文を作る(オフor未入力なら空) */
