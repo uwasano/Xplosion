@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "181";
+const APP_VERSION = "182";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2103,6 +2103,22 @@ BUILDERS.home = (el) => {
         cp.onclick = () => { navigator.clipboard.writeText(plan.campaign.post_text).then(() => { cp.textContent = "✅ コピーした"; }); };
         cw.appendChild(cp);
         body.appendChild(cw);
+      }
+      /* v182: 実店舗向けの集客特典券(perk) */
+      if (plan.perk && plan.perk.post_text) {
+        const pw = document.createElement("div");
+        pw.style.cssText = "margin-top:10px;padding:11px;border-radius:10px;border:1px solid rgba(61,255,168,.4);background:rgba(61,255,168,.06)";
+        pw.innerHTML = '<div style="font-size:12.5px;font-weight:800;color:#3DFFA8;margin-bottom:4px">🎫 ' + esc(plan.perk.title || "来店につながる特典券") + '</div>'
+          + '<div class="muted" style="font-size:11.5px;margin-bottom:6px">特典: ' + esc(plan.perk.prize || "") + '</div>'
+          + '<div style="font-size:12px;line-height:1.6;white-space:pre-wrap;color:#dce7f5;background:var(--card);border-radius:8px;padding:9px">' + esc(plan.perk.post_text) + '</div>';
+        const pxl = document.createElement("a"); pxl.className = "mini"; pxl.textContent = "🚀 この文章のままXの投稿画面を開く";
+        pxl.style.cssText = "display:block;text-align:center;width:100%;margin-top:8px;padding:10px;border-radius:8px;text-decoration:none;font-weight:800;border:1px solid #3DFFA8;color:#3DFFA8";
+        pxl.href = "https://x.com/intent/post?text=" + encodeURIComponent(plan.perk.post_text); pxl.target = "_blank";
+        pw.appendChild(pxl);
+        const pcp = document.createElement("button"); pcp.className = "mini"; pcp.textContent = "📋 文章だけコピー"; pcp.style.cssText = "width:100%;margin-top:6px;padding:8px";
+        pcp.onclick = () => { navigator.clipboard.writeText(plan.perk.post_text).then(() => { pcp.textContent = "✅ コピーした"; }); };
+        pw.appendChild(pcp);
+        body.appendChild(pw);
       }
     }
     renderChips(); loadPlan();
