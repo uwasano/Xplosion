@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "184";
+const APP_VERSION = "185";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5163,7 +5163,7 @@ BUILDERS.calendar = (el) => {
     btnHunterOpen.disabled = false; btnHunterOpen.textContent = "🌐 バズ投稿にリプ(フォロー外)";
     if (!r || r.error) { trOut.innerHTML = '<div class="muted" style="padding:8px">' + esc((r && r.error) || "取得に失敗") + '</div>'; return; }
     const items = (r.items || []).filter(it => it.tweet_id);
-    if (!items.length) { trOut.innerHTML = '<div class="muted" style="padding:8px">いま業種ジャンルで勢いのある投稿が見つかりませんでした。時間を置いて再度お試しください。</div>'; return; }
+    if (!items.length) { trOut.innerHTML = '<div class="muted" style="padding:8px">いま業種ジャンルで勢いのある投稿が見つかりませんでした。' + (r.scanned != null ? '<br><span style="font-size:11px">スキャン: ' + r.scanned + '件' + (r.keywords ? ' / 検索語: ' + esc(r.keywords.join("・")) : '') + '</span><br><span style="font-size:11px">スキャン0件の場合は、生成設定の業種ジャンルをもっと一般的な語（例:「シーシャ」「競艇」）にすると当たりやすくなります。</span>' : '') + '</div>'; return; }
     trOut.innerHTML = '<div class="desc" style="margin:6px 0">業種ジャンルの伸び投稿 ' + items.length + ' 件（フォロー外含む）。スワイプでリプしていけます。' + (r.keywords ? '<br><span class="muted" style="font-size:11px">検索語: ' + esc(r.keywords.join("・")) + '</span>' : '') + '</div>';
     openBuzzSwipe(items, screen);
   };
