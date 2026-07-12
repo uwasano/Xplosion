@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "190";
+const APP_VERSION = "191";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2000,6 +2000,37 @@ BUILDERS.home = (el) => {
       html += '</div>';
       wdBox.innerHTML = html;
       wdBox.style.display = "block";
+    })();
+  })();
+  /* ── 🎁 発表待ちの懸賞(締切が過ぎて未発表のもの。発表したら✅を押す) ── */
+  (function () {
+    const gwBox = document.createElement("div");
+    gwBox.style.cssText = "display:none;margin-top:14px";
+    el.appendChild(gwBox);
+    (async () => {
+      let res;
+      try { res = await gasFetch_("giveawayPending", {}); } catch (e) { return; }
+      const items = (res && res.items) || [];
+      if (!items.length) return;
+      let html = '<div style="background:rgba(255,211,77,.08);border:1px solid rgba(255,211,77,.5);border-radius:14px;padding:12px 14px">'
+        + '<div style="font-weight:800;font-size:14px;color:#ffd34d;margin-bottom:2px">🎁 発表待ちの懸賞 ' + items.length + '件</div>'
+        + '<div class="muted" style="font-size:11px;margin-bottom:10px">締切が過ぎた企画です。当選者を発表したら✅を押してください</div>';
+      items.forEach(it => {
+        const dl = it.cta_deadline ? new Date(it.cta_deadline).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+        const posted = it.posted_at ? new Date(it.posted_at).toLocaleString("ja-JP", { month: "numeric", day: "numeric" }) : "";
+        html += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;font-size:12px">'
+          + '<div style="flex:1"><b>@' + esc(it.screen_name) + '</b> ' + posted + 'の企画 <span class="muted">締切' + dl + '</span></div>'
+          + (it.tweet_id ? '<a class="mini" style="padding:6px 10px;text-decoration:none;border:1px solid var(--border);border-radius:8px;color:var(--ink)" target="_blank" href="https://x.com/' + esc(it.screen_name) + '/status/' + esc(it.tweet_id) + '">投稿を開く</a>' : '')
+          + '<button class="mini gwDone" data-id="' + it.id + '" style="padding:6px 10px;border:1px solid #3DFFA8;color:#3DFFA8;border-radius:8px">✅ 発表済み</button></div>';
+      });
+      html += '</div>';
+      gwBox.innerHTML = html;
+      gwBox.style.display = "block";
+      gwBox.querySelectorAll(".gwDone").forEach(b => b.onclick = async () => {
+        b.disabled = true; b.textContent = "…";
+        try { await gasFetch_("giveawayAnnounced", { id: b.dataset.id }); b.closest("div[style*='display:flex']").style.opacity = ".35"; b.textContent = "✅ 済"; }
+        catch (e) { b.disabled = false; b.textContent = "✅ 発表済み"; }
+      });
     })();
   })();
   /* ── 🔗 URL自動リプの状態(v190: 手動テスト不要。エラーなら赤・正常なら小さく実績表示) ── */
