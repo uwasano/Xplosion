@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "185";
+const APP_VERSION = "188";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1497,11 +1497,10 @@ function sc() {
      : CFG.hook >= 40 ? "1行目はそこそこ引きを作りつつ自然に。"
      : "1行目は誇張せず落ち着いた入りにする。");
 
-  /* 入れたいURL */
+  /* 入れたいURL: 本文には入れない(v187方針。リンク付き投稿は表示が下がる。URLは伸びた投稿へ自動リプされる) */
   if (CFG.url.trim()) {
-    out += "\n\n【URL挿入】次のURLを投稿末尾に置く: " + CFG.url.trim() +
-      "。全投稿の約" + CFG.urlFreq + "%程度の頻度で入れ、毎回は入れない(告知・誘導したい投稿に絞る)。" +
-      "Xでは140字にURL分を含めて収める。";
+    out += "\n\n【URLと導線の戦略】URLは本文に絶対入れない(表示が下がるため。伸びた投稿には自動でURLがリプされる仕組みがある)。" +
+      "本文だけで価値を出し切り、締めの誘導は3回に1回ほど『続きは固定ポストで』『プロフィールのリンクから』等を短くローテーションで入れる。";
   }
 
   /* NGワード */
@@ -2632,12 +2631,27 @@ BUILDERS.settings = (el) => {
 
   /* 入れたいURL */
   fld(el, "入れたいURL(任意)");
-  const uin = document.createElement("input"); uin.placeholder = "例: https://lin.ee/xxxx (LINE公式など)"; uin.value = CFG.url || "";
+  const uin = document.createElement("input"); uin.placeholder = "例: https://note.com/xxx や https://lin.ee/xxxx"; uin.value = CFG.url || "";
   uin.oninput = () => { CFG.url = uin.value; save(); }; el.appendChild(uin);
   const uhint = document.createElement("p"); uhint.className = "desc"; uhint.style.margin = "6px 0 0";
-  uhint.textContent = "予約サイト・LINE公式・プロフィールなどへの誘導URL。下の頻度で投稿末尾に挿入される。";
+  uhint.textContent = "note・LINE公式・予約サイトなどへの誘導URL。本文には入れず(リンク付き投稿は表示が下がるため)、投稿が伸びたのを自動検知してリプ欄にこのURLを自動投稿します。";
   el.appendChild(uhint);
-  sliderField(el, "URLを入れる頻度", "urlFreq", save);
+  /* v188: 頻度スライダーに「何投稿に1回か」を明記(%だけだと分かりにくいため) */
+  fld(el, "URLを付ける頻度");
+  const uwrap = document.createElement("div");
+  uwrap.style.cssText = "display:flex;align-items:center;gap:12px";
+  const urange = document.createElement("input");
+  urange.type = "range"; urange.min = "5"; urange.max = "100"; urange.step = "5"; urange.value = CFG.urlFreq;
+  urange.style.cssText = "flex:1;accent-color:var(--accent)";
+  const uval = document.createElement("span");
+  uval.style.cssText = "font-family:var(--mono);font-weight:800;color:var(--accent2);min-width:110px;text-align:right;font-size:12px";
+  const uFmt = (v) => v + "%（約" + Math.max(1, Math.round(100 / v)) + "投稿に1回）";
+  uval.textContent = uFmt(CFG.urlFreq);
+  urange.oninput = () => { CFG.urlFreq = parseInt(urange.value); uval.textContent = uFmt(CFG.urlFreq); save(); };
+  uwrap.appendChild(urange); uwrap.appendChild(uval); el.appendChild(uwrap);
+  const ufhint = document.createElement("p"); ufhint.className = "desc"; ufhint.style.margin = "6px 0 0";
+  ufhint.textContent = "対象になった投稿のうち、伸びたもの(いいね+RT+リプ8以上 または 表示1,500以上)だけにURLがリプされます。目安: 20%=5投稿に1回 / 35%=3投稿に1回 / 50%=2投稿に1回 / 100%=毎投稿が対象。";
+  el.appendChild(ufhint);
 
   /* NGワード */
   fld(el, "NGワード(使わせない語・カンマ区切り・任意)");
@@ -4894,7 +4908,7 @@ BUILDERS.calendar = (el) => {
   const btnEnjou = document.createElement("button"); btnEnjou.className = "mini cyan"; btnEnjou.textContent = "🔥 炎上ニュースをみる";
   const btnMirror = document.createElement("button"); btnMirror.className = "mini"; btnMirror.textContent = "🪞 バズってる投稿をマネする";
   const btnHunter = document.createElement("button"); btnHunter.className = "mini"; btnHunter.textContent = "🎯 バズってる投稿にリプする";
-  const btnHunterOpen = document.createElement("button"); btnHunterOpen.className = "mini"; btnHunterOpen.textContent = "🌐 バズ投稿にリプ(フォロー外)";
+  const btnHunterOpen = document.createElement("button"); btnHunterOpen.className = "mini"; btnHunterOpen.textContent = "🎯 バズってる投稿にリプする（フォロー外）";
   const btnHunterPro = document.createElement("button"); btnHunterPro.className = "mini"; btnHunterPro.textContent = "🎯 リプハンターPRO(自動で溜めた投稿)";
   const btnGreet = document.createElement("button"); btnGreet.className = "mini"; btnGreet.textContent = "👋 フォローした人に挨拶";
   const SEC = { post: "#38d4f0", reply: "#ff6fae", follow: "#3DFFA8", analyze: "#b98cff" };
@@ -4907,8 +4921,7 @@ BUILDERS.calendar = (el) => {
   [btnTrend, btnPop, btnQuote, btnEnjou, btnMirror].forEach(function (b) { mbtn(b, SEC.post); trBtnRow.appendChild(b); });
 
   trBtnRow.appendChild(mkMenuHead("🎯 リプで絡んで見つけてもらう", SEC.reply));
-  trBtnRow.appendChild(mkMenuInfo("伸びてる投稿に気の利いたリプを返して見つけてもらう機能。中の項目：<br>・<b>🎯 バズってる投稿にリプする</b>＝競合の直近12時間の投稿を『勢い(時間あたりの伸び)＋インプレ』でランキング表示。<b style=\"color:#ffd34d\">🚀即バズ狙撃はここ</b>：バズる寸前の投稿が『🚀早リプ狙い目』として最上位に出る。左スワイプでスルー／右スワイプでリプ<br>・<b>🎯 リプハンターPRO</b>＝裏で自動的に溜めておいた『リプすべき投稿』の一覧。手動で探さなくても溜まったものにサッとリプできる", SEC.reply));
-  trBtnRow.appendChild(mkMenuInfo("・<b>🌐 バズ投稿にリプ(フォロー外)</b>＝競合の登録なしでも、あなたの業種ジャンルで伸びてる投稿をX全体から検索して表示。フォロー外の新しい層に見つけてもらえる新規開拓用。左スワイプでスルー／右スワイプでリプ", SEC.reply));
+  trBtnRow.appendChild(mkMenuInfo("伸びてる投稿に気の利いたリプを返して見つけてもらう機能。中の項目：<br>・<b>🎯 バズってる投稿にリプする</b>＝登録した競合の直近12時間の投稿を『勢い＋インプレ』でランキング表示。<b style=\"color:#ffd34d\">🚀即バズ狙撃はここ</b>：バズる寸前の投稿が『🚀早リプ狙い目』として最上位に出る<br>・<b>🎯 バズってる投稿にリプする（フォロー外）</b>＝競合の登録なしでも、あなたの業種ジャンルで伸びてる投稿をX全体から検索。フォロー外の新しい層に見つけてもらえる新規開拓用<br>・<b>🎯 リプハンターPRO</b>＝裏で自動的に溜めておいた『リプすべき投稿』の一覧<br>どれも左スワイプでスルー／右スワイプでリプ", SEC.reply));
   [btnHunter, btnHunterOpen, btnHunterPro].forEach(function (b) { mbtn(b, SEC.reply); trBtnRow.appendChild(b); });
 
   trBtnRow.appendChild(mkMenuHead("👋 フォロワーを増やす", SEC.follow));
@@ -5152,15 +5165,15 @@ BUILDERS.calendar = (el) => {
     openBuzzSwipe(items, screen);
   };
 
-  /* 🌐 バズ投稿にリプ(フォロー外): 業種キーワードでX全体から伸び投稿を検索→スワイプUI(新規開拓) */
+  /* 🎯 バズってる投稿にリプする（フォロー外）: 業種キーワードでX全体から伸び投稿を検索→スワイプUI(新規開拓) */
   btnHunterOpen.onclick = async () => {
     const screen = (acct.value || "").replace(/^@/, "");
     if (!screen) { trOut.innerHTML = '<div class="muted" style="padding:8px">先にアカウントを選んでください。</div>'; return; }
     btnHunterOpen.disabled = true; btnHunterOpen.textContent = "業種ジャンルで検索中…"; trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">あなたの業種ジャンルで伸びてる投稿を、フォロー外も含めてX全体から探しています…（15秒ほど）</div>';
     let r;
     try { r = await gasFetch_("buzzReplyScanOpen", { screen_name: screen }); }
-    catch (e) { trOut.innerHTML = '<div class="err">' + (e.message || "取得に失敗") + '</div>'; btnHunterOpen.disabled = false; btnHunterOpen.textContent = "🌐 バズ投稿にリプ(フォロー外)"; return; }
-    btnHunterOpen.disabled = false; btnHunterOpen.textContent = "🌐 バズ投稿にリプ(フォロー外)";
+    catch (e) { trOut.innerHTML = '<div class="err">' + (e.message || "取得に失敗") + '</div>'; btnHunterOpen.disabled = false; btnHunterOpen.textContent = "🎯 バズってる投稿にリプする（フォロー外）"; return; }
+    btnHunterOpen.disabled = false; btnHunterOpen.textContent = "🎯 バズってる投稿にリプする（フォロー外）";
     if (!r || r.error) { trOut.innerHTML = '<div class="muted" style="padding:8px">' + esc((r && r.error) || "取得に失敗") + '</div>'; return; }
     const items = (r.items || []).filter(it => it.tweet_id);
     if (!items.length) { trOut.innerHTML = '<div class="muted" style="padding:8px">いま業種ジャンルで勢いのある投稿が見つかりませんでした。' + (r.scanned != null ? '<br><span style="font-size:11px">スキャン: ' + r.scanned + '件' + (r.keywords ? ' / 検索語: ' + esc(r.keywords.join("・")) : '') + '</span><br><span style="font-size:11px">スキャン0件の場合は、生成設定の業種ジャンルをもっと一般的な語（例:「シーシャ」「競艇」）にすると当たりやすくなります。</span>' : '') + '</div>'; return; }
