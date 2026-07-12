@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "188";
+const APP_VERSION = "189";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2634,7 +2634,7 @@ BUILDERS.settings = (el) => {
   const uin = document.createElement("input"); uin.placeholder = "例: https://note.com/xxx や https://lin.ee/xxxx"; uin.value = CFG.url || "";
   uin.oninput = () => { CFG.url = uin.value; save(); }; el.appendChild(uin);
   const uhint = document.createElement("p"); uhint.className = "desc"; uhint.style.margin = "6px 0 0";
-  uhint.textContent = "note・LINE公式・予約サイトなどへの誘導URL。本文には入れず(リンク付き投稿は表示が下がるため)、投稿が伸びたのを自動検知してリプ欄にこのURLを自動投稿します。";
+  uhint.textContent = "note・LINE公式・予約サイトなどへの誘導URL。本文には入れず(リンク付き投稿は表示が下がるため)、投稿が伸びたのを自動検知してリプ欄にこのURLを自動投稿します。対象は『📚 オートノウハウ・解説系』の投稿だけ(全投稿にツリーが付く不自然さを防ぐため)。クライアント管理でオートノウハウをONにしてください。";
   el.appendChild(uhint);
   /* v188: 頻度スライダーに「何投稿に1回か」を明記(%だけだと分かりにくいため) */
   fld(el, "URLを付ける頻度");
@@ -2650,7 +2650,7 @@ BUILDERS.settings = (el) => {
   urange.oninput = () => { CFG.urlFreq = parseInt(urange.value); uval.textContent = uFmt(CFG.urlFreq); save(); };
   uwrap.appendChild(urange); uwrap.appendChild(uval); el.appendChild(uwrap);
   const ufhint = document.createElement("p"); ufhint.className = "desc"; ufhint.style.margin = "6px 0 0";
-  ufhint.textContent = "対象になった投稿のうち、伸びたもの(いいね+RT+リプ8以上 または 表示1,500以上)だけにURLがリプされます。目安: 20%=5投稿に1回 / 35%=3投稿に1回 / 50%=2投稿に1回 / 100%=毎投稿が対象。";
+  ufhint.textContent = "ノウハウ・解説系の投稿のうち、伸びたもの(いいね+RT+リプ8以上 または 表示1,500以上)だけにURLがリプされます。目安: 20%=5投稿に1回 / 35%=3投稿に1回 / 50%=2投稿に1回 / 100%=毎投稿が対象。3日間1回も付かなければ期間ベストの投稿に自動で付きます。";
   el.appendChild(ufhint);
 
   /* NGワード */
@@ -7713,6 +7713,7 @@ BUILDERS.clients = (el) => {
       d.appendChild(autoFeatureRow(c.screen_name, "trend", "🔥 オートトレンド投稿", "毎日、今のトレンドからバズ投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#ff2d95,#a855f7)"));
       d.appendChild(autoFeatureRow(c.screen_name, "enjou", "🔥 オート炎上ニュース", "炎上系ニュースに自分の視点でコメント(2日以内・話題が無い日は投稿なし)", "linear-gradient(135deg,#ff6b35,#ff2d95)"));
       d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
+      d.appendChild(autoFeatureRow(c.screen_name, "knowhow", "📚 オートノウハウ・解説系", "業種の役立つノウハウ・解説を本文で出し切る価値提供型。伸びたら生成設定の「入れたいURL」が自動でリプされる(URL導線はこの種別だけ)", "linear-gradient(135deg,#3DFFA8,#38d4f0)"));
       /* 競艇業種のみ: 予想 */
       if (/競艇|ボートレース|ボート/.test(biz)) {
         d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想(人気順)", "毎日、締切が近いレースを人気順ロジックで自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
