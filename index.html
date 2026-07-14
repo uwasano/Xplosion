@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "195";
+const APP_VERSION = "196";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4752,7 +4752,7 @@ BUILDERS.calendar = (el) => {
             const roiColor = d.roi >= 100 ? "#33cc88" : "#ff8866";
             const profColor = d.profit >= 0 ? "#3DFFA8" : "#ff8866";
             const prof100 = Math.round(d.profit);
-            return '<div class="card" style="padding:12px;margin-top:8px;border:1px solid '+(label==="本日"?"var(--accent2)":"var(--border)")+'"><div style="font-weight:800;margin-bottom:6px">📅 '+label+'の成績 <span class="muted" style="font-size:11px;font-weight:400">('+(label==="本日"?"今日":"昨日")+'のレース)</span></div>'
+            return '<div class="card" style="padding:12px;margin-top:8px;border:1px solid '+(label==="本日"?"var(--accent2)":"var(--border)")+'"><div style="font-weight:800;margin-bottom:6px">📅 '+label+'の成績 <span class="muted" style="font-size:11px;font-weight:400">('+(label==="本日"?"本日":"昨日")+'公開した全レース)</span></div>'
               + '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:14px"><div>的中率 <b>'+d.hitRate+'%</b></div>'
               + '<div>回収率 <b style="color:'+roiColor+'">'+d.roi+'%</b></div>'
               + '<div class="muted" style="font-size:13px">('+d.hits+'/'+d.races+'レース)</div></div>'
