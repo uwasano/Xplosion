@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "193";
+const APP_VERSION = "194";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -7771,21 +7771,40 @@ BUILDERS.clients = (el) => {
       (function (sn) {
         const lw = document.createElement("div");
         lw.style.cssText = "margin-top:8px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)";
-        lw.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:13px">📱 LINE自動配信 <span class="lnStat muted" style="font-size:11px">確認中…</span></div></div>'
-          + '<div class="muted" style="font-size:11px;line-height:1.6;margin-top:3px">無料予想を生成した瞬間、LINE公式の友だち全員に同じ予想を一斉配信します(userID探し不要のbroadcast方式)。トークンを保存すればON・空にして保存すればOFF。</div>'
+        lw.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:13px">📱 LINE自動配信 <span class="lnStat muted" style="font-size:11px">確認中…</span></div><button class="mini lnToggle" style="display:none;padding:6px 12px;border-radius:99px;font-weight:800"></button></div>'
+          + '<div class="muted" style="font-size:11px;line-height:1.6;margin-top:3px">無料予想を生成した瞬間、LINE公式の友だち全員に同じ予想を一斉配信します(userID探し不要のbroadcast方式)。トークンは保存したまま、右上のボタンでいつでも配信を止められます。</div>'
           + '<div style="display:flex;gap:6px;margin-top:8px"><input class="lnTok" type="password" placeholder="チャネルアクセストークン(長期)を貼り付け" style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:16px;padding:8px">'
           + '<button class="mini lnSave" style="padding:8px 12px;white-space:nowrap">保存</button></div>'
           + '<button class="mini lnTest" style="width:100%;margin-top:6px;padding:8px;display:none">📨 テスト配信を送る</button>';
         d.appendChild(lw);
-        const stat = lw.querySelector(".lnStat"), tok = lw.querySelector(".lnTok"), sv = lw.querySelector(".lnSave"), ts = lw.querySelector(".lnTest");
+        const stat = lw.querySelector(".lnStat"), tok = lw.querySelector(".lnTok"), sv = lw.querySelector(".lnSave"), ts = lw.querySelector(".lnTest"), tg = lw.querySelector(".lnToggle");
+        let _lnOn = true;
         const refresh = async () => {
           try {
             const r = await gasFetch_("lineTokenStatus", { screen_name: sn });
-            const on = r && r.set;
-            stat.textContent = on ? "✅ 設定済み(配信ON)" : "未設定(配信OFF)";
-            stat.style.color = on ? "#3DFFA8" : "";
-            ts.style.display = on ? "block" : "none";
+            const set = r && r.set;
+            _lnOn = !r || r.on !== false;
+            if (!set) {
+              stat.textContent = "未設定"; stat.style.color = "";
+              tg.style.display = "none"; ts.style.display = "none";
+            } else {
+              stat.textContent = _lnOn ? "✅ 配信ON" : "⏸ 一時停止中";
+              stat.style.color = _lnOn ? "#3DFFA8" : "#ffd34d";
+              tg.style.display = "block";
+              tg.textContent = _lnOn ? "⏸ 配信を止める" : "▶ 配信を再開";
+              tg.style.border = "1px solid " + (_lnOn ? "#ffd34d" : "#3DFFA8");
+              tg.style.color = _lnOn ? "#ffd34d" : "#3DFFA8";
+              ts.style.display = _lnOn ? "block" : "none";
+            }
           } catch (e) { stat.textContent = "状態取得エラー"; }
+        };
+        tg.onclick = async () => {
+          tg.disabled = true;
+          try {
+            const r = await gasFetch_("lineToggle", { screen_name: sn, on: !_lnOn });
+            if (r && r.ok) { toast(r.on ? "LINE配信を再開しました" : "LINE配信を一時停止しました(トークンは保持)", "ok"); await refresh(); }
+          } catch (e) { toast("切替に失敗: " + e.message, "err"); }
+          tg.disabled = false;
         };
         sv.onclick = async () => {
           sv.disabled = true; sv.textContent = "…";
