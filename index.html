@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "194";
+const APP_VERSION = "195";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6018,8 +6018,34 @@ BUILDERS.calendar = (el) => {
       if (r.debug) h += '<p class="muted" style="font-size:11px;margin:-6px 0 12px;color:var(--accent2)">競合フォロワー ' + (r.debug.fetched || 0) + '人取得 → 今回 ' + (r.debug.shown || 0) + '人を表示（競合' + (r.debug.rivals || 0) + 'アカ）' + (typeof r.debug.remaining === 'number' ? '・まだ見てない残り' + r.debug.remaining + '人' : '') + '</p>';
     }
     if (!r.candidates || !r.candidates.length) {
-      h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">' + (isGenre ? '該当する人が見つかりませんでした。業種ジャンルの語がニッチすぎるか、直近の投稿が少ない可能性があります。生成設定の業種ジャンルを「競艇」「シーシャ」のようにシンプルな語にすると当たりやすくなります。' : '候補が見つかりませんでした。競合が未登録か、フォロワーを取得できなかったのかもしれません。設定で競合アカウントをご確認ください。') + '</div>';
-      box.innerHTML = h; wireTabs(); return;
+      if (isGenre) {
+        h += '<div class="muted" style="padding:14px 0;font-size:13px;line-height:1.8">該当する人が見つかりませんでした。業種ジャンルの語がニッチすぎるか、直近の投稿が少ない可能性があります。生成設定の業種ジャンルを「競艇」「シーシャ」のようにシンプルな語にすると当たりやすくなります。</div>';
+      } else {
+        /* v195: 0件の原因を内訳で見える化+即回復ボタン */
+        const dbg = r.debug || {};
+        h += '<div class="muted" style="padding:10px 0;font-size:13px;line-height:1.8">候補が見つかりませんでした。内訳:</div>'
+          + '<div style="font-size:12px;line-height:1.9;font-family:monospace;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:10px">'
+          + '競合から取得: ' + (dbg.fetched || 0) + '人<br>'
+          + 'フィルタ通過(候補プール): ' + (dbg.rawTotal || 0) + '人<br>'
+          + '提示済み(14日で自然リセット): ' + (dbg.seenCount || 0) + '人<br>'
+          + 'まだ見てない残り: ' + (dbg.remaining || 0) + '人</div>';
+        if (!dbg.fetched) {
+          h += '<div style="font-size:12.5px;line-height:1.8">👉 <b>競合からフォロワーを取得できませんでした。</b>競合アカウントの凍結・非公開化・名前変更、またはAPIの一時制限の可能性があります。設定の競合アカウント名を確認して、少し時間を置いて再度お試しください。</div>';
+        } else if ((dbg.rawTotal || 0) > 0 && (dbg.remaining || 0) === 0) {
+          h += '<div style="font-size:12.5px;line-height:1.8">👉 <b>候補プールを見終わっています</b>(掘り尽くし)。提示済みは14日で自然に復活しますが、今すぐ掘り直すこともできます。</div>'
+            + '<button id="rivalSeenReset" class="mini" style="width:100%;margin-top:10px;padding:11px;border:1px solid #ffd34d;color:#ffd34d;border-radius:10px;font-weight:800">🔄 提示済みをリセットして掘り直す</button>';
+        } else {
+          h += '<div style="font-size:12.5px;line-height:1.8">👉 取得はできていますがフィルタ(業者・bot・10万フォロワー超の除外)で全員落ちています。競合を個人フォロワーの多いアカウントに変えると当たりやすくなります。</div>';
+        }
+      }
+      box.innerHTML = h; wireTabs();
+      const rsBtn = box.querySelector("#rivalSeenReset");
+      if (rsBtn) rsBtn.onclick = async () => {
+        rsBtn.disabled = true; rsBtn.textContent = "リセット中…";
+        try { await gasFetch_("rivalSeenReset", { screenName: acct.value }); toast("リセットしました。再取得します", "ok"); openRivalFollowers(mode); }
+        catch (e) { toast("リセット失敗: " + e.message, "err"); rsBtn.disabled = false; rsBtn.textContent = "🔄 提示済みをリセットして掘り直す"; }
+      };
+      return;
     }
     h += followPaceHtml_();
     h += '<button id="rivalSwBtn" class="mini cyan" style="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px">🃏 スワイプで一気に見る (' + r.candidates.length + '件)</button>';
