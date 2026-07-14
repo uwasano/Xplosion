@@ -768,7 +768,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "191";
+const APP_VERSION = "193";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -4389,7 +4389,7 @@ BUILDERS.unfollow = (el) => {
 
 /* ---- 07+ 営業リプ(大手に絡んで新規フォロワー獲得) ---- */
 BUILDERS.outreach = (el) => {
-  head(el, "🎯 営業リプ", "伸びてる投稿のURLを貼る→刺さるリプを生成→コピーして飛んで送信。リプ欄で目立って新規フォロワーを取る。", [
+  head(el, "🎯 営業リプ(手動・他人の投稿に絡む)", "伸びてる【他人の】投稿のURLを貼る→刺さるリプを生成→コピーして送信。リプ欄で目立って新規フォロワーを取る手動ツール。※【自分の】投稿へのURL自動リプ(伸びたら『入れたいURL』が勝手に付く機能)はこれとは別で、完全自動のため操作画面はありません。設定は生成設定の「入れたいURL」、稼働状況はホームの🔗表示で確認できます。", [
     "Xで競艇・地域の伸びてる投稿を見つける",
     "その投稿URLを貼る→リプ生成",
     "コピー→アカに飛ぶ→リプ送信&フォロー",
@@ -7767,6 +7767,47 @@ BUILDERS.clients = (el) => {
       d.appendChild(autoFeatureRow(c.screen_name, "enjou", "🔥 オート炎上ニュース", "炎上系ニュースに自分の視点でコメント(2日以内・話題が無い日は投稿なし)", "linear-gradient(135deg,#ff6b35,#ff2d95)"));
       d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
       d.appendChild(autoFeatureRow(c.screen_name, "knowhow", "📚 オートノウハウ・解説系", "業種の役立つノウハウ・解説を本文で出し切る価値提供型。伸びたら生成設定の「入れたいURL」が自動でリプされる(URL導線はこの種別だけ)", "linear-gradient(135deg,#3DFFA8,#38d4f0)"));
+      /* v202: 📱 LINE自動配信(トークンの有無=ON/OFF)。無料予想の生成時に友だち全員へ一斉配信 */
+      (function (sn) {
+        const lw = document.createElement("div");
+        lw.style.cssText = "margin-top:8px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface)";
+        lw.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><div style="font-weight:700;font-size:13px">📱 LINE自動配信 <span class="lnStat muted" style="font-size:11px">確認中…</span></div></div>'
+          + '<div class="muted" style="font-size:11px;line-height:1.6;margin-top:3px">無料予想を生成した瞬間、LINE公式の友だち全員に同じ予想を一斉配信します(userID探し不要のbroadcast方式)。トークンを保存すればON・空にして保存すればOFF。</div>'
+          + '<div style="display:flex;gap:6px;margin-top:8px"><input class="lnTok" type="password" placeholder="チャネルアクセストークン(長期)を貼り付け" style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:16px;padding:8px">'
+          + '<button class="mini lnSave" style="padding:8px 12px;white-space:nowrap">保存</button></div>'
+          + '<button class="mini lnTest" style="width:100%;margin-top:6px;padding:8px;display:none">📨 テスト配信を送る</button>';
+        d.appendChild(lw);
+        const stat = lw.querySelector(".lnStat"), tok = lw.querySelector(".lnTok"), sv = lw.querySelector(".lnSave"), ts = lw.querySelector(".lnTest");
+        const refresh = async () => {
+          try {
+            const r = await gasFetch_("lineTokenStatus", { screen_name: sn });
+            const on = r && r.set;
+            stat.textContent = on ? "✅ 設定済み(配信ON)" : "未設定(配信OFF)";
+            stat.style.color = on ? "#3DFFA8" : "";
+            ts.style.display = on ? "block" : "none";
+          } catch (e) { stat.textContent = "状態取得エラー"; }
+        };
+        sv.onclick = async () => {
+          sv.disabled = true; sv.textContent = "…";
+          try {
+            const r = await gasFetch_("lineTokenSave", { screen_name: sn, token: tok.value.trim() });
+            if (r && r.ok) { toast(tok.value.trim() ? "LINE配信をONにしました" : "LINE配信をOFFにしました", "ok"); tok.value = ""; await refresh(); }
+            else toast("保存に失敗: " + ((r && r.error) || ""), "err");
+          } catch (e) { toast("保存に失敗: " + e.message, "err"); }
+          sv.disabled = false; sv.textContent = "保存";
+        };
+        ts.onclick = async () => {
+          ts.disabled = true; ts.textContent = "送信中…";
+          try {
+            const r = await gasFetch_("lineTestSend", { screen_name: sn });
+            if (r && r.ok) toast("テスト配信を送りました。LINEを確認してください", "ok");
+            else if (r && r.skipped) toast("トークンが未設定です", "err");
+            else toast("配信失敗: HTTP" + (r && r.code) + " " + ((r && (r.body || r.error)) || ""), "err");
+          } catch (e) { toast("配信失敗: " + e.message, "err"); }
+          ts.disabled = false; ts.textContent = "📨 テスト配信を送る";
+        };
+        refresh();
+      })(c.screen_name);
       /* 競艇業種のみ: 予想 */
       if (/競艇|ボートレース|ボート/.test(biz)) {
         d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想(人気順)", "毎日、締切が近いレースを人気順ロジックで自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
