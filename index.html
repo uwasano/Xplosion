@@ -1179,7 +1179,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "204";
+const APP_VERSION = "205";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1293,6 +1293,7 @@ function MODEL_KIND_(model) {
   if (/gemini/i.test(m)) return "Gemini";
   if (/cloud[-_ ]?run/i.test(m)) return "Cloud Run";
   if (/eleven/i.test(m)) return "ElevenLabs";
+  if (/google-tts|texttospeech/i.test(m)) return "Google TTS";
   return "その他";
 }
 function MODEL_KEY_(model) {
@@ -1302,6 +1303,7 @@ function MODEL_KEY_(model) {
   if (/gemini/i.test(m)) return "gemini";
   if (/cloud[-_ ]?run/i.test(m)) return "cloudrun";
   if (/eleven/i.test(m)) return "eleven";
+  if (/google-tts|texttospeech/i.test(m)) return "gtts";
   return "other";
 }
 
@@ -1312,15 +1314,15 @@ function renderCostBars(box, days, title) {
   const W = 300, H = 162, padL = 6, padR = 6, padT = 18, padB = 26;
   const chartH = H - padT - padB;
   const n = days.length, bw = (W - padL - padR) / n;
-  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", gemini: "#4285f4", cloudrun: "#34a853", eleven: "#fbbf24", other: "#94a3b8" };
-  const LBL = { haiku: "Haiku", sonnet: "Sonnet", gemini: "Gemini", cloudrun: "Cloud Run", eleven: "ElevenLabs" };
+  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", gemini: "#4285f4", cloudrun: "#34a853", eleven: "#fbbf24", gtts: "#f97316", other: "#94a3b8" };
+  const LBL = { haiku: "Haiku", sonnet: "Sonnet", gemini: "Gemini", cloudrun: "Cloud Run", eleven: "ElevenLabs", gtts: "Google TTS" };
   const baseY = padT + chartH;
   let bars = "";
   days.forEach((d, i) => {
     const x = padL + i * bw + bw * 0.18, w = bw * 0.64;
     let yCur = baseY;
     /* 下から haiku→sonnet→gemini→cloudrun→other で積み上げ */
-    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["gemini", d.gemini || 0], ["cloudrun", d.cloudrun || 0], ["eleven", d.eleven || 0], ["other", d.other || 0]].forEach(function (kv) {
+    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["gemini", d.gemini || 0], ["cloudrun", d.cloudrun || 0], ["eleven", d.eleven || 0], ["gtts", d.gtts || 0], ["other", d.other || 0]].forEach(function (kv) {
       const val = kv[1];
       if (val <= 0) return;
       const h = max > 0 ? (val / max) * chartH : 0;
@@ -1335,7 +1337,7 @@ function renderCostBars(box, days, title) {
   });
   const baseline = '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--border)" stroke-width="1"/>';
   /* 実際に使われたサービスだけ凡例に出す */
-  const used = ["haiku", "sonnet", "gemini", "cloudrun", "eleven"].filter((k) => days.some((d) => (d[k] || 0) > 0));
+  const used = ["haiku", "sonnet", "gemini", "cloudrun", "eleven", "gtts"].filter((k) => days.some((d) => (d[k] || 0) > 0));
   const legend = '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--muted);flex-wrap:wrap">' +
     (used.length ? used : ["haiku", "sonnet"]).map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL[k] + '"></span>' + LBL[k] + '</span>';
@@ -2755,7 +2757,7 @@ BUILDERS.home = (el) => {
       const monthStart = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 8) + "01";
       const tu = await fetchAllUsage("tag,cost_usd,model", monthStart);
       const byTag = {};
-      const byModel = { Haiku: 0, Sonnet: 0, Gemini: 0, "Cloud Run": 0, ElevenLabs: 0, "その他": 0 };
+      const byModel = { Haiku: 0, Sonnet: 0, Gemini: 0, "Cloud Run": 0, ElevenLabs: 0, "Google TTS": 0, "その他": 0 };
       (tu || []).forEach((r) => {
         const t = r.tag || "その他"; byTag[t] = (byTag[t] || 0) + (Number(r.cost_usd) || 0);
         const mk = MODEL_KIND_(r.model);
@@ -2769,6 +2771,7 @@ BUILDERS.home = (el) => {
         { name: "Gemini", cost: byModel.Gemini, color: "#4285f4" },
         { name: "Cloud Run", cost: byModel["Cloud Run"], color: "#34a853" },
         { name: "ElevenLabs", cost: byModel.ElevenLabs, color: "#fbbf24" },
+        { name: "Google TTS", cost: byModel["Google TTS"], color: "#f97316" },
         { name: "その他", cost: byModel["その他"], color: "#94a3b8" },
       ];
       renderCostPie(costPieBox, arr, "💰 今月のAI利用料(機能別)", modelData);
@@ -2778,7 +2781,7 @@ BUILDERS.home = (el) => {
       const since7 = new Date(Date.now() + 9 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
       const tu7 = await fetchAllUsage("cost_usd,day,model", since7);
       const byDayModel = {};
-      const ZERO_ = () => ({ haiku: 0, sonnet: 0, gemini: 0, cloudrun: 0, eleven: 0, other: 0 });
+      const ZERO_ = () => ({ haiku: 0, sonnet: 0, gemini: 0, cloudrun: 0, eleven: 0, gtts: 0, other: 0 });
       (tu7 || []).forEach((r) => {
         const k = String(r.day).slice(0, 10);
         if (!byDayModel[k]) byDayModel[k] = ZERO_();
@@ -2790,8 +2793,8 @@ BUILDERS.home = (el) => {
         const dd = new Date(Date.now() + 9 * 3600000 - i * 86400000).toISOString().slice(0, 10);
         const m = byDayModel[dd] || ZERO_();
         days7.push({
-          day: dd, haiku: m.haiku, sonnet: m.sonnet, gemini: m.gemini, cloudrun: m.cloudrun, eleven: m.eleven, other: m.other,
-          cost: m.haiku + m.sonnet + m.gemini + m.cloudrun + m.eleven + m.other,
+          day: dd, haiku: m.haiku, sonnet: m.sonnet, gemini: m.gemini, cloudrun: m.cloudrun, eleven: m.eleven, gtts: m.gtts, other: m.other,
+          cost: m.haiku + m.sonnet + m.gemini + m.cloudrun + m.eleven + m.gtts + m.other,
         });
       }
       renderCostBars(costBarBox, days7, "📊 直近7日間(サービス別)");
