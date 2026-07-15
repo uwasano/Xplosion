@@ -299,6 +299,9 @@ window.openVideoStudio = function () {
     mode: "auto",
     cut_strength: "normal",
     caption_style: "tiktok",
+    caption_size: "medium",
+    caption_pos: "bottom",
+    fit_mode: "blur",
     reveal_result: "last",
     outro_text: "競艇を極めたい人はフォロー",
     file: null,
@@ -312,7 +315,10 @@ window.openVideoStudio = function () {
   const CHIPS = [
     { key: "duration_sec", label: "尺", opts: [[15, "15秒"], [30, "30秒"], [45, "45秒"], [60, "60秒"]], num: true },
     { key: "cut_strength", label: "カット強度", opts: [["weak", "弱め"], ["normal", "標準"], ["strong", "強め"]] },
-    { key: "caption_style", label: "字幕", opts: [["simple", "シンプル"], ["flashy", "派手"], ["gold", "金色"], ["tiktok", "TikTok風"]] },
+    { key: "fit_mode", label: "画角", opts: [["blur", "全部映す(背景ぼかし)"], ["zoom", "ズーム(迫力)"]] },
+    { key: "caption_style", label: "字幕スタイル", opts: [["simple", "シンプル"], ["flashy", "派手"], ["gold", "金色"], ["tiktok", "TikTok風"]] },
+    { key: "caption_size", label: "字幕サイズ", opts: [["small", "小"], ["medium", "中"], ["large", "大"]] },
+    { key: "caption_pos", label: "字幕の位置", opts: [["bottom", "下"], ["middle", "中央"], ["top", "上"]] },
     { key: "reveal_result", label: "結果表示", opts: [["first", "最初に見せる"], ["last", "最後まで隠す"]] },
   ];
   const V_LABEL = { queued: "順番待ち…", analyzing: "🧠 AIが見どころを解析中…", cutting: "✂️ カット中…", rendering: "🎞 書き出し中…", completed: "✅ 完成！", failed: "❌ 失敗" };
@@ -482,6 +488,9 @@ window.openVideoStudio = function () {
         mode: V.mode,
         cut_strength: V.cut_strength,
         caption_style: V.caption_style,
+        caption_size: V.caption_size,
+        caption_pos: V.caption_pos,
+        fit_mode: V.fit_mode,
         reveal_result: V.reveal_result,
         outro_text: V.outro_text
       });
@@ -530,6 +539,9 @@ window.openVideoStudio = function () {
         mode: V.mode,
         cut_strength: V.cut_strength,
         caption_style: V.caption_style,
+        caption_size: V.caption_size,
+        caption_pos: V.caption_pos,
+        fit_mode: V.fit_mode,
         reveal_result: V.reveal_result,
         outro_text: (ov.querySelector("#vsOutro") || {}).value || V.outro_text
       });
@@ -1071,7 +1083,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "198";
+const APP_VERSION = "199";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
