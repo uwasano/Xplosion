@@ -304,6 +304,9 @@ window.openVideoStudio = function () {
     fit_mode: "blur",
     voice: "male1",
     orig_audio: "mute",
+    speaking_rate: 1.05,
+    bgm_key: "",
+    bgmList: null,
     reveal_result: "last",
     outro_text: "競艇を極めたい人はフォロー",
     file: null,
@@ -378,15 +381,43 @@ window.openVideoStudio = function () {
     if (V.mode === "jikkyo") {
       const VOICE_M = [["male1","男1 標準"],["male2","男2 低音"],["male3","男3 元気"],["male4","男4 渋い"],["male5","男5 ナレ"]];
       const VOICE_F = [["female1","女1 標準"],["female2","女2 ハキハキ"],["female3","女3 やわらか"],["female4","女4 明るい"],["female5","女5 落ち着き"]];
-      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">実況ボイス</div>';
-      [["👨 男性", VOICE_M], ["👩 女性", VOICE_F]].forEach(function (grp) {
-        h += '<div class="muted" style="font-size:11px;margin:6px 0 4px">' + grp[0] + '</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
+      const VOICE_X = [["gal1","ギャル1"],["gal2","ギャル2"],["anime1","アニメ1"],["anime2","アニメ2"],["anime3","アニメ3"],["anime4","アニメ4"]];
+      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">実況ボイス <span class="muted" style="font-weight:400">(▶で全員サンプル再生できます)</span></div>';
+      [["👨 男性", VOICE_M], ["👩 女性", VOICE_F], ["✨ ギャル/アニメ(にじボイス)", VOICE_X]].forEach(function (grp) {
+        h += '<div class="muted" style="font-size:11px;margin:8px 0 4px">' + grp[0] + '</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
         grp[1].forEach(function (vv) {
           const on = V.voice === vv[0];
-          h += '<button class="vsChip" data-k="voice" data-v="' + vv[0] + '" data-num="0" style="border-radius:99px;padding:8px 13px;font-size:12px;font-weight:700;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + vv[1] + '</button>';
+          h += '<span style="display:inline-flex;border-radius:99px;overflow:hidden;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + '">'
+            + '<button class="vsChip" data-k="voice" data-v="' + vv[0] + '" data-num="0" style="padding:8px 10px 8px 13px;font-size:12px;font-weight:700;border:none;background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + vv[1] + '</button>'
+            + '<button class="vsVoicePrev" data-v="' + vv[0] + '" style="padding:8px 11px;font-size:12px;border:none;border-left:1px solid var(--border);background:transparent;color:#fbbf24">▶</button>'
+            + '</span>';
         });
         h += '</div>';
       });
+      /* 話す速さ(横スライダー) */
+      h += '<div style="margin-top:12px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;font-weight:700;color:#3DFFA8">話す速さ</span><span class="muted" style="font-size:12px" id="vsRateVal">×' + V.speaking_rate.toFixed(2) + '</span></div>'
+        + '<input type="range" id="vsRate" min="0.75" max="1.4" step="0.05" value="' + V.speaking_rate + '" style="width:100%;accent-color:#38d4f0;margin-top:4px"></div>';
+      h += '</div>';
+
+      /* BGM(縦スクロール・試聴つき) */
+      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🎵 BGM <span class="muted" style="font-weight:400">(Supabaseのbgmバケットに入れた曲)</span></div>';
+      if (!V.bgmList) {
+        h += '<button id="vsBgmLoad" style="width:100%;background:var(--card);border:1px solid var(--border);color:var(--ink);font-weight:700;padding:11px;border-radius:11px;font-size:13px">BGM一覧を読み込む</button>';
+      } else if (!V.bgmList.length) {
+        h += '<div class="muted" style="font-size:12px">bgmバケットに曲がありません。Supabase→Storage→bgm にmp3を入れてください。</div>';
+      } else {
+        h += '<div style="max-height:210px;overflow-y:auto;border:1px solid var(--border);border-radius:11px">';
+        h += '<div class="vsBgmRow" data-key="" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);' + (V.bgm_key === "" ? 'background:rgba(56,212,240,.12)' : '') + '"><span style="flex:1;font-size:13px;font-weight:700">BGMなし</span>' + (V.bgm_key === "" ? '<span style="color:#38d4f0;font-size:12px">✓選択中</span>' : '') + '</div>';
+        V.bgmList.forEach(function (b) {
+          const on = V.bgm_key === b.name;
+          h += '<div class="vsBgmRow" data-key="' + vEsc(b.name) + '" style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);' + (on ? 'background:rgba(56,212,240,.12)' : '') + '">'
+            + '<button class="vsBgmPrev" data-url="' + vEsc(b.url) + '" style="border:1px solid var(--border);background:transparent;color:#fbbf24;border-radius:8px;padding:5px 10px;font-size:12px">▶</button>'
+            + '<span style="flex:1;font-size:12px;word-break:break-all">' + vEsc(b.name) + '</span>'
+            + (on ? '<span style="color:#38d4f0;font-size:12px;white-space:nowrap">✓選択中</span>' : '')
+            + '</div>';
+        });
+        h += '</div>';
+      }
       h += '</div>';
     }
 
@@ -465,6 +496,42 @@ window.openVideoStudio = function () {
     const dg = ov.querySelector("#vsDiag"); if (dg) dg.onclick = diag;
     const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
     const fx = ov.querySelector("#vsFixScript"); if (fx) fx.onclick = fixScript;
+    /* 話す速さスライダー(再描画せず値だけ更新=スムーズ) */
+    const rt = ov.querySelector("#vsRate");
+    if (rt) rt.oninput = () => {
+      V.speaking_rate = Number(rt.value);
+      const lb = ov.querySelector("#vsRateVal"); if (lb) lb.textContent = "×" + V.speaking_rate.toFixed(2);
+    };
+    /* ボイスサンプル再生 */
+    ov.querySelectorAll(".vsVoicePrev").forEach(b => b.onclick = async () => {
+      b.textContent = "…";
+      try {
+        const j = await gasFetch_("videoVoiceSample", { voice: b.dataset.v, rate: V.speaking_rate });
+        if (!j || !j.audio) throw new Error(j && j.error ? j.error : "サンプル取得に失敗しました");
+        if (V._audio) { try { V._audio.pause(); } catch (e) {} }
+        V._audio = new Audio(j.audio);
+        V._audio.play();
+      } catch (e) { alert(e.message); }
+      b.textContent = "▶";
+    });
+    /* BGM読み込み・試聴・選択 */
+    const bl = ov.querySelector("#vsBgmLoad");
+    if (bl) bl.onclick = async () => {
+      bl.textContent = "読み込み中…"; bl.disabled = true;
+      try {
+        const j = await gasFetch_("videoBgmList", {});
+        V.bgmList = (j && j.items) || [];
+        if (j && j.error) alert(j.error);
+      } catch (e) { alert(e.message); V.bgmList = []; }
+      render();
+    };
+    ov.querySelectorAll(".vsBgmPrev").forEach(b => b.onclick = (ev) => {
+      ev.stopPropagation();
+      if (V._audio) { try { V._audio.pause(); } catch (e) {} }
+      V._audio = new Audio(b.dataset.url);
+      V._audio.play();
+    });
+    ov.querySelectorAll(".vsBgmRow").forEach(r => r.onclick = () => { V.bgm_key = r.dataset.key; render(); });
   }
 
   /* 字幕・実況の修正 → 再レンダリング(Gemini再呼び出しなし) */
@@ -589,6 +656,8 @@ window.openVideoStudio = function () {
         fit_mode: V.fit_mode,
         voice: V.voice,
         orig_audio: V.orig_audio,
+        speaking_rate: V.speaking_rate,
+        bgm_key: V.bgm_key,
         reveal_result: V.reveal_result,
         outro_text: V.outro_text
       });
@@ -637,6 +706,8 @@ window.openVideoStudio = function () {
         fit_mode: V.fit_mode,
         voice: V.voice,
         orig_audio: V.orig_audio,
+        speaking_rate: V.speaking_rate,
+        bgm_key: V.bgm_key,
         reveal_result: V.reveal_result,
         outro_text: (ov.querySelector("#vsOutro") || {}).value || V.outro_text
       });
@@ -1179,7 +1250,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "205";
+const APP_VERSION = "206";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
