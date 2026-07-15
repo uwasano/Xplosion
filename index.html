@@ -280,6 +280,223 @@ window.snsSwitchFx = function (btn, after) {
 };
 
 /* ============================================================
+ * 🎬 動画AIスタジオ v202 — 既存機能から完全独立
+ * 動画はGASを通さずSupabase Storageへ直接PUT → Cloud Runが処理
+ * ============================================================ */
+window.openVideoStudio = function () {
+  if (window._videoStudioOpen) return; /* 二重起動防止 */
+  window._videoStudioOpen = true;
+  try { renderTop(); } catch (e) {}
+
+  const vEsc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  let clients = [];
+  try { clients = (S && S.clients ? S.clients : []).filter(c => c.status === "active").map(c => c.screen_name); } catch (e) {}
+  if (!clients.length) clients = ["default"];
+
+  const V = {
+    screen: clients[0],
+    duration_sec: 30,
+    mode: "auto",
+    cut_strength: "normal",
+    caption_style: "tiktok",
+    reveal_result: "last",
+    outro_text: "競艇を極めたい人はフォロー",
+    file: null,
+    jobId: null,
+    timer: null,
+    busy: false,
+    clips: null,
+    result: null
+  };
+
+  const CHIPS = [
+    { key: "duration_sec", label: "尺", opts: [[15, "15秒"], [30, "30秒"], [45, "45秒"], [60, "60秒"]], num: true },
+    { key: "cut_strength", label: "カット強度", opts: [["weak", "弱め"], ["normal", "標準"], ["strong", "強め"]] },
+    { key: "caption_style", label: "字幕", opts: [["simple", "シンプル"], ["flashy", "派手"], ["gold", "金色"], ["tiktok", "TikTok風"]] },
+    { key: "reveal_result", label: "結果表示", opts: [["first", "最初に見せる"], ["last", "最後まで隠す"]] },
+  ];
+  const V_LABEL = { queued: "順番待ち…", analyzing: "🧠 AIが見どころを解析中…", cutting: "✂️ カット中…", rendering: "🎞 書き出し中…", completed: "✅ 完成！", failed: "❌ 失敗" };
+
+  const ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;inset:0;background:var(--bg,#05070e);z-index:99999;display:flex;flex-direction:column";
+  const body = document.createElement("div");
+  body.style.cssText = "flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px calc(14px + env(safe-area-inset-left)) calc(24px + env(safe-area-inset-bottom));min-height:0";
+  ov.appendChild(body);
+  document.body.appendChild(ov);
+
+  function close() {
+    clearInterval(V.timer);
+    window.snsSwitchFx(null, () => {
+      ov.remove();
+      window._videoStudioOpen = false;
+      try { renderTop(); } catch (e) {}
+    });
+  }
+
+  function render() {
+    let h = '';
+    /* ヘッダー */
+    h += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
+      + '<div style="font-size:17px;font-weight:800">🎬 動画AIスタジオ</div>'
+      + '<button id="vsClose" style="background:var(--card);border:1px solid var(--border);color:var(--ink);border-radius:9px;padding:7px 12px;font-size:13px;font-weight:700">閉じる</button></div>';
+
+    /* アカウント切替 */
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">';
+    clients.forEach(sn => {
+      const on = sn === V.screen;
+      h += '<button class="vsAcct" data-sn="' + vEsc(sn) + '" style="border-radius:99px;padding:6px 12px;font-size:12px;font-weight:700;border:1px solid ' + (on ? '#b98cff' : 'var(--border)') + ';background:' + (on ? 'linear-gradient(135deg,#b98cff,#38d4f0)' : 'transparent') + ';color:' + (on ? '#001' : 'var(--ink)') + '">@' + vEsc(sn) + '</button>';
+    });
+    h += '</div>';
+
+    /* 動画選択 */
+    h += '<div style="margin-bottom:16px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">元動画</div>'
+      + '<input type="file" id="vsFile" accept="video/*" style="width:100%;background:var(--card);border:1px dashed var(--border);border-radius:10px;color:var(--ink);font-size:14px;padding:12px">'
+      + (V.file ? '<div class="muted" style="font-size:11px;margin-top:6px">' + vEsc(V.file.name) + ' (' + (V.file.size / 1024 / 1024).toFixed(1) + 'MB)</div>' : '')
+      + '</div>';
+
+    /* 設定チップ */
+    CHIPS.forEach(c => {
+      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">' + c.label + '</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
+      c.opts.forEach(([val, lbl]) => {
+        const on = String(V[c.key]) === String(val);
+        h += '<button class="vsChip" data-k="' + c.key + '" data-v="' + val + '" data-num="' + (c.num ? 1 : 0) + '" style="border-radius:99px;padding:8px 14px;font-size:13px;font-weight:700;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + lbl + '</button>';
+      });
+      h += '</div></div>';
+    });
+
+    /* 締め文 */
+    h += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">締め文</div>'
+      + '<input type="text" id="vsOutro" value="' + vEsc(V.outro_text) + '" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:16px;padding:11px"></div>';
+
+    /* 実行ボタン */
+    h += '<button id="vsRun"' + (V.busy ? ' disabled' : '') + ' style="width:100%;background:' + (V.busy ? 'var(--card)' : 'linear-gradient(135deg,#b98cff,#38d4f0)') + ';color:' + (V.busy ? 'var(--muted,#889)' : '#001') + ';font-weight:800;border:none;padding:16px;border-radius:12px;font-size:15px">' + (V.busy ? '処理中…' : '🎬 作成する') + '</button>';
+
+    /* 進捗 */
+    if (V.busy || V.status) {
+      h += '<div style="margin-top:18px"><div style="font-size:13px;font-weight:700;margin-bottom:7px" id="vsStatus">' + vEsc(V.statusText || "準備中…") + '</div>'
+        + '<div style="height:9px;background:var(--card);border-radius:99px;overflow:hidden"><div id="vsBar" style="height:100%;width:' + (V.progress || 0) + '%;background:linear-gradient(90deg,#b98cff,#38d4f0);transition:width .4s"></div></div></div>';
+    }
+
+    /* 完成 */
+    if (V.result) {
+      h += '<div style="margin-top:20px">'
+        + '<video src="' + V.result + '" controls playsinline style="width:100%;border-radius:12px;background:#000"></video>'
+        + (V.summary ? '<div class="muted" style="font-size:12px;margin-top:8px">' + vEsc(V.summary) + '</div>' : '')
+        + '<a href="' + V.result + '" download="xplosion-' + Date.now() + '.mp4" style="display:block;text-align:center;margin-top:10px;background:#3DFFA8;color:#001;font-weight:800;padding:15px;border-radius:12px;font-size:15px;text-decoration:none">⬇ ダウンロード</a>';
+      /* 微調整 */
+      if (V.clips && V.clips.length) {
+        h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:8px">✂️ 微調整(AI再解析なし=無料)</div>';
+        V.clips.forEach((c, i) => {
+          h += '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">'
+            + '<div class="muted" style="font-size:11px;margin-bottom:6px">クリップ' + (i + 1) + (c.reason ? ' — ' + vEsc(c.reason) : '') + '</div>'
+            + '<div style="display:flex;gap:8px;align-items:center"><span style="font-size:11px;width:28px">開始</span><input type="number" step="0.1" class="vsClipS" data-i="' + i + '" value="' + Number(c.start).toFixed(1) + '" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--ink);font-size:14px;padding:6px"></div>'
+            + '<div style="display:flex;gap:8px;align-items:center;margin-top:5px"><span style="font-size:11px;width:28px">終了</span><input type="number" step="0.1" class="vsClipE" data-i="' + i + '" value="' + Number(c.end).toFixed(1) + '" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;color:var(--ink);font-size:14px;padding:6px"></div>'
+            + '</div>';
+        });
+        h += '<button id="vsRerender" style="width:100%;background:var(--card);border:1px solid #38d4f0;color:#38d4f0;font-weight:800;padding:13px;border-radius:11px;font-size:14px">🔄 この設定で作り直す</button></div>';
+      }
+      h += '</div>';
+    }
+
+    body.innerHTML = h;
+    wire();
+  }
+
+  function wire() {
+    const c = ov.querySelector("#vsClose"); if (c) c.onclick = close;
+    ov.querySelectorAll(".vsAcct").forEach(b => b.onclick = () => { V.screen = b.dataset.sn; render(); });
+    ov.querySelectorAll(".vsChip").forEach(b => b.onclick = () => {
+      V[b.dataset.k] = b.dataset.num === "1" ? Number(b.dataset.v) : b.dataset.v;
+      render();
+    });
+    const f = ov.querySelector("#vsFile");
+    if (f) f.onchange = (e) => { V.file = e.target.files[0] || null; render(); };
+    const o = ov.querySelector("#vsOutro");
+    if (o) o.onchange = () => { V.outro_text = o.value; };
+    const r = ov.querySelector("#vsRun"); if (r) r.onclick = run;
+    const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
+  }
+
+  async function run() {
+    if (V.busy) return;
+    if (!V.file) { alert("動画を選択してください"); return; }
+    V.busy = true; V.result = null; V.clips = null; V.progress = 0;
+    V.statusText = "アップロード準備中…";
+    render();
+
+    try {
+      /* ① 署名付きURL取得(Service Keyはフロントに出さない) */
+      const sign = await gasFetch_("videoSignedUrl", { screen_name: V.screen });
+      if (!sign || !sign.upload_url) throw new Error(sign && sign.error ? sign.error : "署名URL取得失敗");
+
+      /* ② Supabase Storageへ直接PUT(GASを通さない=6分/50MB制限を回避) */
+      V.statusText = "アップロード中…"; V.progress = 8; render();
+      const up = await fetch(sign.upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": V.file.type || "video/mp4", "x-upsert": "true" },
+        body: V.file
+      });
+      if (!up.ok) throw new Error("アップロード失敗 " + up.status);
+
+      /* ③ ジョブ作成 */
+      V.statusText = "ジョブ作成中…"; V.progress = 12; render();
+      const job = await gasFetch_("videoCreateJob", {
+        screen_name: V.screen,
+        input_path: sign.input_path,
+        duration_sec: V.duration_sec,
+        mode: V.mode,
+        cut_strength: V.cut_strength,
+        caption_style: V.caption_style,
+        reveal_result: V.reveal_result,
+        outro_text: (ov.querySelector("#vsOutro") || {}).value || V.outro_text
+      });
+      if (!job || !job.job_id) throw new Error(job && job.error ? job.error : "ジョブ作成失敗");
+      V.jobId = job.job_id;
+      poll();
+    } catch (e) {
+      V.busy = false; V.statusText = "❌ " + e.message; render();
+    }
+  }
+
+  function poll() {
+    clearInterval(V.timer);
+    V.timer = setInterval(async () => {
+      try {
+        const s = await gasFetch_("videoGetJob", { job_id: V.jobId });
+        V.progress = s.progress || 0;
+        V.statusText = V_LABEL[s.status] || s.status;
+        if (s.status === "completed") {
+          clearInterval(V.timer);
+          V.busy = false; V.result = s.output_url; V.clips = s.clips || null; V.summary = s.summary || "";
+        } else if (s.status === "failed") {
+          clearInterval(V.timer);
+          V.busy = false; V.statusText = "❌ " + (s.error || "失敗");
+        }
+        render();
+      } catch (e) { console.warn("poll", e); }
+    }, 3000);
+  }
+
+  async function rerender() {
+    const clips = [];
+    ov.querySelectorAll(".vsClipS").forEach((el) => {
+      const i = Number(el.dataset.i);
+      const e = ov.querySelector('.vsClipE[data-i="' + i + '"]');
+      clips.push({ start: Number(el.value), end: Number(e.value) });
+    });
+    V.busy = true; V.result = null; V.progress = 0; V.statusText = "作り直し中…";
+    render();
+    try {
+      const j = await gasFetch_("videoUpdateClips", { job_id: V.jobId, clips });
+      if (!j || j.error) throw new Error(j && j.error ? j.error : "再レンダリング失敗");
+      poll();
+    } catch (e) { V.busy = false; V.statusText = "❌ " + e.message; render(); }
+  }
+
+  render();
+};
+
+/* ============================================================
  * 📔 Noteモード(有料note工房) v162 — 既存機能から完全独立
  * 5ステップをプロ役AIとの対話で進める。状態はアカウント別にGAS経由で自動保存
  * ============================================================ */
@@ -768,7 +985,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "196";
+const APP_VERSION = "197";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1668,15 +1885,21 @@ function renderTop() {
     "X": '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644z"/></svg>',
     "Instagram": '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>',
     "Note": '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3h11l3 3v15H5z"/><line x1="9" y1="9" x2="15" y2="9"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>',
+    /* v202: 動画AIスタジオ */
+    "Video": '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
   };
-  ["X", "Instagram", "Note"].forEach((s) => {
+  ["X", "Instagram", "Note", "Video"].forEach((s) => {
     const b = document.createElement("button");
-    const isOn = s === "Note" ? !!window._noteStudioOpen : (S.sns === s && !window._noteStudioOpen);
+    const isOn = s === "Note" ? !!window._noteStudioOpen
+      : s === "Video" ? !!window._videoStudioOpen
+      : (S.sns === s && !window._noteStudioOpen && !window._videoStudioOpen);
     b.className = "snsbtn" + (isOn ? " on" : "");
     b.title = s;
     b.innerHTML = SNS_ICON[s];
     if (s === "Note") {
       b.onclick = () => window.snsSwitchFx(b, () => window.openNoteStudio());
+    } else if (s === "Video") {
+      b.onclick = () => window.snsSwitchFx(b, () => window.openVideoStudio());
     } else {
       b.onclick = () => window.snsSwitchFx(b, () => { S.sns = s; renderTop(); showTab(S.tab); });
     }
