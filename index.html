@@ -8,6 +8,9 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>XPLOSION</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700;900&family=Noto+Serif+JP:wght@700;900&family=Kosugi+Maru&family=Yusei+Magic&family=Dela+Gothic+One&display=swap" rel="stylesheet">
 <!--
   ============================================================
   UWASA SNS OPS 合体版 — AIコックピット11機能 + 自動投稿管理
@@ -299,6 +302,7 @@ window.openVideoStudio = function () {
     mode: "auto",
     cut_strength: "normal",
     caption_style: "tiktok",
+    caption_font: "notosans",
     caption_size: "medium",
     caption_pos: "bottom",
     fit_mode: "blur",
@@ -324,7 +328,7 @@ window.openVideoStudio = function () {
     { key: "duration_sec", label: "尺", opts: [[15, "15秒"], [30, "30秒"], [45, "45秒"], [60, "60秒"]], num: true },
     { key: "cut_strength", label: "カット強度", opts: [["weak", "弱め"], ["normal", "標準"], ["strong", "強め"]] },
     { key: "fit_mode", label: "画角", opts: [["blur", "全部映す(背景ぼかし)"], ["zoom", "ズーム(迫力)"]] },
-    { key: "caption_style", label: "字幕スタイル", opts: [["simple", "シンプル"], ["flashy", "派手"], ["gold", "金色"], ["tiktok", "TikTok風"]] },
+    /* caption_style/caption_font は専用UI(実物サンプル付き)でレンダリングするのでCHIPSからは除外 */
     { key: "caption_size", label: "字幕サイズ", opts: [["small", "小"], ["medium", "中"], ["large", "大"]] },
     { key: "caption_pos", label: "字幕の位置", opts: [["bottom", "下"], ["middle", "中央"], ["top", "上"]] },
     { key: "orig_audio", label: "元音声(実況モード時)", opts: [["mute", "ほぼ消す"], ["low", "小さく残す"], ["keep", "そのまま"]] },
@@ -376,10 +380,51 @@ window.openVideoStudio = function () {
         const on = String(V[c.key]) === String(val);
         h += '<button class="vsChip" data-k="' + c.key + '" data-v="' + val + '" data-num="' + (c.num ? 1 : 0) + '" style="border-radius:99px;padding:8px 14px;font-size:13px;font-weight:700;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + lbl + '</button>';
       });
+      if (c.key === "orig_audio") {
+        h += '<div class="muted" style="font-size:11px;margin-top:6px;line-height:1.5">💡 「ほぼ消す/小さく残す」でも、選手がカメラに向かって話しているシーンだけは自動で元音声を聞かせます(AIが発話シーンを自動検出)</div>';
+      }
       h += '</div></div>';
     });
 
-    /* 実況ボイス(実況モードのみ) */
+    /* 字幕フォント(実物サンプル・ブラウザのGoogle Fontsで実際の見た目を表示) */
+    const FONT_OPTS = [
+      ["notosans", "Noto Sans JP", "定番・視認性最強"],
+      ["notoserif", "Noto Serif JP", "上品・ニュース風"],
+      ["kosugi", "Kosugi Maru", "丸文字・親しみやすい"],
+      ["yusei", "Yusei Magic", "手書き風・インパクト"],
+      ["dela", "Dela Gothic One", "極太・TikTokで人気"],
+    ];
+    h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">字幕フォント</div><div style="display:flex;flex-direction:column;gap:6px">';
+    FONT_OPTS.forEach(function (f) {
+      const on = V.caption_font === f[0];
+      h += '<button class="vsFontBtn" data-v="' + f[0] + '" style="text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:11px;padding:12px 14px;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.12)' : 'var(--card)') + '">'
+        + '<span style="font-family:\'' + f[1] + '\';font-size:19px;color:var(--ink)">3号艇 差し切り勝ち</span>'
+        + '<span class="muted" style="font-size:10.5px;white-space:nowrap;margin-left:8px">' + f[2] + (on ? ' ✓' : '') + '</span>'
+        + '</button>';
+    });
+    h += '</div></div>';
+
+    /* 字幕の色テーマ(実物に近いプレビュー: 黒背景に縁取り文字) */
+    const COLOR_OPTS = [
+      ["simple", "定番・白", "#FFFFFF", "#000000"],
+      ["flashy", "情熱・レッド", "#FFFFFF", "#E82B2B"],
+      ["gold", "黄金", "#FFD700", "#000000"],
+      ["tiktok", "TikTok風・黒帯", "#FFFFFF", "#000000"],
+      ["neon", "ネオン・水色", "#00EAFF", "#0037A8"],
+      ["pink", "ホットピンク", "#FFFFFF", "#A244FF"],
+      ["lime", "ライムグリーン", "#39FF00", "#003300"],
+      ["mono", "漆黒・白縁", "#000000", "#FFFFFF"],
+    ];
+    h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">字幕の色</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+    COLOR_OPTS.forEach(function (c) {
+      const on = V.caption_style === c[0];
+      h += '<button class="vsColorBtn" data-v="' + c[0] + '" style="border-radius:11px;padding:14px 8px;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:#0a0a0a;display:flex;flex-direction:column;align-items:center;gap:6px">'
+        + '<span style="font-weight:900;font-size:16px;color:' + c[2] + ';-webkit-text-stroke:2px ' + c[3] + ';paint-order:stroke fill">サンプル</span>'
+        + '<span style="font-size:10.5px;color:var(--muted)">' + c[1] + (on ? ' ✓' : '') + '</span>'
+        + '</button>';
+    });
+    h += '</div></div>';
+
     if (V.mode === "jikkyo") {
       const VOICE_KAWAII = [["female6","かわいい"],["female7","元気ポップ"],["female4","明るい"],["female3","ふんわり"],["female8","あたたか"],["female12","晴れやか"]];
       const VOICE_F = [["female1","アナ標準"],["female2","ハキハキ"],["female9","なめらか"],["female10","クリア"],["female11","ゆるふわ"],["female5","落ち着き"]];
@@ -443,7 +488,9 @@ window.openVideoStudio = function () {
 
     /* 締め文 */
     h += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">締め文</div>'
-      + '<input type="text" id="vsOutro" value="' + vEsc(V.outro_text) + '" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:16px;padding:11px"></div>';
+      + '<input type="text" id="vsOutro" value="' + vEsc(V.outro_text) + '" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:16px;padding:11px">'
+      + (V.mode === "jikkyo" ? '<div class="muted" style="font-size:11px;margin-top:6px">🔊 実況音声つきモードでは、この締め文を最後にボイスキャラが必ず読み上げます(字幕だけでなく声でも締まります)</div>' : '')
+      + '</div>';
 
     /* 実行ボタン */
     h += '<button id="vsRun"' + (V.busy ? ' disabled' : '') + ' style="width:100%;background:' + (V.busy ? 'var(--card)' : 'linear-gradient(135deg,#b98cff,#38d4f0)') + ';color:' + (V.busy ? 'var(--muted,#889)' : '#001') + ';font-weight:800;border:none;padding:16px;border-radius:12px;font-size:15px">' + (V.busy ? '処理中…' : '🎬 作成する') + '</button>';
@@ -523,6 +570,8 @@ window.openVideoStudio = function () {
       const lb = ov.querySelector("#vsRateVal"); if (lb) lb.textContent = "×" + V.speaking_rate.toFixed(2);
     };
     /* 挨拶・感情の切替(即反映・音は鳴らさない) */
+    ov.querySelectorAll(".vsFontBtn").forEach(b => b.onclick = () => { V.caption_font = b.dataset.v; render(); });
+    ov.querySelectorAll(".vsColorBtn").forEach(b => b.onclick = () => { V.caption_style = b.dataset.v; render(); });
     ov.querySelectorAll(".vsGreetBtn").forEach(b => b.onclick = () => { V.sampleGreet = Number(b.dataset.i); render(); });
     ov.querySelectorAll(".vsEmoBtn").forEach(b => b.onclick = () => { V.sampleEmotion = b.dataset.e; render(); });
     /* ボイスサンプル再生(いまの挨拶・感情・速さで) */
@@ -674,6 +723,7 @@ window.openVideoStudio = function () {
         mode: V.mode,
         cut_strength: V.cut_strength,
         caption_style: V.caption_style,
+        caption_font: V.caption_font,
         caption_size: V.caption_size,
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
@@ -724,6 +774,7 @@ window.openVideoStudio = function () {
         mode: V.mode,
         cut_strength: V.cut_strength,
         caption_style: V.caption_style,
+        caption_font: V.caption_font,
         caption_size: V.caption_size,
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
@@ -1273,7 +1324,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "210";
+const APP_VERSION = "211";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
