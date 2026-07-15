@@ -303,6 +303,7 @@ window.openVideoStudio = function () {
     caption_pos: "bottom",
     fit_mode: "blur",
     voice: "male1",
+    orig_audio: "mute",
     reveal_result: "last",
     outro_text: "競艇を極めたい人はフォロー",
     file: null,
@@ -321,6 +322,7 @@ window.openVideoStudio = function () {
     { key: "caption_style", label: "字幕スタイル", opts: [["simple", "シンプル"], ["flashy", "派手"], ["gold", "金色"], ["tiktok", "TikTok風"]] },
     { key: "caption_size", label: "字幕サイズ", opts: [["small", "小"], ["medium", "中"], ["large", "大"]] },
     { key: "caption_pos", label: "字幕の位置", opts: [["bottom", "下"], ["middle", "中央"], ["top", "上"]] },
+    { key: "orig_audio", label: "元音声(実況モード時)", opts: [["mute", "ほぼ消す"], ["low", "小さく残す"], ["keep", "そのまま"]] },
     { key: "reveal_result", label: "結果表示", opts: [["first", "最初に見せる"], ["last", "最後まで隠す"]] },
   ];
   const V_LABEL = { queued: "順番待ち…", analyzing: "🧠 AIが見どころを解析中…", cutting: "✂️ カット中…", rendering: "🎞 書き出し中…", completed: "✅ 完成！", failed: "❌ 失敗" };
@@ -414,6 +416,20 @@ window.openVideoStudio = function () {
         + (V.summary ? '<div class="muted" style="font-size:12px;margin-top:8px">' + vEsc(V.summary) + '</div>' : '')
         + '<button id="vsSave" style="display:block;width:100%;text-align:center;margin-top:10px;background:#3DFFA8;color:#001;font-weight:800;padding:15px;border-radius:12px;font-size:15px;border:none">💾 写真/ファイルに保存</button>'
         + '<a href="' + V.result + '" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:8px;color:var(--muted);font-size:12px;text-decoration:underline">開けない場合はこちら(ブラウザで開く)</a>';
+      /* 台本・字幕の修正(艇番の誤り等をここで直す) */
+      if ((V.captions && V.captions.length) || (V.lines && V.lines.length)) {
+        h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:8px">📝 字幕・実況の修正(艇番・名前の間違いはここで直せます)</div>';
+        (V.captions || []).forEach((c, i) => {
+          h += '<div style="margin-bottom:6px"><div class="muted" style="font-size:10px;margin-bottom:2px">字幕' + (i + 1) + '</div>'
+            + '<input type="text" class="vsCapEdit" data-i="' + i + '" value="' + vEsc(c.text || "") + '" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:14px;padding:8px"></div>';
+        });
+        (V.lines || []).forEach((l, i) => {
+          h += '<div style="margin-bottom:6px"><div class="muted" style="font-size:10px;margin-bottom:2px">🎙 実況' + (i + 1) + '</div>'
+            + '<input type="text" class="vsLineEdit" data-i="' + i + '" value="' + vEsc(l.text || "") + '" style="width:100%;background:var(--card);border:1px solid #fbbf24;border-radius:8px;color:var(--ink);font-size:14px;padding:8px"></div>';
+        });
+        h += '<button id="vsFixScript" style="width:100%;background:var(--card);border:1px solid #3DFFA8;color:#3DFFA8;font-weight:800;padding:13px;border-radius:11px;font-size:14px;margin-top:4px">🔄 修正を反映して作り直す</button></div>';
+      }
+
       /* 微調整 */
       if (V.clips && V.clips.length) {
         h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:8px">✂️ 微調整(AI再解析なし=無料)</div>';
@@ -448,6 +464,26 @@ window.openVideoStudio = function () {
     const sv = ov.querySelector("#vsSave"); if (sv) sv.onclick = () => vsSaveVideo(sv);
     const dg = ov.querySelector("#vsDiag"); if (dg) dg.onclick = diag;
     const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
+    const fx = ov.querySelector("#vsFixScript"); if (fx) fx.onclick = fixScript;
+  }
+
+  /* 字幕・実況の修正 → 再レンダリング(Gemini再呼び出しなし) */
+  async function fixScript() {
+    const captions = (V.captions || []).map((c, i) => {
+      const el = ov.querySelector('.vsCapEdit[data-i="' + i + '"]');
+      return { start: c.start, end: c.end, text: el ? el.value : c.text };
+    });
+    const lines = (V.lines || []).map((l, i) => {
+      const el = ov.querySelector('.vsLineEdit[data-i="' + i + '"]');
+      return { i: l.i, text: el ? el.value : l.text };
+    });
+    V.busy = true; V.result = null; V.progress = 0; V.statusText = "修正を反映中…";
+    render();
+    try {
+      const j = await gasFetch_("videoUpdateScript", { job_id: V.jobId, captions, lines });
+      if (!j || j.error) throw new Error(j && j.error ? j.error : "修正の反映に失敗しました");
+      poll();
+    } catch (e) { V.busy = false; V.statusText = "❌ " + e.message; render(); }
   }
 
   /* アップロード: supabase-jsの署名付きアップロード(ブラウザ公式ルート)を最優先。
@@ -552,6 +588,7 @@ window.openVideoStudio = function () {
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
         voice: V.voice,
+        orig_audio: V.orig_audio,
         reveal_result: V.reveal_result,
         outro_text: V.outro_text
       });
@@ -599,6 +636,7 @@ window.openVideoStudio = function () {
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
         voice: V.voice,
+        orig_audio: V.orig_audio,
         reveal_result: V.reveal_result,
         outro_text: (ov.querySelector("#vsOutro") || {}).value || V.outro_text
       });
@@ -623,6 +661,7 @@ window.openVideoStudio = function () {
         if (s.status === "completed") {
           clearInterval(V.timer);
           V.busy = false; V.result = s.output_url; V.clips = s.clips || null; V.summary = s.summary || "";
+          V.captions = s.captions || null; V.lines = s.lines || null;
         } else if (s.status === "failed") {
           clearInterval(V.timer);
           V.busy = false; V.statusText = "❌ " + (s.error || "失敗");
@@ -1140,7 +1179,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "203";
+const APP_VERSION = "204";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
