@@ -371,8 +371,14 @@ window.openVideoStudio = function () {
     /* 実行ボタン */
     h += '<button id="vsRun"' + (V.busy ? ' disabled' : '') + ' style="width:100%;background:' + (V.busy ? 'var(--card)' : 'linear-gradient(135deg,#b98cff,#38d4f0)') + ';color:' + (V.busy ? 'var(--muted,#889)' : '#001') + ';font-weight:800;border:none;padding:16px;border-radius:12px;font-size:15px">' + (V.busy ? '処理中…' : '🎬 作成する') + '</button>';
 
+    /* 診断ボタン（配線チェック用） */
+    h += '<button id="vsDiag" style="width:100%;margin-top:8px;background:transparent;border:1px solid var(--border);color:var(--muted,#889);font-weight:700;padding:11px;border-radius:11px;font-size:12px">🔧 診断（うまくいかない時に押す）</button>';
+    if (V.diag) {
+      h += '<pre style="margin-top:10px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:11px;font-size:11px;white-space:pre-wrap;word-break:break-all;color:var(--ink);max-height:320px;overflow:auto">' + vEsc(V.diag) + '</pre>';
+    }
+
     /* 進捗 */
-    if (V.busy || V.status) {
+    if (V.busy || V.statusText) {
       h += '<div style="margin-top:18px"><div style="font-size:13px;font-weight:700;margin-bottom:7px" id="vsStatus">' + vEsc(V.statusText || "準備中…") + '</div>'
         + '<div style="height:9px;background:var(--card);border-radius:99px;overflow:hidden"><div id="vsBar" style="height:100%;width:' + (V.progress || 0) + '%;background:linear-gradient(90deg,#b98cff,#38d4f0);transition:width .4s"></div></div></div>';
     }
@@ -414,7 +420,84 @@ window.openVideoStudio = function () {
     const o = ov.querySelector("#vsOutro");
     if (o) o.onchange = () => { V.outro_text = o.value; };
     const r = ov.querySelector("#vsRun"); if (r) r.onclick = run;
+    const dg = ov.querySelector("#vsDiag"); if (dg) dg.onclick = diag;
     const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
+  }
+
+  /* 配線チェック: どこで切れてるか画面に出す */
+  async function diag() {
+    const L = [];
+    L.push("APP_VERSION: " + (typeof APP_VERSION !== "undefined" ? APP_VERSION : "不明"));
+    L.push("screen_name: " + V.screen);
+    L.push("選択中の動画: " + (V.file ? V.file.name + " / " + (V.file.size / 1024 / 1024).toFixed(1) + "MB" : "なし"));
+    L.push("gasFetch_: " + (typeof gasFetch_ === "function" ? "あり" : "★無い★"));
+    V.diag = L.join("\n") + "\n\n[1] GASに署名URLを要求中…";
+    render();
+
+    /* ① GAS疎通 + 署名URL */
+    let sign = null;
+    try {
+      sign = await gasFetch_("videoSignedUrl", { screen_name: V.screen });
+      L.push("[1] GAS応答: " + JSON.stringify(sign).slice(0, 400));
+      if (!sign || !sign.upload_url) {
+        L.push("→ ★NG★ upload_urlが無い。原因の候補:");
+        L.push("   ・GASを再デプロイしてない(デプロイ→管理→鉛筆→新バージョン)");
+        L.push("   ・07_video_ai.gs を保存してない");
+        L.push("   ・doPostに4行を足してない");
+        L.push("   ・Storageバケット videos-in が無い");
+        V.diag = L.join("\n"); render(); return;
+      }
+      L.push("→ OK");
+    } catch (e) {
+      L.push("[1] ★例外★ " + e.message);
+      V.diag = L.join("\n"); render(); return;
+    }
+
+    /* ② Storageへの実アップロード（動画があれば） */
+    if (V.file) {
+      L.push("\n[2] Supabase Storageへアップロード中…");
+      V.diag = L.join("\n"); render();
+      try {
+        const up = await fetch(sign.upload_url, {
+          method: "PUT",
+          headers: { "Content-Type": V.file.type || "video/mp4", "x-upsert": "true" },
+          body: V.file
+        });
+        L.push("[2] HTTP " + up.status + " " + (up.ok ? "→ OK" : "→ ★NG★ " + (await up.text()).slice(0, 200)));
+      } catch (e) {
+        L.push("[2] ★例外★ " + e.message + "(CORSかネットワーク)");
+      }
+    } else {
+      L.push("\n[2] 動画未選択のためアップロード試験はスキップ");
+    }
+
+    /* ③ Cloud Runへジョブ作成 */
+    L.push("\n[3] Cloud Runへジョブ作成中…");
+    V.diag = L.join("\n"); render();
+    try {
+      const job = await gasFetch_("videoCreateJob", {
+        screen_name: V.screen,
+        input_path: sign.input_path,
+        duration_sec: V.duration_sec,
+        mode: V.mode,
+        cut_strength: V.cut_strength,
+        caption_style: V.caption_style,
+        reveal_result: V.reveal_result,
+        outro_text: V.outro_text
+      });
+      L.push("[3] 応答: " + JSON.stringify(job).slice(0, 400));
+      if (job && job.job_id) {
+        L.push("→ ✅ここまで通れば配線は全部OK。ジョブID: " + job.job_id);
+        V.jobId = job.job_id;
+        L.push("(このまま進捗を見る場合は『作成する』を押し直してください)");
+      } else {
+        L.push("→ ★NG★ Cloud Run側かGASプロパティ(VIDEO_API_BASE/VIDEO_API_KEY)を確認");
+      }
+    } catch (e) {
+      L.push("[3] ★例外★ " + e.message);
+    }
+    V.diag = L.join("\n");
+    render();
   }
 
   async function run() {
@@ -454,7 +537,10 @@ window.openVideoStudio = function () {
       V.jobId = job.job_id;
       poll();
     } catch (e) {
-      V.busy = false; V.statusText = "❌ " + e.message; render();
+      V.busy = false;
+      V.statusText = "❌ " + e.message;
+      V.diag = "作成に失敗しました。\n\n" + e.message + "\n\n『🔧 診断』を押すと、どこで切れているか分かります。";
+      render();
     }
   }
 
@@ -985,7 +1071,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "197";
+const APP_VERSION = "198";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
