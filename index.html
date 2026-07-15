@@ -450,6 +450,26 @@ window.openVideoStudio = function () {
     const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
   }
 
+  /* アップロード: supabase-jsの署名付きアップロード(ブラウザ公式ルート)を最優先。
+     ダメなら素のPUT(最小ヘッダー)にフォールバック */
+  async function vsUpload(sign, file) {
+    if (window.sb && sb.storage && sign.token && sign.object_key) {
+      try {
+        const { error } = await sb.storage.from("videos-in")
+          .uploadToSignedUrl(sign.object_key, sign.token, file, { contentType: file.type || "video/mp4", upsert: true });
+        if (!error) return "supabase-js";
+        console.warn("uploadToSignedUrl失敗:", error.message);
+      } catch (e) { console.warn("uploadToSignedUrl例外:", e.message); }
+    }
+    const up = await fetch(sign.upload_url, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "video/mp4" },
+      body: file
+    });
+    if (!up.ok) throw new Error("アップロード失敗 HTTP " + up.status);
+    return "fetch";
+  }
+
   /* 動画をiPhoneに保存: 共有シート(写真に保存が出る)→ダメならBlobダウンロード */
   async function vsSaveVideo(btn) {
     const orig = btn.textContent;
@@ -508,12 +528,8 @@ window.openVideoStudio = function () {
       L.push("\n[2] Supabase Storageへアップロード中…");
       V.diag = L.join("\n"); render();
       try {
-        const up = await fetch(sign.upload_url, {
-          method: "PUT",
-          headers: { "Content-Type": V.file.type || "video/mp4", "x-upsert": "true" },
-          body: V.file
-        });
-        L.push("[2] HTTP " + up.status + " " + (up.ok ? "→ OK" : "→ ★NG★ " + (await up.text()).slice(0, 200)));
+        const method = await vsUpload(sign, V.file);
+        L.push("[2] → OK (経路: " + method + ")");
       } catch (e) {
         L.push("[2] ★例外★ " + e.message + "(CORSかネットワーク)");
       }
@@ -566,14 +582,9 @@ window.openVideoStudio = function () {
       const sign = await gasFetch_("videoSignedUrl", { screen_name: V.screen });
       if (!sign || !sign.upload_url) throw new Error(sign && sign.error ? sign.error : "署名URL取得失敗");
 
-      /* ② Supabase Storageへ直接PUT(GASを通さない=6分/50MB制限を回避) */
+      /* ② Supabase Storageへ直接アップロード(GASを通さない=6分/50MB制限を回避) */
       V.statusText = "アップロード中…"; V.progress = 8; render();
-      const up = await fetch(sign.upload_url, {
-        method: "PUT",
-        headers: { "Content-Type": V.file.type || "video/mp4", "x-upsert": "true" },
-        body: V.file
-      });
-      if (!up.ok) throw new Error("アップロード失敗 " + up.status);
+      await vsUpload(sign, V.file);
 
       /* ③ ジョブ作成 */
       V.statusText = "ジョブ作成中…"; V.progress = 12; render();
@@ -1129,7 +1140,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "202";
+const APP_VERSION = "203";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
