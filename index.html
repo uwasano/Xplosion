@@ -305,6 +305,8 @@ window.openVideoStudio = function () {
     voice: "male1",
     orig_audio: "mute",
     speaking_rate: 1.05,
+    sampleGreet: 0,
+    sampleEmotion: "normal",
     bgm_key: "",
     bgmList: null,
     reveal_result: "last",
@@ -382,8 +384,26 @@ window.openVideoStudio = function () {
       const VOICE_KAWAII = [["female6","かわいい"],["female7","元気ポップ"],["female4","明るい"],["female3","ふんわり"],["female8","あたたか"],["female12","晴れやか"]];
       const VOICE_F = [["female1","アナ標準"],["female2","ハキハキ"],["female9","なめらか"],["female10","クリア"],["female11","ゆるふわ"],["female5","落ち着き"]];
       const VOICE_M = [["male1","標準"],["male2","熱血"],["male3","元気"],["male4","渋い"],["male6","親しみ"],["male7","活発"],["male8","フラット"],["male5","ナレ"]];
-      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">実況ボイス <span class="muted" style="font-weight:400">(▶で全員サンプル再生できます)</span></div>';
-      [["💕 女性・かわいい系", VOICE_KAWAII], ["👩 女性・おとな系", VOICE_F], ["👨 男性", VOICE_M]].forEach(function (grp) {
+      const VOICE_NIJI = [["mao","まお"],["kohaku","こはく"],["kanon","かのん"],["runa","るな"]];
+
+      /* サンプル文の設定: 挨拶4種 × 感情5種(にじボイスは言い回しで感情を表現) */
+      const GREETS = ["おはよう","こんばんは","やっほー","またねー"];
+      const EMOS = [["normal","通常"],["happy","嬉しい"],["excited","興奮"],["sad","悲しい"],["calm","落ち着き"]];
+      h += '<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🗣 サンプルのセリフ・感情</div>';
+      h += '<div class="muted" style="font-size:11px;margin-bottom:4px">挨拶</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      GREETS.forEach(function (g, gi) {
+        const on = V.sampleGreet === gi;
+        h += '<button class="vsGreetBtn" data-i="' + gi + '" style="border-radius:99px;padding:6px 12px;font-size:12px;font-weight:700;border:1px solid ' + (on ? '#3DFFA8' : 'var(--border)') + ';background:' + (on ? 'rgba(61,255,168,.15)' : 'transparent') + ';color:var(--ink)">' + g + '</button>';
+      });
+      h += '</div><div class="muted" style="font-size:11px;margin-bottom:4px">感情</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
+      EMOS.forEach(function (em) {
+        const on = V.sampleEmotion === em[0];
+        h += '<button class="vsEmoBtn" data-e="' + em[0] + '" style="border-radius:99px;padding:6px 12px;font-size:12px;font-weight:700;border:1px solid ' + (on ? '#fbbf24' : 'var(--border)') + ';background:' + (on ? 'rgba(251,191,36,.15)' : 'transparent') + ';color:var(--ink)">' + em[1] + '</button>';
+      });
+      h += '</div></div>';
+
+      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">実況ボイス <span class="muted" style="font-weight:400">(▶でいまの挨拶・感情で再生できます)</span></div>';
+      [["✨ にじボイス(アニメ声)", VOICE_NIJI], ["💕 女性・かわいい系", VOICE_KAWAII], ["👩 女性・おとな系", VOICE_F], ["👨 男性", VOICE_M]].forEach(function (grp) {
         h += '<div class="muted" style="font-size:11px;margin:8px 0 4px">' + grp[0] + '</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
         grp[1].forEach(function (vv) {
           const on = V.voice === vv[0];
@@ -502,11 +522,14 @@ window.openVideoStudio = function () {
       V.speaking_rate = Number(rt.value);
       const lb = ov.querySelector("#vsRateVal"); if (lb) lb.textContent = "×" + V.speaking_rate.toFixed(2);
     };
-    /* ボイスサンプル再生 */
+    /* 挨拶・感情の切替(即反映・音は鳴らさない) */
+    ov.querySelectorAll(".vsGreetBtn").forEach(b => b.onclick = () => { V.sampleGreet = Number(b.dataset.i); render(); });
+    ov.querySelectorAll(".vsEmoBtn").forEach(b => b.onclick = () => { V.sampleEmotion = b.dataset.e; render(); });
+    /* ボイスサンプル再生(いまの挨拶・感情・速さで) */
     ov.querySelectorAll(".vsVoicePrev").forEach(b => b.onclick = async () => {
       b.textContent = "…";
       try {
-        const j = await gasFetch_("videoVoiceSample", { voice: b.dataset.v, rate: V.speaking_rate });
+        const j = await gasFetch_("videoVoiceSample", { voice: b.dataset.v, rate: V.speaking_rate, greet: V.sampleGreet, emotion: V.sampleEmotion });
         if (!j || !j.audio) throw new Error(j && j.error ? j.error : "サンプル取得に失敗しました");
         if (V._audio) { try { V._audio.pause(); } catch (e) {} }
         V._audio = new Audio(j.audio);
@@ -1250,7 +1273,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "207";
+const APP_VERSION = "208";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
