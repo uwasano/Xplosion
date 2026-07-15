@@ -398,7 +398,7 @@ window.openVideoStudio = function () {
     FONT_OPTS.forEach(function (f) {
       const on = V.caption_font === f[0];
       h += '<button class="vsFontBtn" data-v="' + f[0] + '" style="text-align:left;display:flex;align-items:center;justify-content:space-between;border-radius:11px;padding:12px 14px;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.12)' : 'var(--card)') + '">'
-        + '<span style="font-family:\'' + f[1] + '\';font-size:19px;color:var(--ink)">3号艇 差し切り勝ち</span>'
+        + '<span style="font-family:\'' + f[1] + '\';font-size:19px;color:var(--ink)">字幕サンプル</span>'
         + '<span class="muted" style="font-size:10.5px;white-space:nowrap;margin-left:8px">' + f[2] + (on ? ' ✓' : '') + '</span>'
         + '</button>';
     });
@@ -414,12 +414,20 @@ window.openVideoStudio = function () {
       ["pink", "ホットピンク", "#FFFFFF", "#A244FF"],
       ["lime", "ライムグリーン", "#39FF00", "#003300"],
       ["mono", "漆黒・白縁", "#000000", "#FFFFFF"],
+      ["cyan", "シアン", "#FFFFFF", "#00A8E0"],
+      ["orange", "サンセットオレンジ", "#FFFFFF", "#FF6B0A"],
+      ["purple", "パープル", "#FFFFFF", "#9B37C2"],
+      ["teal", "ティール", "#FFFFFF", "#009982"],
+      ["redsolid", "赤ベタ塗り", "#FF0000", "#FFFFFF"],
+      ["bluesolid", "青ベタ塗り", "#0A6BFF", "#FFFFFF"],
+      ["warning", "注意喚起・黒×黄", "#FFE500", "#111111"],
+      ["pastel", "パステル", "#E8CFFF", "#663355"],
     ];
     h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">字幕の色</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
     COLOR_OPTS.forEach(function (c) {
       const on = V.caption_style === c[0];
       h += '<button class="vsColorBtn" data-v="' + c[0] + '" style="border-radius:11px;padding:14px 8px;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:#0a0a0a;display:flex;flex-direction:column;align-items:center;gap:6px">'
-        + '<span style="font-weight:900;font-size:16px;color:' + c[2] + ';-webkit-text-stroke:2px ' + c[3] + ';paint-order:stroke fill">サンプル</span>'
+        + '<span style="font-weight:900;font-size:15px;color:' + c[2] + ';-webkit-text-stroke:2px ' + c[3] + ';paint-order:stroke fill">字幕サンプル</span>'
         + '<span style="font-size:10.5px;color:var(--muted)">' + c[1] + (on ? ' ✓' : '') + '</span>'
         + '</button>';
     });
@@ -1324,7 +1332,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "211";
+const APP_VERSION = "212";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
