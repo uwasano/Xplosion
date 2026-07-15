@@ -302,6 +302,7 @@ window.openVideoStudio = function () {
     caption_size: "medium",
     caption_pos: "bottom",
     fit_mode: "blur",
+    voice: "male1",
     reveal_result: "last",
     outro_text: "競艇を極めたい人はフォロー",
     file: null,
@@ -313,6 +314,7 @@ window.openVideoStudio = function () {
   };
 
   const CHIPS = [
+    { key: "mode", label: "モード", opts: [["auto", "AI自動切り抜き"], ["jikkyo", "実況音声つき"]] },
     { key: "duration_sec", label: "尺", opts: [[15, "15秒"], [30, "30秒"], [45, "45秒"], [60, "60秒"]], num: true },
     { key: "cut_strength", label: "カット強度", opts: [["weak", "弱め"], ["normal", "標準"], ["strong", "強め"]] },
     { key: "fit_mode", label: "画角", opts: [["blur", "全部映す(背景ぼかし)"], ["zoom", "ズーム(迫力)"]] },
@@ -370,6 +372,22 @@ window.openVideoStudio = function () {
       h += '</div></div>';
     });
 
+    /* 実況ボイス(実況モードのみ) */
+    if (V.mode === "jikkyo") {
+      const VOICE_M = [["male1","男1 標準"],["male2","男2 低音"],["male3","男3 元気"],["male4","男4 渋い"],["male5","男5 ナレ"]];
+      const VOICE_F = [["female1","女1 標準"],["female2","女2 ハキハキ"],["female3","女3 やわらか"],["female4","女4 明るい"],["female5","女5 落ち着き"]];
+      h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">実況ボイス</div>';
+      [["👨 男性", VOICE_M], ["👩 女性", VOICE_F]].forEach(function (grp) {
+        h += '<div class="muted" style="font-size:11px;margin:6px 0 4px">' + grp[0] + '</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
+        grp[1].forEach(function (vv) {
+          const on = V.voice === vv[0];
+          h += '<button class="vsChip" data-k="voice" data-v="' + vv[0] + '" data-num="0" style="border-radius:99px;padding:8px 13px;font-size:12px;font-weight:700;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + vv[1] + '</button>';
+        });
+        h += '</div>';
+      });
+      h += '</div>';
+    }
+
     /* 締め文 */
     h += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">締め文</div>'
       + '<input type="text" id="vsOutro" value="' + vEsc(V.outro_text) + '" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--ink);font-size:16px;padding:11px"></div>';
@@ -394,7 +412,8 @@ window.openVideoStudio = function () {
       h += '<div style="margin-top:20px">'
         + '<video src="' + V.result + '" controls playsinline style="width:100%;border-radius:12px;background:#000"></video>'
         + (V.summary ? '<div class="muted" style="font-size:12px;margin-top:8px">' + vEsc(V.summary) + '</div>' : '')
-        + '<a href="' + V.result + '" download="xplosion-' + Date.now() + '.mp4" style="display:block;text-align:center;margin-top:10px;background:#3DFFA8;color:#001;font-weight:800;padding:15px;border-radius:12px;font-size:15px;text-decoration:none">⬇ ダウンロード</a>';
+        + '<button id="vsSave" style="display:block;width:100%;text-align:center;margin-top:10px;background:#3DFFA8;color:#001;font-weight:800;padding:15px;border-radius:12px;font-size:15px;border:none">💾 写真/ファイルに保存</button>'
+        + '<a href="' + V.result + '" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:8px;color:var(--muted);font-size:12px;text-decoration:underline">開けない場合はこちら(ブラウザで開く)</a>';
       /* 微調整 */
       if (V.clips && V.clips.length) {
         h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:8px">✂️ 微調整(AI再解析なし=無料)</div>';
@@ -426,8 +445,33 @@ window.openVideoStudio = function () {
     const o = ov.querySelector("#vsOutro");
     if (o) o.onchange = () => { V.outro_text = o.value; };
     const r = ov.querySelector("#vsRun"); if (r) r.onclick = run;
+    const sv = ov.querySelector("#vsSave"); if (sv) sv.onclick = () => vsSaveVideo(sv);
     const dg = ov.querySelector("#vsDiag"); if (dg) dg.onclick = diag;
     const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
+  }
+
+  /* 動画をiPhoneに保存: 共有シート(写真に保存が出る)→ダメならBlobダウンロード */
+  async function vsSaveVideo(btn) {
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = "準備中…";
+    try {
+      const res = await fetch(V.result);
+      if (!res.ok) throw new Error("取得失敗 " + res.status);
+      const blob = await res.blob();
+      const file = new File([blob], "xplosion-" + Date.now() + ".mp4", { type: "video/mp4" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] }); /* 共有シート→「ビデオを保存」 */
+      } else {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = file.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+      }
+    } catch (e) {
+      if (e && e.name !== "AbortError") alert("保存に失敗しました: " + e.message);
+    }
+    btn.disabled = false; btn.textContent = orig;
   }
 
   /* 配線チェック: どこで切れてるか画面に出す */
@@ -491,6 +535,7 @@ window.openVideoStudio = function () {
         caption_size: V.caption_size,
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
+        voice: V.voice,
         reveal_result: V.reveal_result,
         outro_text: V.outro_text
       });
@@ -542,6 +587,7 @@ window.openVideoStudio = function () {
         caption_size: V.caption_size,
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
+        voice: V.voice,
         reveal_result: V.reveal_result,
         outro_text: (ov.querySelector("#vsOutro") || {}).value || V.outro_text
       });
@@ -1083,7 +1129,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "199";
+const APP_VERSION = "202";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1189,6 +1235,26 @@ function renderCostPie(box, data, title, modelData) {
     '<div style="font-size:10px;color:var(--muted);margin-top:8px">※$1=150円で概算。Haiku=入力$1/出力$5、Sonnet=入力$3/出力$15(各100万トークン)。</div></div>';
 }
 
+/* モデル名 → 表示区分。Claude(Haiku/Sonnet) + Google Cloud(Gemini/Cloud Run) を判別 */
+function MODEL_KIND_(model) {
+  const m = String(model || "");
+  if (/haiku/i.test(m)) return "Haiku";
+  if (/sonnet|opus/i.test(m)) return "Sonnet";
+  if (/gemini/i.test(m)) return "Gemini";
+  if (/cloud[-_ ]?run/i.test(m)) return "Cloud Run";
+  if (/eleven/i.test(m)) return "ElevenLabs";
+  return "その他";
+}
+function MODEL_KEY_(model) {
+  const m = String(model || "");
+  if (/haiku/i.test(m)) return "haiku";
+  if (/sonnet|opus/i.test(m)) return "sonnet";
+  if (/gemini/i.test(m)) return "gemini";
+  if (/cloud[-_ ]?run/i.test(m)) return "cloudrun";
+  if (/eleven/i.test(m)) return "eleven";
+  return "other";
+}
+
 /* 直近7日間の日別AI利用料を棒グラフで描く。days=[{day,cost}](古い→新しい順) */
 function renderCostBars(box, days, title) {
   const total7 = days.reduce((s, d) => s + d.cost, 0);
@@ -1196,14 +1262,15 @@ function renderCostBars(box, days, title) {
   const W = 300, H = 162, padL = 6, padR = 6, padT = 18, padB = 26;
   const chartH = H - padT - padB;
   const n = days.length, bw = (W - padL - padR) / n;
-  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", other: "#94a3b8" };
+  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", gemini: "#4285f4", cloudrun: "#34a853", eleven: "#fbbf24", other: "#94a3b8" };
+  const LBL = { haiku: "Haiku", sonnet: "Sonnet", gemini: "Gemini", cloudrun: "Cloud Run", eleven: "ElevenLabs" };
   const baseY = padT + chartH;
   let bars = "";
   days.forEach((d, i) => {
     const x = padL + i * bw + bw * 0.18, w = bw * 0.64;
     let yCur = baseY;
-    /* 下から haiku→sonnet→other で積み上げ */
-    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["other", d.other || 0]].forEach(function (kv) {
+    /* 下から haiku→sonnet→gemini→cloudrun→other で積み上げ */
+    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["gemini", d.gemini || 0], ["cloudrun", d.cloudrun || 0], ["eleven", d.eleven || 0], ["other", d.other || 0]].forEach(function (kv) {
       const val = kv[1];
       if (val <= 0) return;
       const h = max > 0 ? (val / max) * chartH : 0;
@@ -1217,9 +1284,12 @@ function renderCostBars(box, days, title) {
     bars += '<text x="' + (x + w / 2).toFixed(1) + '" y="' + (H - 9) + '" font-size="9.5" fill="var(--muted)" text-anchor="middle">' + mmdd + '</text>';
   });
   const baseline = '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--border)" stroke-width="1"/>';
-  const legend = '<div style="display:flex;gap:14px;margin-top:8px;font-size:11px;color:var(--muted)">' +
-    '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL.haiku + '"></span>Haiku</span>' +
-    '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL.sonnet + '"></span>Sonnet</span></div>';
+  /* 実際に使われたサービスだけ凡例に出す */
+  const used = ["haiku", "sonnet", "gemini", "cloudrun", "eleven"].filter((k) => days.some((d) => (d[k] || 0) > 0));
+  const legend = '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--muted);flex-wrap:wrap">' +
+    (used.length ? used : ["haiku", "sonnet"]).map(function (k) {
+      return '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL[k] + '"></span>' + LBL[k] + '</span>';
+    }).join("") + '</div>';
   box.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">' +
     '<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;gap:8px;flex-wrap:wrap">' +
     '<div style="font-weight:700">' + esc(title) + '</div>' +
@@ -2635,10 +2705,10 @@ BUILDERS.home = (el) => {
       const monthStart = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 8) + "01";
       const tu = await fetchAllUsage("tag,cost_usd,model", monthStart);
       const byTag = {};
-      const byModel = { Haiku: 0, Sonnet: 0, "その他": 0 };
+      const byModel = { Haiku: 0, Sonnet: 0, Gemini: 0, "Cloud Run": 0, ElevenLabs: 0, "その他": 0 };
       (tu || []).forEach((r) => {
         const t = r.tag || "その他"; byTag[t] = (byTag[t] || 0) + (Number(r.cost_usd) || 0);
-        const mk = /haiku/i.test(r.model) ? "Haiku" : /sonnet/i.test(r.model) ? "Sonnet" : "その他";
+        const mk = MODEL_KIND_(r.model);
         byModel[mk] += (Number(r.cost_usd) || 0);
       });
       const colors = ["#10b981", "#00e5ff", "#a855f7", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899", "#84cc16"];
@@ -2646,6 +2716,9 @@ BUILDERS.home = (el) => {
       const modelData = [
         { name: "Haiku", cost: byModel.Haiku, color: "#00e5ff" },
         { name: "Sonnet", cost: byModel.Sonnet, color: "#a855f7" },
+        { name: "Gemini", cost: byModel.Gemini, color: "#4285f4" },
+        { name: "Cloud Run", cost: byModel["Cloud Run"], color: "#34a853" },
+        { name: "ElevenLabs", cost: byModel.ElevenLabs, color: "#fbbf24" },
         { name: "その他", cost: byModel["その他"], color: "#94a3b8" },
       ];
       renderCostPie(costPieBox, arr, "💰 今月のAI利用料(機能別)", modelData);
@@ -2655,19 +2728,23 @@ BUILDERS.home = (el) => {
       const since7 = new Date(Date.now() + 9 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
       const tu7 = await fetchAllUsage("cost_usd,day,model", since7);
       const byDayModel = {};
+      const ZERO_ = () => ({ haiku: 0, sonnet: 0, gemini: 0, cloudrun: 0, eleven: 0, other: 0 });
       (tu7 || []).forEach((r) => {
         const k = String(r.day).slice(0, 10);
-        if (!byDayModel[k]) byDayModel[k] = { haiku: 0, sonnet: 0, other: 0 };
-        const mk = /haiku/i.test(r.model) ? "haiku" : /sonnet/i.test(r.model) ? "sonnet" : "other";
+        if (!byDayModel[k]) byDayModel[k] = ZERO_();
+        const mk = MODEL_KEY_(r.model);
         byDayModel[k][mk] += (Number(r.cost_usd) || 0);
       });
       const days7 = [];
       for (let i = 6; i >= 0; i--) {
         const dd = new Date(Date.now() + 9 * 3600000 - i * 86400000).toISOString().slice(0, 10);
-        const m = byDayModel[dd] || { haiku: 0, sonnet: 0, other: 0 };
-        days7.push({ day: dd, haiku: m.haiku, sonnet: m.sonnet, other: m.other, cost: m.haiku + m.sonnet + m.other });
+        const m = byDayModel[dd] || ZERO_();
+        days7.push({
+          day: dd, haiku: m.haiku, sonnet: m.sonnet, gemini: m.gemini, cloudrun: m.cloudrun, eleven: m.eleven, other: m.other,
+          cost: m.haiku + m.sonnet + m.gemini + m.cloudrun + m.eleven + m.other,
+        });
       }
-      renderCostBars(costBarBox, days7, "📊 直近7日間(Haiku/Sonnet別)");
+      renderCostBars(costBarBox, days7, "📊 直近7日間(サービス別)");
     } catch (e) {}
   })();
 };
