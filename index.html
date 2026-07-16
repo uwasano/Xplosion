@@ -306,6 +306,9 @@ window.openVideoStudio = function () {
     caption_font: "notosans",
     caption_fx: "none",
     renderNotes: "",
+    speaker_mode: "off",
+    speaker_count: 2,
+    speakerNames: {},
     usedSettings: null,
     thumbFile: null,
     thumbKind: "",
@@ -475,7 +478,27 @@ window.openVideoStudio = function () {
     });
     h += '</div></div>';
 
-    /* サムネイル(任意) + トランジション */
+    /* 話者分離(transcribeモード限定) */
+    if (V.mode === "transcribe") {
+      h += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🗣 話者別字幕 <span class="muted" style="font-weight:400">(最大4人・話者ごとに色分け)</span></div>';
+      const SPK_OPTS = [["off", "使わない"], ["auto", "自動判定"], ["fixed", "人数を指定"]];
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">';
+      SPK_OPTS.forEach(function (sp) {
+        const on = V.speaker_mode === sp[0];
+        h += '<button class="vsSpkModeBtn" data-v="' + sp[0] + '" style="border-radius:99px;padding:8px 13px;font-size:12px;font-weight:700;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + sp[1] + '</button>';
+      });
+      h += '</div>';
+      if (V.speaker_mode === "fixed") {
+        h += '<div style="display:flex;gap:6px">';
+        [1, 2, 3, 4].forEach(function (n) {
+          const on = V.speaker_count === n;
+          h += '<button class="vsSpkCountBtn" data-v="' + n + '" style="flex:1;border-radius:10px;padding:9px;font-size:13px;font-weight:700;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + n + '人</button>';
+        });
+        h += '</div>';
+      }
+      h += '</div>';
+    }
+
     h += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🖼 サムネイル・オープニング <span class="muted" style="font-weight:400">(任意)</span></div>'
       + '<div class="muted" style="font-size:11px;margin-bottom:8px">画像か短い動画を本編の前に挿入し、綺麗なトランジションで本編に繋ぎます</div>';
     if (V.thumbPreviewUrl) {
@@ -616,6 +639,19 @@ window.openVideoStudio = function () {
           + '<div style="font-size:11px;font-weight:700;color:#3DFFA8;margin-bottom:6px">📋 処理結果</div>'
           + '<div style="font-size:11.5px;line-height:1.8;white-space:pre-wrap">' + vEsc(V.renderNotes) + '</div></div>';
       }
+      /* 話者の名前を修正(検出された人数ぶんだけ入力欄を出す。STT再実行なしで再レンダリング) */
+      if (V.speakerCountDetected > 0) {
+        h += '<div style="margin-top:10px;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:12px 14px">'
+          + '<div style="font-size:11px;font-weight:700;color:#3DFFA8;margin-bottom:8px">🗣 話者の名前を修正 <span class="muted" style="font-weight:400">(' + V.speakerCountDetected + '人検出)</span></div>';
+        const SPK_COLORS = { 1: '#00C9FF', 2: '#FF7AC1', 3: '#FF9A00', 4: '#C173FF' };
+        for (let i = 1; i <= V.speakerCountDetected; i++) {
+          h += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+            + '<span style="width:10px;height:10px;border-radius:99px;background:' + (SPK_COLORS[i] || '#888') + ';flex-shrink:0"></span>'
+            + '<input type="text" class="vsSpkNameEdit" data-i="' + i + '" placeholder="話者' + i + 'の名前" value="' + vEsc(V.speakerNames[i] || "") + '" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:13px;padding:8px">'
+            + '</div>';
+        }
+        h += '<button id="vsSpkSave" style="width:100%;background:var(--card);border:1px solid #3DFFA8;color:#3DFFA8;font-weight:800;padding:11px;border-radius:11px;font-size:13px;margin-top:4px">🔄 名前を反映して作り直す</button></div>';
+      }
       /* 台本・字幕の修正(艇番の誤り等をここで直す) */
       if ((V.captions && V.captions.length) || (V.lines && V.lines.length)) {
         h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:8px">📝 字幕・実況の修正(艇番・名前の間違いはここで直せます)</div>';
@@ -665,6 +701,7 @@ window.openVideoStudio = function () {
     const dg = ov.querySelector("#vsDiag"); if (dg) dg.onclick = diag;
     const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
     const fx = ov.querySelector("#vsFixScript"); if (fx) fx.onclick = fixScript;
+    const spk = ov.querySelector("#vsSpkSave"); if (spk) spk.onclick = saveSpeakerNames;
     /* 話す速さスライダー(再描画せず値だけ更新=スムーズ) */
     const rt = ov.querySelector("#vsRate");
     if (rt) rt.oninput = () => {
@@ -694,6 +731,8 @@ window.openVideoStudio = function () {
     const td = ov.querySelector("#vsThumbDur");
     if (td) td.oninput = () => { V.thumbDuration = Number(td.value); };
     ov.querySelectorAll(".vsTransBtn").forEach(b => b.onclick = () => { V.transition = b.dataset.v; render(); });
+    ov.querySelectorAll(".vsSpkModeBtn").forEach(b => b.onclick = () => { V.speaker_mode = b.dataset.v; render(); });
+    ov.querySelectorAll(".vsSpkCountBtn").forEach(b => b.onclick = () => { V.speaker_count = Number(b.dataset.v); render(); });
     ov.querySelectorAll(".vsColorBtn").forEach(b => b.onclick = () => { V.caption_style = b.dataset.v; render(); });
     ov.querySelectorAll(".vsGreetBtn").forEach(b => b.onclick = () => { V.sampleGreet = Number(b.dataset.i); render(); });
     ov.querySelectorAll(".vsEmoBtn").forEach(b => b.onclick = () => { V.sampleEmotion = b.dataset.e; render(); });
@@ -744,6 +783,23 @@ window.openVideoStudio = function () {
     try {
       const j = await gasFetch_("videoUpdateScript", { job_id: V.jobId, captions, lines });
       if (!j || j.error) throw new Error(j && j.error ? j.error : "修正の反映に失敗しました");
+      poll();
+    } catch (e) { V.busy = false; V.statusText = "❌ " + e.message; render(); }
+  }
+
+  /* 話者の名前を保存→再レンダリング(STT・Geminiは再実行しない・字幕焼き直しのみ) */
+  async function saveSpeakerNames() {
+    const names = {};
+    for (let i = 1; i <= V.speakerCountDetected; i++) {
+      const el = ov.querySelector('.vsSpkNameEdit[data-i="' + i + '"]');
+      if (el && el.value.trim()) names[i] = el.value.trim();
+    }
+    V.busy = true; V.result = null; V.progress = 0; V.statusText = "話者名を反映中…";
+    render();
+    try {
+      const j = await gasFetch_("videoUpdateSpeakers", { job_id: V.jobId, names });
+      if (!j || j.error) throw new Error(j && j.error ? j.error : "話者名の反映に失敗しました");
+      V.speakerNames = names;
       poll();
     } catch (e) { V.busy = false; V.statusText = "❌ " + e.message; render(); }
   }
@@ -835,6 +891,32 @@ window.openVideoStudio = function () {
       L.push("\n[2] 動画未選択のためアップロード試験はスキップ");
     }
 
+    /* ②.5 サムネイルの署名URL＋アップロード試験（選択されていれば） */
+    if (V.thumbFile) {
+      L.push("\n[2.5] サムネイル(" + V.thumbFile.name + " / " + (V.thumbFile.size / 1024).toFixed(0) + "KB)の署名URLを要求中…");
+      V.diag = L.join("\n"); render();
+      try {
+        const ext = (V.thumbFile.name.split(".").pop() || "jpg").toLowerCase();
+        const tsign = await gasFetch_("videoSignedUrl", { screen_name: V.screen, kind: "thumb", ext });
+        L.push("[2.5] GAS応答: " + JSON.stringify(tsign).slice(0, 300));
+        if (!tsign || !tsign.upload_url) {
+          L.push("→ ★NG★ upload_urlが無い。GASのvideoSignedUrl_がkind/ext引数に対応した最新版か確認してください(要再デプロイ)");
+        } else {
+          try {
+            const method = await vsUpload(tsign, V.thumbFile);
+            L.push("[2.5] アップロード → OK (経路: " + method + ")");
+            L.push("[2.5] input_path: " + (tsign.input_path || "★無い★"));
+          } catch (e) {
+            L.push("[2.5] ★アップロード例外★ " + e.message);
+          }
+        }
+      } catch (e) {
+        L.push("[2.5] ★例外★ " + e.message);
+      }
+    } else {
+      L.push("\n[2.5] サムネイル未選択のため試験はスキップ");
+    }
+
     /* ③ Cloud Runへジョブ作成 */
     L.push("\n[3] Cloud Runへジョブ作成中…");
     V.diag = L.join("\n"); render();
@@ -890,15 +972,26 @@ window.openVideoStudio = function () {
       V.statusText = "アップロード中…"; V.progress = 8; render();
       await vsUpload(sign, V.file);
 
-      /* ②.5 サムネイル(任意)のアップロード */
+      /* ②.5 サムネイル(任意)のアップロード。失敗しても本編は止めないが、
+         失敗を黙って握りつぶさず必ずV.statusTextで一瞬見せてから続行する */
       let thumbPath = "";
       if (V.thumbFile) {
         V.statusText = "サムネイルをアップロード中…"; V.progress = 10; render();
-        const ext = (V.thumbFile.name.split(".").pop() || (V.thumbKind === "image" ? "jpg" : "mp4")).toLowerCase();
-        const tsign = await gasFetch_("videoSignedUrl", { screen_name: V.screen, kind: "thumb", ext });
-        if (tsign && tsign.upload_url) {
+        try {
+          const ext = (V.thumbFile.name.split(".").pop() || (V.thumbKind === "image" ? "jpg" : "mp4")).toLowerCase();
+          const tsign = await gasFetch_("videoSignedUrl", { screen_name: V.screen, kind: "thumb", ext });
+          if (!tsign || !tsign.upload_url) {
+            throw new Error((tsign && tsign.error) ? tsign.error : "署名URLにupload_urlが含まれていません(GASが古い可能性)");
+          }
           await vsUpload(tsign, V.thumbFile);
+          if (!tsign.input_path) throw new Error("署名URL応答にinput_pathがありません");
           thumbPath = tsign.input_path;
+          console.log("[thumb] アップロード成功:", thumbPath);
+        } catch (e) {
+          console.warn("[thumb] アップロード失敗、サムネなしで続行:", e.message);
+          V.statusText = "⚠️ サムネイルの添付に失敗(" + e.message + ")。本編の作成は続けます…";
+          render();
+          await new Promise((r) => setTimeout(r, 1800)); /* 失敗メッセージを一瞬見せてから続行 */
         }
       }
 
@@ -925,6 +1018,8 @@ window.openVideoStudio = function () {
         thumb_kind: V.thumbKind,
         thumb_duration: V.thumbDuration,
         transition: V.transition,
+        speaker_mode: V.speaker_mode,
+        speaker_count: V.speaker_count,
         reveal_result: V.reveal_result,
         outro_text: (ov.querySelector("#vsOutro") || {}).value || V.outro_text
       });
@@ -951,6 +1046,8 @@ window.openVideoStudio = function () {
           V.busy = false; V.result = s.output_url; V.clips = s.clips || null; V.summary = s.summary || "";
           V.captions = s.captions || null; V.lines = s.lines || null;
           V.renderNotes = s.render_notes || ""; V.usedSettings = s.used_settings || null;
+          V.speakerCountDetected = s.speaker_count_detected || 0;
+          if (s.speaker_styles && s.speaker_styles.names) V.speakerNames = s.speaker_styles.names;
         } else if (s.status === "failed") {
           clearInterval(V.timer);
           V.busy = false; V.statusText = "❌ " + (s.error || "失敗");
@@ -1468,7 +1565,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "218";
+const APP_VERSION = "220";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
