@@ -659,7 +659,7 @@ window.openVideoStudio = function () {
       if (V.sttCaptions && V.sttCaptions.length) {
         h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:4px">📝 字幕の修正(実際に焼き込まれる字幕そのものです)</div>'
           + '<div class="muted" style="font-size:11px;margin-bottom:8px">行ごとに音声連動エフェクトも個別に変えられます</div>';
-        const FX_SHORT = [["", "(全体の設定を使う)"], ["none", "なし"], ["auto", "🎲お任せ"], ["bounce", "弾む"], ["shake", "振動"], ["jump", "縦バウンド"], ["glow", "発光"], ["colorpulse", "色脈動"], ["tilt", "傾き"], ["flash", "フラッシュ"], ["zoompunch", "パンチ"], ["wave", "波打ち"], ["karaoke", "カラオケ"]];
+        const FX_SHORT = [["", "(全体の設定を使う)"], ["none", "なし"], ["bounce", "弾む"], ["shake", "振動"], ["jump", "縦バウンド"], ["glow", "発光"], ["colorpulse", "色脈動"], ["tilt", "傾き"], ["flash", "フラッシュ"], ["zoompunch", "パンチ"], ["wave", "波打ち"], ["karaoke", "カラオケ"]];
         V.sttCaptions.forEach((c, i) => {
           h += '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">'
             + '<div class="muted" style="font-size:10px;margin-bottom:4px">字幕' + (i + 1) + ' (' + Number(c.start).toFixed(1) + '〜' + Number(c.end).toFixed(1) + '秒)' + (c.speakerTag ? ' ・話者' + c.speakerTag : '') + '</div>'
@@ -1610,7 +1610,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "221";
+const APP_VERSION = "222";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
