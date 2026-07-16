@@ -338,6 +338,7 @@ window.openVideoStudio = function () {
     ] },
     { key: "mode", label: "モード", opts: [
       ["auto", "AI自動切り抜き(字幕のみ)"], ["caption", "キャプション強調(テロップ多め)"],
+      ["transcribe", "🎙 音声認識字幕(実際の発言をそのまま字幕化)"],
       ["jikkyo", "実況音声つき"], ["quiet", "原音声そのまま(字幕控えめ)"],
     ] },
     { key: "duration_sec", label: "尺", opts: [[15, "15秒"], [30, "30秒"], [45, "45秒"], [60, "60秒"]], num: true },
@@ -462,7 +463,9 @@ window.openVideoStudio = function () {
       ["karaoke", "カラオケ出現"],
     ];
     h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🎤 音声連動エフェクト</div>'
-      + '<div class="muted" style="font-size:11px;margin-bottom:6px;line-height:1.5">Geminiが決めた既存の字幕の「大きさ・位置・色・回転」が、声の音量の強弱に合わせて動きます。音声から新しく文字起こしする機能ではありません(字幕の中身はGeminiが作ったまま)</div>'
+      + (V.mode === "transcribe"
+          ? '<div class="muted" style="font-size:11px;margin-bottom:6px;line-height:1.5">🎯 音声認識字幕モードでは「カラオケ出現」が実際に喋った単語のタイミングにぴったり同期します(推測なしの本物の同期)。他のエフェクトは音量の強弱で動きます</div>'
+          : '<div class="muted" style="font-size:11px;margin-bottom:6px;line-height:1.5">Geminiが決めた既存の字幕の「大きさ・位置・色・回転」が、声の音量の強弱に合わせて動きます。音声から新しく文字起こしする機能ではありません(文字起こししたい場合はモードを「🎙 音声認識字幕」にしてください)</div>')
       + '<div style="display:flex;gap:6px;flex-wrap:wrap">';
     FX_OPTS.forEach(function (fx) {
       const on = V.caption_fx === fx[0];
@@ -1445,7 +1448,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "216";
+const APP_VERSION = "217";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -1561,6 +1564,7 @@ function MODEL_KIND_(model) {
   if (/eleven/i.test(m)) return "ElevenLabs";
   if (/google-tts|texttospeech/i.test(m)) return "Google TTS";
   if (/^aivis/i.test(m)) return "Aivis";
+  if (/google-stt/i.test(m)) return "音声認識";
   return "その他";
 }
 function MODEL_KEY_(model) {
@@ -1572,6 +1576,7 @@ function MODEL_KEY_(model) {
   if (/eleven/i.test(m)) return "eleven";
   if (/google-tts|texttospeech/i.test(m)) return "gtts";
   if (/^aivis/i.test(m)) return "aivis";
+  if (/google-stt/i.test(m)) return "stt";
   return "other";
 }
 
@@ -1582,15 +1587,15 @@ function renderCostBars(box, days, title) {
   const W = 300, H = 162, padL = 6, padR = 6, padT = 18, padB = 26;
   const chartH = H - padT - padB;
   const n = days.length, bw = (W - padL - padR) / n;
-  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", gemini: "#4285f4", cloudrun: "#34a853", eleven: "#fbbf24", gtts: "#f97316", aivis: "#ec4899", other: "#94a3b8" };
-  const LBL = { haiku: "Haiku", sonnet: "Sonnet", gemini: "Gemini", cloudrun: "Cloud Run", eleven: "ElevenLabs", gtts: "Google TTS", aivis: "Aivis" };
+  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", gemini: "#4285f4", cloudrun: "#34a853", eleven: "#fbbf24", gtts: "#f97316", aivis: "#ec4899", stt: "#22c55e", other: "#94a3b8" };
+  const LBL = { haiku: "Haiku", sonnet: "Sonnet", gemini: "Gemini", cloudrun: "Cloud Run", eleven: "ElevenLabs", gtts: "Google TTS", aivis: "Aivis", stt: "音声認識" };
   const baseY = padT + chartH;
   let bars = "";
   days.forEach((d, i) => {
     const x = padL + i * bw + bw * 0.18, w = bw * 0.64;
     let yCur = baseY;
     /* 下から haiku→sonnet→gemini→cloudrun→other で積み上げ */
-    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["gemini", d.gemini || 0], ["cloudrun", d.cloudrun || 0], ["eleven", d.eleven || 0], ["gtts", d.gtts || 0], ["aivis", d.aivis || 0], ["other", d.other || 0]].forEach(function (kv) {
+    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["gemini", d.gemini || 0], ["cloudrun", d.cloudrun || 0], ["eleven", d.eleven || 0], ["gtts", d.gtts || 0], ["aivis", d.aivis || 0], ["stt", d.stt || 0], ["other", d.other || 0]].forEach(function (kv) {
       const val = kv[1];
       if (val <= 0) return;
       const h = max > 0 ? (val / max) * chartH : 0;
@@ -1605,7 +1610,7 @@ function renderCostBars(box, days, title) {
   });
   const baseline = '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--border)" stroke-width="1"/>';
   /* 実際に使われたサービスだけ凡例に出す */
-  const used = ["haiku", "sonnet", "gemini", "cloudrun", "eleven", "gtts", "aivis"].filter((k) => days.some((d) => (d[k] || 0) > 0));
+  const used = ["haiku", "sonnet", "gemini", "cloudrun", "eleven", "gtts", "aivis", "stt"].filter((k) => days.some((d) => (d[k] || 0) > 0));
   const legend = '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--muted);flex-wrap:wrap">' +
     (used.length ? used : ["haiku", "sonnet"]).map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL[k] + '"></span>' + LBL[k] + '</span>';
@@ -3025,7 +3030,7 @@ BUILDERS.home = (el) => {
       const monthStart = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 8) + "01";
       const tu = await fetchAllUsage("tag,cost_usd,model", monthStart);
       const byTag = {};
-      const byModel = { Haiku: 0, Sonnet: 0, Gemini: 0, "Cloud Run": 0, ElevenLabs: 0, "Google TTS": 0, Aivis: 0, "その他": 0 };
+      const byModel = { Haiku: 0, Sonnet: 0, Gemini: 0, "Cloud Run": 0, ElevenLabs: 0, "Google TTS": 0, Aivis: 0, "音声認識": 0, "その他": 0 };
       (tu || []).forEach((r) => {
         const t = r.tag || "その他"; byTag[t] = (byTag[t] || 0) + (Number(r.cost_usd) || 0);
         const mk = MODEL_KIND_(r.model);
@@ -3041,6 +3046,7 @@ BUILDERS.home = (el) => {
         { name: "ElevenLabs", cost: byModel.ElevenLabs, color: "#fbbf24" },
         { name: "Google TTS", cost: byModel["Google TTS"], color: "#f97316" },
         { name: "Aivis", cost: byModel.Aivis, color: "#ec4899" },
+        { name: "音声認識", cost: byModel["音声認識"], color: "#22c55e" },
         { name: "その他", cost: byModel["その他"], color: "#94a3b8" },
       ];
       renderCostPie(costPieBox, arr, "💰 今月のAI利用料(機能別)", modelData);
@@ -3050,7 +3056,7 @@ BUILDERS.home = (el) => {
       const since7 = new Date(Date.now() + 9 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
       const tu7 = await fetchAllUsage("cost_usd,day,model", since7);
       const byDayModel = {};
-      const ZERO_ = () => ({ haiku: 0, sonnet: 0, gemini: 0, cloudrun: 0, eleven: 0, gtts: 0, aivis: 0, other: 0 });
+      const ZERO_ = () => ({ haiku: 0, sonnet: 0, gemini: 0, cloudrun: 0, eleven: 0, gtts: 0, aivis: 0, stt: 0, other: 0 });
       (tu7 || []).forEach((r) => {
         const k = String(r.day).slice(0, 10);
         if (!byDayModel[k]) byDayModel[k] = ZERO_();
@@ -3062,8 +3068,8 @@ BUILDERS.home = (el) => {
         const dd = new Date(Date.now() + 9 * 3600000 - i * 86400000).toISOString().slice(0, 10);
         const m = byDayModel[dd] || ZERO_();
         days7.push({
-          day: dd, haiku: m.haiku, sonnet: m.sonnet, gemini: m.gemini, cloudrun: m.cloudrun, eleven: m.eleven, gtts: m.gtts, aivis: m.aivis, other: m.other,
-          cost: m.haiku + m.sonnet + m.gemini + m.cloudrun + m.eleven + m.gtts + m.aivis + m.other,
+          day: dd, haiku: m.haiku, sonnet: m.sonnet, gemini: m.gemini, cloudrun: m.cloudrun, eleven: m.eleven, gtts: m.gtts, aivis: m.aivis, stt: m.stt, other: m.other,
+          cost: m.haiku + m.sonnet + m.gemini + m.cloudrun + m.eleven + m.gtts + m.aivis + m.stt + m.other,
         });
       }
       renderCostBars(costBarBox, days7, "📊 直近7日間(サービス別)");
