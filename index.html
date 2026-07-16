@@ -462,7 +462,7 @@ window.openVideoStudio = function () {
       ["karaoke", "カラオケ出現"],
     ];
     h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🎤 音声連動エフェクト</div>'
-      + '<div class="muted" style="font-size:11px;margin-bottom:6px">声の音量に合わせて字幕が動きます(実況音声つき→ボイスに連動 / それ以外→元動画の音に連動)</div>'
+      + '<div class="muted" style="font-size:11px;margin-bottom:6px;line-height:1.5">Geminiが決めた既存の字幕の「大きさ・位置・色・回転」が、声の音量の強弱に合わせて動きます。音声から新しく文字起こしする機能ではありません(字幕の中身はGeminiが作ったまま)</div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap">';
     FX_OPTS.forEach(function (fx) {
       const on = V.caption_fx === fx[0];
@@ -1445,7 +1445,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "215";
+const APP_VERSION = "216";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
