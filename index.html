@@ -309,6 +309,7 @@ window.openVideoStudio = function () {
     speaker_mode: "off",
     speaker_count: 2,
     speakerNames: {},
+    sttCaptions: null,
     usedSettings: null,
     thumbFile: null,
     thumbKind: "",
@@ -462,6 +463,7 @@ window.openVideoStudio = function () {
        実況音声つきはTTSの声、それ以外は元動画の声・音の音量に連動) */
     const FX_OPTS = [
       ["none", "なし(通常の静止字幕)"],
+      ["auto", "🎲 お任せ(音量で自動に使い分け)"],
       ["bounce", "弾む"], ["shake", "振動"], ["jump", "縦バウンド"],
       ["glow", "発光"], ["colorpulse", "色の脈動"], ["tilt", "傾き揺れ"],
       ["flash", "フラッシュ"], ["zoompunch", "パンチイン"], ["wave", "波打ち"],
@@ -652,7 +654,24 @@ window.openVideoStudio = function () {
         }
         h += '<button id="vsSpkSave" style="width:100%;background:var(--card);border:1px solid #3DFFA8;color:#3DFFA8;font-weight:800;padding:11px;border-radius:11px;font-size:13px;margin-top:4px">🔄 名前を反映して作り直す</button></div>';
       }
-      /* 台本・字幕の修正(艇番の誤り等をここで直す) */
+      /* 音声認識(STT)字幕の修正 — 実際に動画へ焼き込まれた字幕そのもの。
+         Geminiの台本(下のブロック)とは別物。行ごとにエフェクトも変えられる */
+      if (V.sttCaptions && V.sttCaptions.length) {
+        h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:4px">📝 字幕の修正(実際に焼き込まれる字幕そのものです)</div>'
+          + '<div class="muted" style="font-size:11px;margin-bottom:8px">行ごとに音声連動エフェクトも個別に変えられます</div>';
+        const FX_SHORT = [["", "(全体の設定を使う)"], ["none", "なし"], ["auto", "🎲お任せ"], ["bounce", "弾む"], ["shake", "振動"], ["jump", "縦バウンド"], ["glow", "発光"], ["colorpulse", "色脈動"], ["tilt", "傾き"], ["flash", "フラッシュ"], ["zoompunch", "パンチ"], ["wave", "波打ち"], ["karaoke", "カラオケ"]];
+        V.sttCaptions.forEach((c, i) => {
+          h += '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">'
+            + '<div class="muted" style="font-size:10px;margin-bottom:4px">字幕' + (i + 1) + ' (' + Number(c.start).toFixed(1) + '〜' + Number(c.end).toFixed(1) + '秒)' + (c.speakerTag ? ' ・話者' + c.speakerTag : '') + '</div>'
+            + '<input type="text" class="vsSttCapEdit" data-i="' + i + '" value="' + vEsc(c.text || "") + '" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:14px;padding:8px;margin-bottom:6px">'
+            + '<select class="vsSttFxEdit" data-i="' + i + '" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:12px;padding:6px">'
+            + FX_SHORT.map((fx) => '<option value="' + fx[0] + '"' + ((c.effect || "") === fx[0] ? ' selected' : '') + '>' + fx[1] + '</option>').join('')
+            + '</select></div>';
+        });
+        h += '<button id="vsFixSttCaptions" style="width:100%;background:var(--card);border:1px solid #3DFFA8;color:#3DFFA8;font-weight:800;padding:13px;border-radius:11px;font-size:14px;margin-top:4px">🔄 修正を反映して作り直す(STT再実行なし)</button></div>';
+      }
+
+      /* 台本・字幕の修正(艇番の誤り等をここで直す・Geminiが書いた台本。STTとは別物) */
       if ((V.captions && V.captions.length) || (V.lines && V.lines.length)) {
         h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:8px">📝 字幕・実況の修正(艇番・名前の間違いはここで直せます)</div>';
         (V.captions || []).forEach((c, i) => {
@@ -702,6 +721,7 @@ window.openVideoStudio = function () {
     const rr = ov.querySelector("#vsRerender"); if (rr) rr.onclick = rerender;
     const fx = ov.querySelector("#vsFixScript"); if (fx) fx.onclick = fixScript;
     const spk = ov.querySelector("#vsSpkSave"); if (spk) spk.onclick = saveSpeakerNames;
+    const sttfx = ov.querySelector("#vsFixSttCaptions"); if (sttfx) sttfx.onclick = saveSttCaptions;
     /* 話す速さスライダー(再描画せず値だけ更新=スムーズ) */
     const rt = ov.querySelector("#vsRate");
     if (rt) rt.oninput = () => {
@@ -800,6 +820,30 @@ window.openVideoStudio = function () {
       const j = await gasFetch_("videoUpdateSpeakers", { job_id: V.jobId, names });
       if (!j || j.error) throw new Error(j && j.error ? j.error : "話者名の反映に失敗しました");
       V.speakerNames = names;
+      poll();
+    } catch (e) { V.busy = false; V.statusText = "❌ " + e.message; render(); }
+  }
+
+  /* 音声認識(STT)字幕の本文・行ごとのエフェクトを保存 → 再レンダリング。
+     start/end/speakerTagは元のまま維持し、text/effectだけユーザーの入力で上書きする。
+     STTは再実行しない(サーバー側のjob.script_json.stt_chunksへ丸ごと差し替えられる) */
+  async function saveSttCaptions() {
+    const chunks = (V.sttCaptions || []).map((c, i) => {
+      const textEl = ov.querySelector('.vsSttCapEdit[data-i="' + i + '"]');
+      const fxEl = ov.querySelector('.vsSttFxEdit[data-i="' + i + '"]');
+      const out = {
+        text: textEl ? textEl.value : c.text,
+        start: c.start, end: c.end, speakerTag: c.speakerTag, words: c.words || [],
+      };
+      const fxVal = fxEl ? fxEl.value : "";
+      if (fxVal) out.effect = fxVal; /* 空欄=「全体の設定を使う」なのでeffectキー自体を付けない */
+      return out;
+    });
+    V.busy = true; V.result = null; V.progress = 0; V.statusText = "字幕の修正を反映中…";
+    render();
+    try {
+      const j = await gasFetch_("videoUpdateSttCaptions", { job_id: V.jobId, chunks });
+      if (!j || j.error) throw new Error(j && j.error ? j.error : "字幕の反映に失敗しました");
       poll();
     } catch (e) { V.busy = false; V.statusText = "❌ " + e.message; render(); }
   }
@@ -1047,6 +1091,7 @@ window.openVideoStudio = function () {
           V.captions = s.captions || null; V.lines = s.lines || null;
           V.renderNotes = s.render_notes || ""; V.usedSettings = s.used_settings || null;
           V.speakerCountDetected = s.speaker_count_detected || 0;
+          V.sttCaptions = s.stt_captions || null;
           if (s.speaker_styles && s.speaker_styles.names) V.speakerNames = s.speaker_styles.names;
         } else if (s.status === "failed") {
           clearInterval(V.timer);
@@ -1565,7 +1610,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "220";
+const APP_VERSION = "221";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
