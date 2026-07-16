@@ -10,7 +10,7 @@
 <title>XPLOSION</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700;900&family=Noto+Serif+JP:wght@700;900&family=Kosugi+Maru&family=Yusei+Magic&family=Dela+Gothic+One&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@700;900&family=Noto+Serif+JP:wght@700;900&family=Kosugi+Maru&family=Yusei+Magic&family=Dela+Gothic+One&family=RocknRoll+One&family=Reggae+One&display=swap" rel="stylesheet">
 <!--
   ============================================================
   UWASA SNS OPS 合体版 — AIコックピット11機能 + 自動投稿管理
@@ -299,10 +299,17 @@ window.openVideoStudio = function () {
   const V = {
     screen: clients[0],
     duration_sec: 30,
+    genre: "general",
     mode: "auto",
     cut_strength: "normal",
     caption_style: "tiktok",
     caption_font: "notosans",
+    caption_fx: "none",
+    thumbFile: null,
+    thumbKind: "",
+    thumbPreviewUrl: "",
+    thumbDuration: 1.4,
+    transition: "fade",
     caption_size: "medium",
     caption_pos: "bottom",
     fit_mode: "blur",
@@ -324,7 +331,15 @@ window.openVideoStudio = function () {
   };
 
   const CHIPS = [
-    { key: "mode", label: "モード", opts: [["auto", "AI自動切り抜き"], ["jikkyo", "実況音声つき"]] },
+    { key: "genre", label: "動画のジャンル", opts: [
+      ["general", "汎用(なんでも)"], ["race", "競艇・レース"], ["sports", "スポーツ"],
+      ["pet", "ペット・動物"], ["cooking", "料理"], ["vlog", "Vlog・日常"],
+      ["game", "ゲーム実況"], ["explainer", "解説・教育"], ["comedy", "コント・あるある"],
+    ] },
+    { key: "mode", label: "モード", opts: [
+      ["auto", "AI自動切り抜き(字幕のみ)"], ["caption", "キャプション強調(テロップ多め)"],
+      ["jikkyo", "実況音声つき"], ["quiet", "原音声そのまま(字幕控えめ)"],
+    ] },
     { key: "duration_sec", label: "尺", opts: [[15, "15秒"], [30, "30秒"], [45, "45秒"], [60, "60秒"]], num: true },
     { key: "cut_strength", label: "カット強度", opts: [["weak", "弱め"], ["normal", "標準"], ["strong", "強め"]] },
     { key: "fit_mode", label: "画角", opts: [["blur", "全部映す(背景ぼかし)"], ["zoom", "ズーム(迫力)"]] },
@@ -393,6 +408,8 @@ window.openVideoStudio = function () {
       ["kosugi", "Kosugi Maru", "丸文字・親しみやすい"],
       ["yusei", "Yusei Magic", "手書き風・インパクト"],
       ["dela", "Dela Gothic One", "極太・TikTokで人気"],
+      ["rocknroll", "RocknRoll One", "丸太字・TikTok定番"],
+      ["reggae", "Reggae One", "バラエティ番組の定番テロップ体"],
     ];
     h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">字幕フォント</div><div style="display:flex;flex-direction:column;gap:6px">';
     FONT_OPTS.forEach(function (f) {
@@ -422,6 +439,8 @@ window.openVideoStudio = function () {
       ["bluesolid", "青ベタ塗り", "#0A6BFF", "#FFFFFF"],
       ["warning", "注意喚起・黒×黄", "#FFE500", "#111111"],
       ["pastel", "パステル", "#E8CFFF", "#663355"],
+      ["youtuber", "YouTuber定番・極太白", "#FFFFFF", "#000000"],
+      ["impact", "インパクト黄", "#FFE500", "#000000"],
     ];
     h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">字幕の色</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
     COLOR_OPTS.forEach(function (c) {
@@ -432,6 +451,59 @@ window.openVideoStudio = function () {
         + '</button>';
     });
     h += '</div></div>';
+
+    /* 音声連動エフェクト(声の音量に合わせて字幕が動く。全モード共通:
+       実況音声つきはTTSの声、それ以外は元動画の声・音の音量に連動) */
+    const FX_OPTS = [
+      ["none", "なし(通常の静止字幕)"],
+      ["bounce", "弾む"], ["shake", "振動"], ["jump", "縦バウンド"],
+      ["glow", "発光"], ["colorpulse", "色の脈動"], ["tilt", "傾き揺れ"],
+      ["flash", "フラッシュ"], ["zoompunch", "パンチイン"], ["wave", "波打ち"],
+      ["karaoke", "カラオケ出現"],
+    ];
+    h += '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🎤 音声連動エフェクト</div>'
+      + '<div class="muted" style="font-size:11px;margin-bottom:6px">声の音量に合わせて字幕が動きます(実況音声つき→ボイスに連動 / それ以外→元動画の音に連動)</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">';
+    FX_OPTS.forEach(function (fx) {
+      const on = V.caption_fx === fx[0];
+      h += '<button class="vsFxBtn" data-v="' + fx[0] + '" style="border-radius:99px;padding:8px 13px;font-size:12px;font-weight:700;border:1px solid ' + (on ? '#fbbf24' : 'var(--border)') + ';background:' + (on ? 'rgba(251,191,36,.15)' : 'transparent') + ';color:var(--ink)">' + fx[1] + '</button>';
+    });
+    h += '</div></div>';
+
+    /* サムネイル(任意) + トランジション */
+    h += '<div style="margin-bottom:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:6px">🖼 サムネイル・オープニング <span class="muted" style="font-weight:400">(任意)</span></div>'
+      + '<div class="muted" style="font-size:11px;margin-bottom:8px">画像か短い動画を本編の前に挿入し、綺麗なトランジションで本編に繋ぎます</div>';
+    if (V.thumbPreviewUrl) {
+      h += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">'
+        + (V.thumbKind === 'image'
+            ? '<img src="' + V.thumbPreviewUrl + '" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--border)">'
+            : '<video src="' + V.thumbPreviewUrl + '" style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--border)" muted></video>')
+        + '<div style="flex:1;font-size:12px;color:var(--muted)">設定済み</div>'
+        + '<button id="vsThumbClear" style="background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 12px;font-size:12px">✕ 削除</button>'
+        + '</div>';
+    } else {
+      h += '<label style="display:block;text-align:center;border:1.5px dashed var(--border);border-radius:12px;padding:16px;font-size:13px;color:var(--muted);margin-bottom:10px">'
+        + '📷 画像 / 🎬 動画を選択'
+        + '<input type="file" id="vsThumbInput" accept="image/*,video/*" style="display:none">'
+        + '</label>';
+    }
+    if (V.thumbPreviewUrl && V.thumbKind === 'image') {
+      h += '<div style="margin-bottom:10px"><div class="muted" style="font-size:11px;margin-bottom:4px">表示時間: ' + V.thumbDuration.toFixed(1) + '秒</div>'
+        + '<input type="range" id="vsThumbDur" min="0.8" max="3.5" step="0.1" value="' + V.thumbDuration + '" style="width:100%;accent-color:#38d4f0"></div>';
+    }
+    if (V.thumbPreviewUrl) {
+      const TR_OPTS = [
+        ["fade", "クロスフェード"], ["fadeblack", "暗転フェード"], ["dissolve", "ディゾルブ"], ["circleopen", "円形ワイプ"],
+        ["wipeleft", "ワイプ"], ["smoothleft", "スムーズスライド"], ["zoomin", "ズームイン"], ["pixelize", "モザイク"],
+      ];
+      h += '<div class="muted" style="font-size:11px;margin-bottom:6px">切り替えエフェクト</div><div style="display:flex;gap:6px;flex-wrap:wrap">';
+      TR_OPTS.forEach(function (t) {
+        const on = V.transition === t[0];
+        h += '<button class="vsTransBtn" data-v="' + t[0] + '" style="border-radius:99px;padding:7px 12px;font-size:11.5px;font-weight:700;border:1px solid ' + (on ? '#38d4f0' : 'var(--border)') + ';background:' + (on ? 'rgba(56,212,240,.15)' : 'transparent') + ';color:var(--ink)">' + t[1] + '</button>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
 
     if (V.mode === "jikkyo") {
       const VOICE_KAWAII = [["female6","かわいい"],["female7","元気ポップ"],["female4","明るい"],["female3","ふんわり"],["female8","あたたか"],["female12","晴れやか"]];
@@ -579,6 +651,27 @@ window.openVideoStudio = function () {
     };
     /* 挨拶・感情の切替(即反映・音は鳴らさない) */
     ov.querySelectorAll(".vsFontBtn").forEach(b => b.onclick = () => { V.caption_font = b.dataset.v; render(); });
+    ov.querySelectorAll(".vsFxBtn").forEach(b => b.onclick = () => { V.caption_fx = b.dataset.v; render(); });
+    /* サムネイル選択・削除・表示時間・トランジション */
+    const ti = ov.querySelector("#vsThumbInput");
+    if (ti) ti.onchange = () => {
+      const f = ti.files && ti.files[0];
+      if (!f) return;
+      if (V.thumbPreviewUrl) { try { URL.revokeObjectURL(V.thumbPreviewUrl); } catch (e) {} }
+      V.thumbFile = f;
+      V.thumbKind = f.type.startsWith("video/") ? "video" : "image";
+      V.thumbPreviewUrl = URL.createObjectURL(f);
+      render();
+    };
+    const tc = ov.querySelector("#vsThumbClear");
+    if (tc) tc.onclick = () => {
+      if (V.thumbPreviewUrl) { try { URL.revokeObjectURL(V.thumbPreviewUrl); } catch (e) {} }
+      V.thumbFile = null; V.thumbKind = ""; V.thumbPreviewUrl = "";
+      render();
+    };
+    const td = ov.querySelector("#vsThumbDur");
+    if (td) td.oninput = () => { V.thumbDuration = Number(td.value); };
+    ov.querySelectorAll(".vsTransBtn").forEach(b => b.onclick = () => { V.transition = b.dataset.v; render(); });
     ov.querySelectorAll(".vsColorBtn").forEach(b => b.onclick = () => { V.caption_style = b.dataset.v; render(); });
     ov.querySelectorAll(".vsGreetBtn").forEach(b => b.onclick = () => { V.sampleGreet = Number(b.dataset.i); render(); });
     ov.querySelectorAll(".vsEmoBtn").forEach(b => b.onclick = () => { V.sampleEmotion = b.dataset.e; render(); });
@@ -728,10 +821,12 @@ window.openVideoStudio = function () {
         screen_name: V.screen,
         input_path: sign.input_path,
         duration_sec: V.duration_sec,
+        genre: V.genre,
         mode: V.mode,
         cut_strength: V.cut_strength,
         caption_style: V.caption_style,
         caption_font: V.caption_font,
+        caption_fx: V.caption_fx,
         caption_size: V.caption_size,
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
@@ -773,16 +868,30 @@ window.openVideoStudio = function () {
       V.statusText = "アップロード中…"; V.progress = 8; render();
       await vsUpload(sign, V.file);
 
+      /* ②.5 サムネイル(任意)のアップロード */
+      let thumbPath = "";
+      if (V.thumbFile) {
+        V.statusText = "サムネイルをアップロード中…"; V.progress = 10; render();
+        const ext = (V.thumbFile.name.split(".").pop() || (V.thumbKind === "image" ? "jpg" : "mp4")).toLowerCase();
+        const tsign = await gasFetch_("videoSignedUrl", { screen_name: V.screen, kind: "thumb", ext });
+        if (tsign && tsign.upload_url) {
+          await vsUpload(tsign, V.thumbFile);
+          thumbPath = tsign.input_path;
+        }
+      }
+
       /* ③ ジョブ作成 */
       V.statusText = "ジョブ作成中…"; V.progress = 12; render();
       const job = await gasFetch_("videoCreateJob", {
         screen_name: V.screen,
         input_path: sign.input_path,
         duration_sec: V.duration_sec,
+        genre: V.genre,
         mode: V.mode,
         cut_strength: V.cut_strength,
         caption_style: V.caption_style,
         caption_font: V.caption_font,
+        caption_fx: V.caption_fx,
         caption_size: V.caption_size,
         caption_pos: V.caption_pos,
         fit_mode: V.fit_mode,
@@ -790,6 +899,10 @@ window.openVideoStudio = function () {
         orig_audio: V.orig_audio,
         speaking_rate: V.speaking_rate,
         bgm_key: V.bgm_key,
+        thumb_path: thumbPath,
+        thumb_kind: V.thumbKind,
+        thumb_duration: V.thumbDuration,
+        transition: V.transition,
         reveal_result: V.reveal_result,
         outro_text: (ov.querySelector("#vsOutro") || {}).value || V.outro_text
       });
@@ -1332,7 +1445,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "212";
+const APP_VERSION = "215";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
