@@ -305,6 +305,8 @@ window.openVideoStudio = function () {
     caption_style: "tiktok",
     caption_font: "notosans",
     caption_fx: "none",
+    renderNotes: "",
+    usedSettings: null,
     thumbFile: null,
     thumbKind: "",
     thumbPreviewUrl: "",
@@ -597,6 +599,23 @@ window.openVideoStudio = function () {
         + (V.summary ? '<div class="muted" style="font-size:12px;margin-top:8px">' + vEsc(V.summary) + '</div>' : '')
         + '<button id="vsSave" style="display:block;width:100%;text-align:center;margin-top:10px;background:#3DFFA8;color:#001;font-weight:800;padding:15px;border-radius:12px;font-size:15px;border:none">💾 写真/ファイルに保存</button>'
         + '<a href="' + V.result + '" target="_blank" rel="noopener" style="display:block;text-align:center;margin-top:8px;color:var(--muted);font-size:12px;text-decoration:underline">開けない場合はこちら(ブラウザで開く)</a>';
+
+      /* 設定が実際どう使われたか(「機能が起動してるか」を画面で即確認できるように) */
+      if (V.usedSettings) {
+        const US = V.usedSettings;
+        h += '<div style="margin-top:14px;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:12px 14px">'
+          + '<div style="font-size:11px;font-weight:700;color:#3DFFA8;margin-bottom:6px">⚙️ 今回使われた設定</div>'
+          + '<div class="muted" style="font-size:11.5px;line-height:1.7">'
+          + 'モード: <b style="color:var(--ink)">' + vEsc(US.mode || "-") + '</b> ／ '
+          + 'エフェクト: <b style="color:var(--ink)">' + vEsc(US.caption_fx || "none") + '</b> ／ '
+          + 'サムネ: <b style="color:var(--ink)">' + (US.thumb_path ? "あり(" + vEsc(US.thumb_kind || "?") + ")" : "なし") + '</b>'
+          + '</div></div>';
+      }
+      if (V.renderNotes) {
+        h += '<div style="margin-top:10px;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:12px 14px">'
+          + '<div style="font-size:11px;font-weight:700;color:#3DFFA8;margin-bottom:6px">📋 処理結果</div>'
+          + '<div style="font-size:11.5px;line-height:1.8;white-space:pre-wrap">' + vEsc(V.renderNotes) + '</div></div>';
+      }
       /* 台本・字幕の修正(艇番の誤り等をここで直す) */
       if ((V.captions && V.captions.length) || (V.lines && V.lines.length)) {
         h += '<div style="margin-top:18px"><div style="font-size:12px;font-weight:700;color:#3DFFA8;margin-bottom:8px">📝 字幕・実況の修正(艇番・名前の間違いはここで直せます)</div>';
@@ -931,6 +950,7 @@ window.openVideoStudio = function () {
           clearInterval(V.timer);
           V.busy = false; V.result = s.output_url; V.clips = s.clips || null; V.summary = s.summary || "";
           V.captions = s.captions || null; V.lines = s.lines || null;
+          V.renderNotes = s.render_notes || ""; V.usedSettings = s.used_settings || null;
         } else if (s.status === "failed") {
           clearInterval(V.timer);
           V.busy = false; V.statusText = "❌ " + (s.error || "失敗");
@@ -1448,7 +1468,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "217";
+const APP_VERSION = "218";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
