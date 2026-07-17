@@ -292,6 +292,42 @@ window.openVideoStudio = function () {
   try { renderTop(); } catch (e) {}
 
   const vEsc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  /* サーバー側のsplitTwoLinesと同じ考え方の軽量版(編集画面のプレビュー用)。
+     カタカナの連続(外来語)の途中で改行しないよう保護する */
+  function vSplitTwoLines(text, words) {
+    const mc = 9;
+    const t = String(text || "");
+    if (t.length <= mc) return { line1: t, line2: "" };
+    const isKata = (ch) => { const c = ch.codePointAt(0); return c >= 0x30A0 && c <= 0x30FF; };
+    if (words && words.length > 1) {
+      const merged = [];
+      let cur = null;
+      words.forEach((w) => {
+        const chars = Array.from(String(w.word || ""));
+        const pureKata = chars.length > 0 && chars.every(isKata);
+        if (cur && cur._k && pureKata) { cur.word += w.word; }
+        else { cur = { word: w.word, _k: pureKata }; merged.push(cur); }
+      });
+      let acc = "", bestIdx = 1, bestDiff = Infinity;
+      merged.forEach((w, i) => {
+        acc += w.word;
+        const diff = Math.abs(acc.length - t.length / 2);
+        if (diff < bestDiff && acc.length < t.length) { bestDiff = diff; bestIdx = i + 1; }
+      });
+      const line1 = merged.slice(0, bestIdx).map((w) => w.word).join("");
+      const line2 = merged.slice(bestIdx).map((w) => w.word).join("");
+      if (line1.length <= mc + 3 && line2.length <= mc + 3) return { line1, line2 };
+    }
+    const chars = Array.from(t);
+    const mid = Math.round(chars.length / 2);
+    let bestPos = mid, bestPosDiff = Infinity;
+    for (let i = 1; i < chars.length; i++) {
+      if (isKata(chars[i - 1]) && isKata(chars[i])) continue;
+      const diff = Math.abs(i - mid);
+      if (diff < bestPosDiff) { bestPosDiff = diff; bestPos = i; }
+    }
+    return { line1: chars.slice(0, bestPos).join(""), line2: chars.slice(bestPos).join("") };
+  }
   let clients = [];
   try { clients = (S && S.clients ? S.clients : []).filter(c => c.status === "active").map(c => c.screen_name); } catch (e) {}
   if (!clients.length) clients = ["default"];
@@ -661,9 +697,12 @@ window.openVideoStudio = function () {
           + '<div class="muted" style="font-size:11px;margin-bottom:8px">行ごとに音声連動エフェクトも個別に変えられます</div>';
         const FX_SHORT = [["", "(全体の設定を使う)"], ["none", "なし"], ["bounce", "弾む"], ["shake", "振動"], ["jump", "縦バウンド"], ["glow", "発光"], ["colorpulse", "色脈動"], ["tilt", "傾き"], ["flash", "フラッシュ"], ["zoompunch", "パンチ"], ["wave", "波打ち"], ["karaoke", "カラオケ"]];
         V.sttCaptions.forEach((c, i) => {
+          const sp = vSplitTwoLines(c.text || "", c.words);
+          const initial = sp.line2 ? (sp.line1 + "\n" + sp.line2) : (c.text || "");
           h += '<div style="background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px">'
             + '<div class="muted" style="font-size:10px;margin-bottom:4px">字幕' + (i + 1) + ' (' + Number(c.start).toFixed(1) + '〜' + Number(c.end).toFixed(1) + '秒)' + (c.speakerTag ? ' ・話者' + c.speakerTag : '') + '</div>'
-            + '<input type="text" class="vsSttCapEdit" data-i="' + i + '" value="' + vEsc(c.text || "") + '" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:14px;padding:8px;margin-bottom:6px">'
+            + '<textarea class="vsSttCapEdit" data-i="' + i + '" rows="2" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:14px;padding:8px;margin-bottom:4px;resize:vertical;line-height:1.4">' + vEsc(initial) + '</textarea>'
+            + '<div class="muted" style="font-size:10px;margin-bottom:6px">2行に分けて表示されます。改行位置は自由に編集できます</div>'
             + '<select class="vsSttFxEdit" data-i="' + i + '" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:12px;padding:6px">'
             + FX_SHORT.map((fx) => '<option value="' + fx[0] + '"' + ((c.effect || "") === fx[0] ? ' selected' : '') + '>' + fx[1] + '</option>').join('')
             + '</select></div>';
@@ -1610,7 +1649,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "222";
+const APP_VERSION = "223";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
