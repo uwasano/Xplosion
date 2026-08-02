@@ -1119,7 +1119,18 @@ window.openVideoStudio = function () {
 
   function poll() {
     clearInterval(V.timer);
+    /* v226(電池対策): 永久ポーリング防止。10分(=200回×3秒)で自動停止し、
+       画面を離れた/ジョブが固まった時に3秒ごとの通信が延々続くのを止める */
+    V._pollStart = Date.now();
     V.timer = setInterval(async () => {
+      /* 動画オーバーレイが閉じられていたら即停止(バックグラウンドで回り続けない) */
+      if (!document.body.contains(ov)) { clearInterval(V.timer); return; }
+      if (Date.now() - (V._pollStart || 0) > 10 * 60000) {
+        clearInterval(V.timer); V.busy = false;
+        V.statusText = "⏱ 進捗確認を停止しました(10分経過)。『🔧 診断』で状態を確認できます。";
+        try { render(); } catch (e) {}
+        return;
+      }
       try {
         const s = await gasFetch_("videoGetJob", { job_id: V.jobId });
         V.progress = s.progress || 0;
@@ -1649,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "225";
+const APP_VERSION = "226";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
