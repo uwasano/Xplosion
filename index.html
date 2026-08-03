@@ -7790,9 +7790,12 @@ BUILDERS.calendar = (el) => {
 
       const callGen = async () => {
         const ctrl = new AbortController();
-        /* ★v228: boatrace.jpが激遅(1フェッチ約10秒)で人気順の選定が100秒超になり、旧90秒だと
-           選定完了前にアボート→「取得失敗」になっていた。180秒に拡大して完走させる */
-        const timer = setTimeout(() => ctrl.abort(), 180000);
+        /* ★v228: boatrace.jpが激遅(実測1フェッチ約17秒)で、人気順は最大8本オッズ採点+詳細3本=
+           約11フェッチ→混雑時は選定だけで190秒、Claude生成込みで最悪210秒に達する。
+           旧90秒だと選定完了前にアボート→「取得失敗」になっていた。
+           採点本数(8)は的中率のため据え置き、タイムアウトだけ300秒に拡大して確実に完走させる。
+           (通常の空いてる時間帯は候補が少なく1.5〜2分で返る。300秒はあくまで混雑時の上限) */
+        const timer = setTimeout(() => ctrl.abort(), 300000);
         try {
           const r = await fetch(GAS_URL, {
             method: "POST", headers: { "Content-Type": "text/plain" }, signal: ctrl.signal,
