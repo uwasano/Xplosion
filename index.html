@@ -1752,7 +1752,7 @@ function renderCostPie(box, data, title, modelData) {
         mLabels += '<span style="display:inline-flex;align-items:center;gap:5px;margin-right:14px;margin-top:5px;font-size:12px"><span style="width:10px;height:10px;border-radius:2px;background:' + m.color + ';flex-shrink:0"></span>' + esc(m.name) + ' ¥' + (m.cost * 150).toFixed(1) + ' (' + pct.toFixed(0) + '%)</span>';
       });
       modelBar = '<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">' +
-        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">モデル別内訳（Haiku=安い / Sonnet=高精度）</div>' +
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">モデル別内訳（Luna=激安・軽量 / Sonnet=高精度 / Haiku=旧軽量）</div>' +
         '<div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--border)">' + segBar + '</div>' +
         '<div style="display:flex;flex-wrap:wrap">' + mLabels + '</div></div>';
     }
@@ -1763,13 +1763,14 @@ function renderCostPie(box, data, title, modelData) {
     '<svg width="170" height="170" viewBox="0 0 170 170" style="flex-shrink:0">' + arcs + center + '</svg>' +
     '<div style="flex:1;min-width:160px">' + legend + '</div></div>' +
     modelBar +
-    '<div style="font-size:10px;color:var(--muted);margin-top:8px">※$1=150円で概算。Haiku=入力$1/出力$5、Sonnet=入力$3/出力$15(各100万トークン)。</div></div>';
+    '<div style="font-size:10px;color:var(--muted);margin-top:8px">※$1=150円で概算。Luna(GPT-5.6)=入力$0.2/出力$1.2、Sonnet=入力$3/出力$15、Haiku=入力$1/出力$5(各100万トークン)。</div></div>';
 }
 
 /* モデル名 → 表示区分。Claude(Haiku/Sonnet) + Google Cloud(Gemini/Cloud Run) を判別 */
 function MODEL_KIND_(model) {
   const m = String(model || "");
-  if (/haiku/i.test(m)) return "Haiku";
+  if (/gpt-5|luna/i.test(m)) return "Luna";   /* ★v228: GPT-5.6(luna/terra/sol)。haikuの置き換え先。旧は「その他」に埋もれていた */
+  if (/haiku/i.test(m)) return "Haiku";       /* 旧・軽量枠(過去ログ用に残す) */
   if (/sonnet|opus/i.test(m)) return "Sonnet";
   if (/gemini/i.test(m)) return "Gemini";
   if (/cloud[-_ ]?run/i.test(m)) return "Cloud Run";
@@ -1781,6 +1782,7 @@ function MODEL_KIND_(model) {
 }
 function MODEL_KEY_(model) {
   const m = String(model || "");
+  if (/gpt-5|luna/i.test(m)) return "luna";   /* ★v228: GPT-5.6(luna)。haikuの置き換え先 */
   if (/haiku/i.test(m)) return "haiku";
   if (/sonnet|opus/i.test(m)) return "sonnet";
   if (/gemini/i.test(m)) return "gemini";
@@ -1799,15 +1801,15 @@ function renderCostBars(box, days, title) {
   const W = 300, H = 162, padL = 6, padR = 6, padT = 18, padB = 26;
   const chartH = H - padT - padB;
   const n = days.length, bw = (W - padL - padR) / n;
-  const COL = { haiku: "#00e5ff", sonnet: "#a855f7", gemini: "#4285f4", cloudrun: "#34a853", eleven: "#fbbf24", gtts: "#f97316", aivis: "#ec4899", stt: "#22c55e", other: "#94a3b8" };
-  const LBL = { haiku: "Haiku", sonnet: "Sonnet", gemini: "Gemini", cloudrun: "Cloud Run", eleven: "ElevenLabs", gtts: "Google TTS", aivis: "Aivis", stt: "音声認識" };
+  const COL = { luna: "#14b8a6", haiku: "#00e5ff", sonnet: "#a855f7", gemini: "#4285f4", cloudrun: "#34a853", eleven: "#fbbf24", gtts: "#f97316", aivis: "#ec4899", stt: "#22c55e", other: "#94a3b8" };
+  const LBL = { luna: "Luna", haiku: "Haiku", sonnet: "Sonnet", gemini: "Gemini", cloudrun: "Cloud Run", eleven: "ElevenLabs", gtts: "Google TTS", aivis: "Aivis", stt: "音声認識" };
   const baseY = padT + chartH;
   let bars = "";
   days.forEach((d, i) => {
     const x = padL + i * bw + bw * 0.18, w = bw * 0.64;
     let yCur = baseY;
     /* 下から haiku→sonnet→gemini→cloudrun→other で積み上げ */
-    [["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["gemini", d.gemini || 0], ["cloudrun", d.cloudrun || 0], ["eleven", d.eleven || 0], ["gtts", d.gtts || 0], ["aivis", d.aivis || 0], ["stt", d.stt || 0], ["other", d.other || 0]].forEach(function (kv) {
+    [["luna", d.luna || 0], ["haiku", d.haiku || 0], ["sonnet", d.sonnet || 0], ["gemini", d.gemini || 0], ["cloudrun", d.cloudrun || 0], ["eleven", d.eleven || 0], ["gtts", d.gtts || 0], ["aivis", d.aivis || 0], ["stt", d.stt || 0], ["other", d.other || 0]].forEach(function (kv) {
       const val = kv[1];
       if (val <= 0) return;
       const h = max > 0 ? (val / max) * chartH : 0;
@@ -1822,9 +1824,9 @@ function renderCostBars(box, days, title) {
   });
   const baseline = '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--border)" stroke-width="1"/>';
   /* 実際に使われたサービスだけ凡例に出す */
-  const used = ["haiku", "sonnet", "gemini", "cloudrun", "eleven", "gtts", "aivis", "stt"].filter((k) => days.some((d) => (d[k] || 0) > 0));
+  const used = ["luna", "haiku", "sonnet", "gemini", "cloudrun", "eleven", "gtts", "aivis", "stt"].filter((k) => days.some((d) => (d[k] || 0) > 0));
   const legend = '<div style="display:flex;gap:12px;margin-top:8px;font-size:11px;color:var(--muted);flex-wrap:wrap">' +
-    (used.length ? used : ["haiku", "sonnet"]).map(function (k) {
+    (used.length ? used : ["luna", "sonnet"]).map(function (k) {
       return '<span style="display:inline-flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:' + COL[k] + '"></span>' + LBL[k] + '</span>';
     }).join("") + '</div>';
   box.innerHTML = '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px">' +
@@ -2251,7 +2253,7 @@ async function shMixPostText(audience, sceneObj, fixedMix){
     `- 星評価は書かなくていい(こちらで後ろに付ける)\n` +
     `本文のみ出力・前置き禁止。`;
   /* Haikuで高速生成 */
-  const text = await callAI(prompt, false, "haiku");
+  const text = await callAI(prompt, false, "luna"); /* ★v228: haiku→luna(GPT-5.6) */
   if (!text || !text.trim()) return null;
   const body = text.trim();
   /* 味の補足説明(2本目に入れる) */
@@ -3240,7 +3242,7 @@ BUILDERS.home = (el) => {
       const monthStart = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 8) + "01";
       const tu = await fetchAllUsage("tag,cost_usd,model", monthStart);
       const byTag = {};
-      const byModel = { Haiku: 0, Sonnet: 0, Gemini: 0, "Cloud Run": 0, ElevenLabs: 0, "Google TTS": 0, Aivis: 0, "音声認識": 0, "その他": 0 };
+      const byModel = { Luna: 0, Haiku: 0, Sonnet: 0, Gemini: 0, "Cloud Run": 0, ElevenLabs: 0, "Google TTS": 0, Aivis: 0, "音声認識": 0, "その他": 0 };
       (tu || []).forEach((r) => {
         const t = r.tag || "その他"; byTag[t] = (byTag[t] || 0) + (Number(r.cost_usd) || 0);
         const mk = MODEL_KIND_(r.model);
@@ -3249,6 +3251,7 @@ BUILDERS.home = (el) => {
       const colors = ["#10b981", "#00e5ff", "#a855f7", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899", "#84cc16"];
       const arr = Object.keys(byTag).map((t) => ({ tag: t, cost: byTag[t] })).sort((a, b) => b.cost - a.cost).map((d, i) => ({ tag: d.tag, cost: d.cost, color: colors[i % colors.length] }));
       const modelData = [
+        { name: "Luna", cost: byModel.Luna, color: "#14b8a6" },
         { name: "Haiku", cost: byModel.Haiku, color: "#00e5ff" },
         { name: "Sonnet", cost: byModel.Sonnet, color: "#a855f7" },
         { name: "Gemini", cost: byModel.Gemini, color: "#4285f4" },
@@ -3266,7 +3269,7 @@ BUILDERS.home = (el) => {
       const since7 = new Date(Date.now() + 9 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
       const tu7 = await fetchAllUsage("cost_usd,day,model", since7);
       const byDayModel = {};
-      const ZERO_ = () => ({ haiku: 0, sonnet: 0, gemini: 0, cloudrun: 0, eleven: 0, gtts: 0, aivis: 0, stt: 0, other: 0 });
+      const ZERO_ = () => ({ luna: 0, haiku: 0, sonnet: 0, gemini: 0, cloudrun: 0, eleven: 0, gtts: 0, aivis: 0, stt: 0, other: 0 });
       (tu7 || []).forEach((r) => {
         const k = String(r.day).slice(0, 10);
         if (!byDayModel[k]) byDayModel[k] = ZERO_();
@@ -3278,8 +3281,8 @@ BUILDERS.home = (el) => {
         const dd = new Date(Date.now() + 9 * 3600000 - i * 86400000).toISOString().slice(0, 10);
         const m = byDayModel[dd] || ZERO_();
         days7.push({
-          day: dd, haiku: m.haiku, sonnet: m.sonnet, gemini: m.gemini, cloudrun: m.cloudrun, eleven: m.eleven, gtts: m.gtts, aivis: m.aivis, stt: m.stt, other: m.other,
-          cost: m.haiku + m.sonnet + m.gemini + m.cloudrun + m.eleven + m.gtts + m.aivis + m.stt + m.other,
+          day: dd, luna: m.luna, haiku: m.haiku, sonnet: m.sonnet, gemini: m.gemini, cloudrun: m.cloudrun, eleven: m.eleven, gtts: m.gtts, aivis: m.aivis, stt: m.stt, other: m.other,
+          cost: m.luna + m.haiku + m.sonnet + m.gemini + m.cloudrun + m.eleven + m.gtts + m.aivis + m.stt + m.other,
         });
       }
       renderCostBars(costBarBox, days7, "📊 直近7日間(サービス別)");
@@ -5237,7 +5240,7 @@ BUILDERS.replyfactory = (el) => {
       const repBox = document.createElement("div"); card.appendChild(repBox);
       out.appendChild(card);
       try {
-        const r = await callAI(replyFactoryPrompt(p.text, perPost), false, "haiku", false);
+        const r = await callAI(replyFactoryPrompt(p.text, perPost), false, "luna", false); /* ★v228: haiku→luna */
         const text = (typeof r === "string") ? r : r.text;
         let reps = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>2 && !/^(承知|了解)/.test(s));
         reps.slice(0, perPost).forEach(rep => {
@@ -7045,7 +7048,7 @@ BUILDERS.calendar = (el) => {
     const run = async (shuffle) => {
       hbtn.disabled = true; hbtn.textContent = shuffle ? "作り直し中…" : "リプ生成中…"; hOut.innerHTML = "";
       try {
-        const r = await callAI(hunterReplyPrompt(p.text, shuffle, curTone), false, "haiku", false);
+        const r = await callAI(hunterReplyPrompt(p.text, shuffle, curTone), false, "luna", false); /* ★v228: haiku→luna */
         const text = (typeof r === "string") ? r : r.text;
         let reps = text.split(/\n?===+\n?/).map(s=>s.trim()).filter(s=>s.length>2 && !/^(承知|了解)/.test(s));
         if (!reps.length) { hOut.innerHTML='<div class="muted" style="padding:6px">作成できませんでした。もう一度お試しください。</div>'; }
@@ -7246,7 +7249,7 @@ BUILDERS.calendar = (el) => {
       try {
         if (!(useSearch && trendWord)) {
           /* トレンド以外(型まね等)は従来通り。過去候補を渡して被らせない */
-          const r0 = await callAI(promptFn(shuffle, history), false, "haiku", false);
+          const r0 = await callAI(promptFn(shuffle, history), false, "luna", false); /* ★v228: haiku→luna */
           const text0 = (typeof r0 === "string") ? r0 : r0.text;
           let cands0 = text0.split(/\n?===+\n?/).map(s=>s.trim())
             .map(s=> s.replace(/^(以下|こちら|では|それでは).*?[:：]\s*/,"").trim())
@@ -7423,7 +7426,7 @@ BUILDERS.calendar = (el) => {
           `\nバズらせるコツ:\n- 引用元に「乗っかる/ツッコむ/共感する/逆を言う」など反応として面白くする\n- この人の素の文体・性格で書く。業種の宣伝に無理に着地させない\n- 強い一言・問いかけ・あるあるネタなど、リポストやいいねされやすい形\n- 炎上狙い・下品はNG\n` +
           `\n【絶対NG】「ここ大事」「テストに出る」「実は〇〇が大事」「9割の人が」「ほぼ誰も気づいてない」のような中身のない空っぽの煽り・もったいぶりは禁止。「〇〇」と伏せて具体を書かない穴埋め文も禁止。必ず具体的で中身のある一言にする\n` +
           `- 引用元URLは含めない(Xが自動で付ける)。コメント本文のみ\n- 100字以内\n前置き不要・コメント本文のみ出力。${variant}`;
-        return (await callAI(prompt, false, "haiku")).trim();
+        return (await callAI(prompt, false, "luna")).trim(); /* ★v228: haiku→luna */
       }
 
       posts.slice(0,5).forEach((p) => {
