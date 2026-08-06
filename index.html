@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "231";
+const APP_VERSION = "236";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2277,7 +2277,8 @@ function defaultCfg() {
   return {
     useBiz: false, bizName: "", bizArea: "", bizType: "",
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
-    url: "", urlFreq: 20, ngWords: "", origProfile: "",
+    url: "", urlFreq: 20, urlReplyOn: true, ngWords: "", origProfile: "",
+    quoteEnabled: true, quoteSelectMode: "random", quotePostMode: "approve", quoteSingleTarget: "", quoteDailyCap: 3,
     gender: "不問",
     competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare", notifyEmail: false,
     useHours: true, openTime: "21:00", closeTime: "06:00",
@@ -2640,6 +2641,7 @@ const TABS = [
   { id:"radar", num:"03", label:"📡 見込み客レーダー" },
   { id:"unfollow", num:"04", label:"🧹 フォロー整理" },
   { id:"outreach", num:"05", label:"🎯 営業リプ" },
+  { id:"quote", num:"", label:"🔁 引用RT" },
   { id:"gapcheck", num:"06", label:"📭 書き漏れ" },
   { id:"followers", num:"07", label:"推移記録" },
   { id:"report", num:"08", label:"週報" },
@@ -2650,7 +2652,7 @@ const TABS = [
 const NAV_GROUPS = [
   { id: "home", icon: "🏠", label: "ホーム", tabs: [] },
   { id: "post", icon: "✍️", label: "投稿", tabs: ["dailytask", "calendar", "gapcheck"] },
-  { id: "analyze", icon: "📈", label: "分析", tabs: ["competitor", "radar", "unfollow", "outreach", "followers", "report"] },
+  { id: "analyze", icon: "📈", label: "分析", tabs: ["competitor", "radar", "unfollow", "outreach", "quote", "followers", "report"] },
   { id: "config", icon: "⚙️", label: "設定", tabs: ["settings", "schedule", "autoqueue", "clients"] },
 ];
 function currentGroup() {
@@ -3637,8 +3639,24 @@ BUILDERS.settings = (el) => {
   fld(el, "入れたいURL(任意)");
   const uin = document.createElement("input"); uin.placeholder = "例: https://note.com/xxx や https://lin.ee/xxxx"; uin.value = CFG.url || "";
   uin.oninput = () => { CFG.url = uin.value; save(); }; el.appendChild(uin);
+  /* ★v232: 🔗 リプ欄URL自動投稿 ON/OFF。OFFにすると、伸びた投稿へのリプ欄URL自動投稿を完全停止(既定ON=従来挙動) */
+  const urTog = document.createElement("div");
+  urTog.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:8px;padding:10px 12px;border:1px solid var(--border);border-radius:10px";
+  const urLbl = document.createElement("div");
+  urLbl.style.cssText = "font-size:12.5px;line-height:1.4";
+  urLbl.innerHTML = '🔗 リプ欄にURLを自動投稿する<br><span class="muted" style="font-size:11px">OFFにすると、ノウハウ・解説系で伸びた投稿へのリプ欄URL自動投稿を完全に止めます。URLや頻度は残したまま停止できます。</span>';
+  const urSw = document.createElement("button");
+  const urPaint = () => {
+    const on = (CFG.urlReplyOn !== false);
+    urSw.textContent = on ? "ON" : "OFF";
+    urSw.style.cssText = "min-width:64px;padding:8px 14px;border-radius:20px;border:none;font-weight:800;font-size:13px;cursor:pointer;" +
+      (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.1);color:#94a3b8");
+  };
+  urPaint();
+  urSw.onclick = () => { const on = (CFG.urlReplyOn !== false); CFG.urlReplyOn = !on; urPaint(); save(); if (typeof toast === "function") toast((!on ? "🔗 リプ欄URL自動投稿ON" : "🔗 リプ欄URL自動投稿OFF"), "ok"); };
+  urTog.appendChild(urLbl); urTog.appendChild(urSw); el.appendChild(urTog);
   const uhint = document.createElement("p"); uhint.className = "desc"; uhint.style.margin = "6px 0 0";
-  uhint.textContent = "note・LINE公式・予約サイトなどへの誘導URL。本文には入れず(リンク付き投稿は表示が下がるため)、投稿が伸びたのを自動検知してリプ欄にこのURLを自動投稿します。対象は『📚 オートノウハウ・解説系』の投稿だけ(全投稿にツリーが付く不自然さを防ぐため)。クライアント管理でオートノウハウをONにしてください。";
+  uhint.textContent = "note・LINE公式・予約サイトなどへの誘導URL。本文には入れず(リンク付き投稿は表示が下がるため)、投稿が伸びたのを自動検知してリプ欄にこのURLを自動投稿します。対象は『📚 オートノウハウ・解説系』の投稿だけ(全投稿にツリーが付く不自然さを防ぐため)。上のスイッチをOFFにすれば止まります。※トレンド/炎上の本文末尾URLは別設定(クライアント管理の『🔗本文にURLを付ける』)。";
   el.appendChild(uhint);
   /* v188: 頻度スライダーに「何投稿に1回か」を明記(%だけだと分かりにくいため) */
   fld(el, "URLを付ける頻度");
@@ -4912,6 +4930,166 @@ BUILDERS.radar = (el) => {
     if (accounts.length) { acct.value = accounts[0].screen_name; await loadCfgFor(acct.value); }
     acct.onchange = async ()=>{ await loadCfgFor(acct.value); desireSel={}; rivalOn={}; renderBody(); };
     renderBody();
+  })();
+};
+
+/* ---- 🔁 引用RT(狙い撃ち) ---- */
+BUILDERS.quote = (el) => {
+  head(el, "🔁 引用RT(狙い撃ち)",
+    "狙うアカウントを何個も登録して、その中の『直近24時間で一番インプレの高い投稿』を、自分のアカウントの喋り方で引用ポストする。相手を毎回ランダムに選べるから、同じ人ばかり引用して不自然になるのを防げる。", []);
+
+  const accWrap = document.createElement("div"); accWrap.style.cssText = "margin:10px 0";
+  const accLabel = document.createElement("div"); accLabel.className = "desc"; accLabel.textContent = "自分のアカウント(引用ポストする側=この喋り方で引用する)"; accWrap.appendChild(accLabel);
+  const acct = document.createElement("select"); acct.style.cssText = "width:100%;padding:10px;border-radius:8px;font-size:14px"; accWrap.appendChild(acct);
+  el.appendChild(accWrap);
+
+  const setCard = document.createElement("div"); setCard.className = "card"; setCard.style.cssText = "padding:12px;margin-top:8px"; el.appendChild(setCard);
+  const addCard = document.createElement("div"); addCard.className = "card"; addCard.style.cssText = "padding:12px;margin-top:8px"; el.appendChild(addCard);
+  const tgtBox = document.createElement("div"); el.appendChild(tgtBox);
+  const inbox = document.createElement("div"); inbox.style.cssText = "margin-top:16px"; el.appendChild(inbox);
+
+  let qcfg = {}, curTargets = [];
+  function fmtDT_(iso) { try { const d = new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); } catch(e){ return "—"; } }
+  async function loadQcfg() { try { qcfg = (await kvGet("gen_config:"+acct.value, null)) || {}; } catch(e){ qcfg = {}; } }
+  async function saveQcfg(patch) {
+    const cur = (await kvGet("gen_config:"+acct.value, null)) || {};
+    Object.assign(cur, patch); qcfg = cur;
+    await kvSet("gen_config:"+acct.value, cur);
+    /* 生成設定タブのキャッシュにも反映(あちらの保存で引用設定が上書きされないように) */
+    try { if (typeof CFG_CACHE==="object" && CFG_CACHE[acct.value]) Object.assign(CFG_CACHE[acct.value], patch); if (typeof CFG==="object" && typeof S==="object" && S.activeAccount===acct.value) Object.assign(CFG, patch); } catch(e){}
+  }
+  /* セグメント切替UI */
+  function seg(label, opts, cur, onPick) {
+    const wrap = document.createElement("div"); wrap.style.cssText = "margin-top:10px";
+    const lb = document.createElement("div"); lb.className = "desc"; lb.style.cssText = "font-size:11.5px;margin-bottom:4px"; lb.textContent = label; wrap.appendChild(lb);
+    const seg = document.createElement("div"); seg.style.cssText = "display:flex;gap:5px;padding:4px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09)";
+    opts.forEach(([t,v])=>{
+      const on = (cur===v);
+      const b = document.createElement("button"); b.textContent = t;
+      b.style.cssText = "flex:1;padding:9px 6px;border:none;border-radius:8px;font-size:13px;font-weight:800;cursor:pointer;"+(on?"background:linear-gradient(135deg,rgba(34,224,255,.22),rgba(61,255,168,.22));color:#22e0ff;box-shadow:inset 0 0 0 1px rgba(34,224,255,.4)":"background:transparent;color:var(--muted)");
+      b.onclick = ()=> onPick(v);
+      seg.appendChild(b);
+    });
+    wrap.appendChild(seg); return wrap;
+  }
+
+  function renderSettings() {
+    setCard.innerHTML = '<div style="font-weight:800;font-size:13px">⚙ 引用のやり方</div>';
+    /* 機能ON/OFF */
+    const onRow = document.createElement("div"); onRow.style.cssText = "display:flex;align-items:center;justify-content:space-between;margin-top:8px";
+    const onLbl = document.createElement("div"); onLbl.style.cssText = "font-size:12.5px"; onLbl.innerHTML = '自動巡回で引用する<br><span class="muted" style="font-size:11px">OFFにすると自動では動かない(「今すぐ探す」の手動は使える)</span>';
+    const onSw = document.createElement("button"); const on = (qcfg.quoteEnabled !== false);
+    onSw.textContent = on ? "ON" : "OFF";
+    onSw.style.cssText = "min-width:58px;padding:8px 12px;border-radius:18px;border:none;font-weight:800;font-size:13px;cursor:pointer;"+(on?"background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002":"background:rgba(255,255,255,.1);color:#94a3b8");
+    onSw.onclick = async ()=>{ await saveQcfg({ quoteEnabled: !(qcfg.quoteEnabled!==false) }); renderSettings(); };
+    onRow.appendChild(onLbl); onRow.appendChild(onSw); setCard.appendChild(onRow);
+    /* 相手の選び方 */
+    setCard.appendChild(seg("相手の選び方", [["🎲 ランダム","random"],["📌 1つ指定","single"]], (qcfg.quoteSelectMode==="single"?"single":"random"), async(v)=>{ await saveQcfg({quoteSelectMode:v}); renderSettings(); }));
+    /* 1つ指定のときの相手ドロップダウン */
+    if (qcfg.quoteSelectMode === "single") {
+      const sWrap = document.createElement("div"); sWrap.style.cssText = "margin-top:8px";
+      const sLb = document.createElement("div"); sLb.className="desc"; sLb.style.cssText="font-size:11.5px;margin-bottom:4px"; sLb.textContent="指定する相手(登録済みから選ぶ)"; sWrap.appendChild(sLb);
+      const sSel = document.createElement("select"); sSel.style.cssText="width:100%;padding:9px;border-radius:8px;font-size:14px";
+      if(!curTargets.length){ const o=document.createElement("option"); o.textContent="(先に下でターゲット追加)"; o.value=""; sSel.appendChild(o); }
+      curTargets.forEach(t=>{ const o=document.createElement("option"); o.value=t.target_username; o.textContent="@"+t.target_username; if((qcfg.quoteSingleTarget||"").toLowerCase()===t.target_username.toLowerCase())o.selected=true; sSel.appendChild(o); });
+      sSel.onchange = async ()=>{ await saveQcfg({quoteSingleTarget:sSel.value}); };
+      if(sSel.value && !qcfg.quoteSingleTarget) saveQcfg({quoteSingleTarget:sSel.value});
+      sWrap.appendChild(sSel); setCard.appendChild(sWrap);
+    }
+    /* 投稿方法 */
+    setCard.appendChild(seg("投稿のしかた", [["✅ 承認してから","approve"],["⚡ 自動で投稿","auto"]], (qcfg.quotePostMode==="auto"?"auto":"approve"), async(v)=>{ await saveQcfg({quotePostMode:v}); renderSettings(); }));
+    const note = document.createElement("p"); note.className="desc"; note.style.cssText="margin:8px 0 0;font-size:11px";
+    note.textContent = "承認=候補をここに出す→確認して投稿。自動=検知して即引用(1日の上限はクライアント管理で1/3/5/10から設定・超えたら承認箱へ)。30分ごとに巡回し、選んだ相手の直近24hでインプレ最上位の投稿を引用(1番→次は2番と繰り上がる)。フェッチ負荷が高い日は自動でスキップして投稿・予想を優先。やりすぎ凍結を避けるならまず承認推奨。";
+    setCard.appendChild(note);
+  }
+
+  /* ターゲット追加フォーム */
+  addCard.innerHTML = '<div style="font-weight:800;font-size:13px;margin-bottom:6px">🎯 狙うアカウントを追加(何個でもOK)</div>';
+  const addRow = document.createElement("div"); addRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+  const uin = document.createElement("input"); uin.placeholder = "@ユーザー名 または プロフURL"; uin.style.cssText = "flex:1;min-width:150px;padding:9px;border-radius:8px;font-size:14px";
+  const addB = document.createElement("button"); addB.className = "mini"; addB.textContent = "＋追加"; addB.style.cssText = "padding:9px 14px";
+  addRow.appendChild(uin); addRow.appendChild(addB); addCard.appendChild(addRow);
+  const addHint = document.createElement("p"); addHint.className = "desc"; addHint.style.cssText = "margin:6px 0 0;font-size:11px";
+  addHint.textContent = "ここに複数登録→上の「相手の選び方」がランダムなら毎回1人ずつランダムに、1つ指定ならその相手だけを引用する。";
+  addCard.appendChild(addHint);
+
+  addB.onclick = async () => {
+    const v = uin.value.trim(); if(!v) return;
+    if(!acct.value){ alert("先に自分のアカウントを選んでな"); return; }
+    addB.disabled=true; const ob=addB.textContent; addB.textContent="追加中…";
+    try {
+      const r = await gasFetch_("quoteTargetAdd", { screen_name: acct.value, target: v });
+      if(r && r.ok){ uin.value=""; await loadTargets(); renderSettings(); if(typeof toast==="function") toast("🎯 @"+r.username+" を追加","ok"); }
+      else alert("追加失敗: "+((r&&r.error)||"不明"));
+    } catch(e){ alert("追加失敗: "+e.message); }
+    addB.disabled=false; addB.textContent=ob;
+  };
+
+  async function loadTargets() {
+    tgtBox.innerHTML = '<div class="muted" style="padding:8px">読み込み中…</div>';
+    try {
+      const r = await gasFetch_("quoteTargetsList", { screen_name: acct.value });
+      const items = (r&&r.items)?r.items:[]; curTargets = items;
+      if(!items.length){ tgtBox.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">まだ登録なし。上で狙うアカウントを追加してな。</div>'; return; }
+      tgtBox.innerHTML = '<div style="font-weight:800;font-size:13px;margin:12px 2px 4px">📋 登録中のターゲット('+items.length+')</div>';
+      items.forEach(it=>{
+        const c=document.createElement("div"); c.className="card"; c.style.cssText="padding:10px 12px;margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px";
+        const left=document.createElement("div"); left.style.cssText="min-width:0;flex:1";
+        left.innerHTML='<div style="font-weight:800">@'+esc(it.target_username)+' <span class="muted" style="font-size:10.5px;font-weight:400">'+(it.enabled?'':'(停止中)')+'</span></div>'
+          +'<div class="muted" style="font-size:10.5px">最終引用: '+(it.last_quoted_at?fmtDT_(it.last_quoted_at):'—')+'</div>';
+        const right=document.createElement("div"); right.style.cssText="display:flex;align-items:center;gap:6px";
+        const tg=document.createElement("button"); const setTg=()=>{ tg.textContent=it.enabled?"ON":"OFF"; tg.style.cssText="min-width:52px;padding:6px 10px;border-radius:16px;border:none;font-weight:800;font-size:12px;cursor:pointer;"+(it.enabled?"background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002":"background:rgba(255,255,255,.1);color:#94a3b8"); };
+        setTg(); tg.onclick=async()=>{ it.enabled=!it.enabled; setTg(); try{ await gasFetch_("quoteTargetUpdate",{id:it.id,enabled:it.enabled}); }catch(e){ it.enabled=!it.enabled; setTg(); alert(e.message); } };
+        const del=document.createElement("button"); del.textContent="✕"; del.style.cssText="padding:6px 9px;border-radius:7px;border:none;background:rgba(255,90,90,.15);color:#ff7a7a;font-weight:800;cursor:pointer";
+        del.onclick=async()=>{ try{ await gasFetch_("quoteTargetRemove",{id:it.id}); await loadTargets(); renderSettings(); }catch(e){ alert(e.message); } };
+        right.appendChild(tg); right.appendChild(del);
+        c.appendChild(left); c.appendChild(right); tgtBox.appendChild(c);
+      });
+    } catch(e){ tgtBox.innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
+  }
+
+  async function loadInbox() {
+    inbox.innerHTML = '<div style="font-weight:800;font-size:13px;margin:4px 2px">📨 承認待ちの引用候補 <button id="qScanBtn" class="mini" style="float:right;padding:5px 10px;font-size:11px">今すぐ探す</button></div>';
+    const scanBtn = inbox.querySelector("#qScanBtn");
+    if(scanBtn) scanBtn.onclick = async () => {
+      scanBtn.disabled=true; scanBtn.textContent="探索中…";
+      try { await gasFetch_("quoteScanNow",{screen_name:acct.value}); await loadInbox(); } catch(e){ alert(e.message); scanBtn.disabled=false; scanBtn.textContent="今すぐ探す"; }
+    };
+    const listWrap=document.createElement("div"); inbox.appendChild(listWrap);
+    listWrap.innerHTML='<div class="muted" style="padding:8px">読み込み中…</div>';
+    try {
+      const r = await gasFetch_("quoteCandidates",{screen_name:acct.value});
+      const items=(r&&r.items)?r.items:[];
+      if(!items.length){ listWrap.innerHTML='<div class="muted" style="padding:10px;font-size:12px">承認待ちなし。承認モードのターゲットに新しい投稿が来たらここに出る。「今すぐ探す」で手動チェックもできる(30分ごとに自動巡回)。</div>'; return; }
+      listWrap.innerHTML="";
+      items.forEach(it=>{
+        const c=document.createElement("div"); c.className="card"; c.style.cssText="padding:12px;margin-top:8px";
+        c.innerHTML='<div class="muted" style="font-size:11px">@'+esc(it.target_username)+' の投稿を引用'+(it.target_url?' ・<a href="'+esc(it.target_url)+'" target="_blank" style="color:var(--accent2)">元投稿</a>':'')+'</div>'
+          +'<div style="font-size:12px;background:rgba(255,255,255,.05);border-radius:8px;padding:8px;margin:6px 0;white-space:pre-wrap">'+esc(String(it.target_text||"").slice(0,220))+'</div>';
+        const ta=document.createElement("textarea"); ta.value=it.quote_text||""; ta.style.cssText="width:100%;height:80px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:13px;padding:8px";
+        c.appendChild(ta);
+        const row=document.createElement("div"); row.style.cssText="display:flex;gap:8px;margin-top:8px";
+        const okB=document.createElement("button"); okB.className="btn"; okB.style.cssText="flex:1;margin:0;padding:10px"; okB.textContent="🔁 引用する";
+        const skB=document.createElement("button"); skB.className="mini"; skB.style.cssText="padding:10px 14px"; skB.textContent="スキップ";
+        const outM=document.createElement("div"); outM.style.cssText="font-size:11px;margin-top:4px";
+        okB.onclick=async()=>{ okB.disabled=true; skB.disabled=true; okB.textContent="投稿中…"; try{ const rr=await gasFetch_("quoteApprove",{id:it.id,text:ta.value}); if(rr&&rr.ok){ c.style.opacity=".5"; okB.textContent="✓ 投稿した"; outM.innerHTML='<span style="color:#3DFFA8">引用完了</span>'; setTimeout(loadInbox,900);} else { outM.innerHTML='<span class="err">'+esc((rr&&rr.error)||"失敗")+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } }catch(e){ outM.innerHTML='<span class="err">'+esc(e.message)+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } };
+        skB.onclick=async()=>{ skB.disabled=true; try{ await gasFetch_("quoteSkip",{id:it.id}); c.style.opacity=".4"; setTimeout(loadInbox,400); }catch(e){ alert(e.message); skB.disabled=false; } };
+        row.appendChild(okB); row.appendChild(skB); c.appendChild(row); c.appendChild(outM);
+        listWrap.appendChild(c);
+      });
+    } catch(e){ listWrap.innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
+  }
+
+  (async ()=>{
+    if(!S.clients || !S.clients.length){ try{ await loadClients(); }catch(e){} }
+    const accounts=(S.clients||[]);
+    acct.innerHTML="";
+    accounts.forEach(a=>{ const o=document.createElement("option"); o.value=a.screen_name; o.textContent="@"+a.screen_name; acct.appendChild(o); });
+    if(accounts.length) acct.value=accounts[0].screen_name;
+    async function refreshAll(){ await loadTargets(); await loadQcfg(); renderSettings(); await loadInbox(); }
+    acct.onchange = refreshAll;
+    if(accounts.length){ await refreshAll(); }
+    else { setCard.style.display="none"; tgtBox.innerHTML='<div class="muted" style="padding:10px;font-size:12px">先にクライアントを登録してな。</div>'; }
   })();
 };
 
@@ -8692,7 +8870,7 @@ BUILDERS.clients = (el) => {
       top.style.cssText = "display:flex;align-items:center;justify-content:space-between";
       const lbl = document.createElement("div");
       lbl.style.cssText = "font-size:12.5px;line-height:1.4";
-      lbl.innerHTML = '🔗 本文にURLを付ける<br><span class="muted" style="font-size:11px">トレンド・炎上ニュース投稿の末尾URL。OFFにするとリンク無しで投稿(リンク付きはXで表示回数が下がるためリーチ重視ならOFF推奨)。※ノウハウ系のリプ欄URLはこの設定と無関係で常時動作</span>';
+      lbl.innerHTML = '🔗 トレンド/炎上にソースURLを付ける<br><span class="muted" style="font-size:11px">ニュースのソースURLを投稿の【リプ欄】に自動で付けます(本文には入れない=リーチ低下を防ぐ)。OFFにすると一切付けません。※ノウハウ系の誘導URLは別設定(生成設定の「🔗リプ欄にURLを自動投稿する」)</span>';
       const sw = document.createElement("button");
       let on = true;
       const paint = () => {
@@ -8712,6 +8890,35 @@ BUILDERS.clients = (el) => {
           if (typeof toast === "function") toast((on ? "🔗 URL添付ON" : "🔗 URL添付OFF") + " @" + screen, "ok");
         } catch (e) { on = !on; paint(); alert("保存失敗: " + e); }
       };
+      return wrap;
+    }
+
+    /* ★v32: 引用RTの自動投稿・1日の上限(1/3/5/10)。gen_config.quoteDailyCapに保存 */
+    function quoteCapRow(screen) {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
+      const lbl = document.createElement("div");
+      lbl.style.cssText = "font-size:12.5px;line-height:1.4;margin-bottom:6px";
+      lbl.innerHTML = '🔁 引用RTの自動投稿・1日の上限<br><span class="muted" style="font-size:11px">「自動で投稿」モードで1日に引用する最大回数。超えたら承認箱に回る。負荷が高い日は自動でスキップして投稿・予想を優先。</span>';
+      wrap.appendChild(lbl);
+      const seg = document.createElement("div"); seg.style.cssText = "display:flex;gap:6px";
+      let cap = 3;
+      const paint = () => {
+        seg.innerHTML = "";
+        [1, 3, 5, 10].forEach((n) => {
+          const b = document.createElement("button"); b.textContent = n + "回";
+          const on = (cap === n);
+          b.style.cssText = "flex:1;padding:8px;border-radius:9px;border:none;font-weight:800;font-size:13px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
+          b.onclick = async () => {
+            cap = n; paint();
+            try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; cfg.quoteDailyCap = n; await kvSet("gen_config:" + screen, cfg); if (typeof toast === "function") toast("🔁 引用の1日上限 " + n + "回 @" + screen, "ok"); }
+            catch (e) { alert("保存失敗: " + e); }
+          };
+          seg.appendChild(b);
+        });
+      };
+      paint(); wrap.appendChild(seg);
+      (async () => { try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; const v = Number(cfg.quoteDailyCap); cap = ([1, 3, 5, 10].indexOf(v) >= 0) ? v : 3; paint(); } catch (e) {} })();
       return wrap;
     }
 
@@ -8805,6 +9012,7 @@ BUILDERS.clients = (el) => {
       d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
       d.appendChild(autoFeatureRow(c.screen_name, "knowhow", "📚 オートノウハウ・解説系", "業種の役立つノウハウ・解説を本文で出し切る価値提供型。伸びたら生成設定の「入れたいURL」が自動でリプされる(URL導線はこの種別だけ)", "linear-gradient(135deg,#3DFFA8,#38d4f0)"));
       d.appendChild(autoUrlRow(c.screen_name)); /* ★v229: トレンド/炎上の本文URL添付 ON/OFF */
+      d.appendChild(quoteCapRow(c.screen_name)); /* ★v232: 引用RT自動の1日上限 1/3/5/10 */
       /* v202: 📱 LINE自動配信(トークンの有無=ON/OFF)。無料予想の生成時に友だち全員へ一斉配信 */
       (function (sn) {
         const lw = document.createElement("div");
