@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "229";
+const APP_VERSION = "231";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5685,98 +5685,98 @@ BUILDERS.calendar = (el) => {
     yosouOut.appendChild(statBox);
 
     const _psCache = {}; /* v159: 成績キャッシュ(新しい的中が入るまで内容は不変のため、タブ切替を即表示にする) */
+    /* ★v230: 「選択アカ1個だけ」でなく、予想を出してる全アカウントをアカ別に並べて表示する。
+       選択中アカの本日/昨日パネルだけは従来通り先頭に出す(今日勝ってる？がすぐ分かるように) */
     async function renderStats(days) {
       const acc = acct.value || null;
-      const psKey = (acc || "all") + "|" + days;
-      if (_psCache[psKey]) { paintStats(_psCache[psKey], days, acc); } /* キャッシュ即表示→裏で最新を取得して上書き */
+      const psKey = "ALL|" + days;
+      if (_psCache[psKey]) { paintAll(_psCache[psKey], days, acc); } /* キャッシュ即表示→裏で最新を取得して上書き */
       else statBox.innerHTML = '<div class="muted" style="padding:10px">集計中…</div>';
       try {
-        const j = await gasFetch_("predStats", { screen_name: acc || undefined, days });
+        const j = await gasFetch_("predStatsAll", { days });
         try {
           const [td, yd] = await Promise.all([
             gasFetch_("predStatsDay", { screen_name: acc || undefined, dayOffset: 0 }),
             gasFetch_("predStatsDay", { screen_name: acc || undefined, dayOffset: 1 }),
           ]);
-          j._today = td; j._yday = yd;
+          j._today = td; j._yday = yd; j._selAcc = acc;
         } catch (e) {}
         _psCache[psKey] = j;
-        paintStats(j, days, acc);
+        paintAll(j, days, acc);
       } catch (e) { if (!_psCache[psKey]) statBox.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
     }
-    function paintStats(j, days, acc) {
+    function paintAll(j, days, acc) {
       try {
-        const stats = (j && j.stats) ? j.stats : [];
         const NAME = { popular:"人気順シンプル", score:"直前スコア厳選" };
         const periodLabel = days===7 ? "週間(7日)" : "月間(30日)";
         const fmt = (iso) => { if(!iso) return "—"; const d=new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); };
-        /* 📅 本日＋昨日パネル(常にトップに表示) */
+        const accounts = (j && j.accounts) ? j.accounts : [];
+        /* 📅 選択中アカの本日＋昨日パネル(先頭に表示) */
         const dayPanel = (d, label) => {
           if (!d) return "";
           if (d.races > 0) {
             const roiColor = d.roi >= 100 ? "#33cc88" : "#ff8866";
             const profColor = d.profit >= 0 ? "#3DFFA8" : "#ff8866";
             const prof100 = Math.round(d.profit);
-            return '<div class="card" style="padding:12px;margin-top:8px;border:1px solid '+(label==="本日"?"var(--accent2)":"var(--border)")+'"><div style="font-weight:800;margin-bottom:6px">📅 '+label+'の成績 <span class="muted" style="font-size:11px;font-weight:400">('+(label==="本日"?"本日":"昨日")+'公開した全レース)</span></div>'
+            return '<div class="card" style="padding:12px;margin-top:8px;border:1px solid '+(label==="本日"?"var(--accent2)":"var(--border)")+'"><div style="font-weight:800;margin-bottom:6px">📅 '+label+'の成績 <span class="muted" style="font-size:11px;font-weight:400">('+label+'公開した無料全レース)</span></div>'
               + '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:14px"><div>的中率 <b>'+d.hitRate+'%</b></div>'
               + '<div>回収率 <b style="color:'+roiColor+'">'+d.roi+'%</b></div>'
               + '<div class="muted" style="font-size:13px">('+d.hits+'/'+d.races+'レース)</div></div>'
-              + '<div style="font-size:12px;margin-top:6px;line-height:1.8" class="muted">買い目を全部買った場合の収支:<br>'
-              + '・100円ずつ: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+prof100.toLocaleString()+'</b><br>'
-              + '・1,000円ずつ: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+(prof100*10).toLocaleString()+'</b><br>'
-              + '・10,000円ずつ: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+(prof100*100).toLocaleString()+'</b>'
+              + '<div style="font-size:12px;margin-top:6px;line-height:1.8" class="muted">100円ずつ買った場合の収支: <b style="color:'+profColor+'">'+(prof100>=0?"+":"")+'¥'+prof100.toLocaleString()+'</b>'
               + (d.pending?'<br>結果待ち '+d.pending+'件':'')+'</div></div>';
           } else if (d.pending > 0) {
             return '<div class="card" style="padding:11px;margin-top:8px;border:1px solid var(--border)"><div style="font-weight:700;font-size:13px">📅 '+label+'の成績</div><div class="muted" style="font-size:12px;margin-top:3px">'+label+'の予想は結果待ち '+d.pending+'件（レース終了後に自動集計）</div></div>';
           }
           return "";
         };
-        let todayHtml = dayPanel(j._today, "本日");
-        /* 本日がまだ0件のときだけ昨日を出す(朝イチで寂しくならないように)。本日に結果が出てるなら本日だけ */
-        if (!(j._today && j._today.races > 0)) todayHtml += dayPanel(j._yday, "昨日");
-        else if (j._yday && j._yday.races > 0) todayHtml += dayPanel(j._yday, "昨日");
-        if (!stats.length) {
-          statBox.innerHTML = todayHtml + '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7;margin-top:8px">'+periodLabel+'はまだ確定した予想結果がない。<br>'
-            + '結果待ち(未確定): <b>'+(j.pending||0)+'件</b><br>'
+        let h = dayPanel(j._today, "本日");
+        if (!(j._today && j._today.races > 0)) h += dayPanel(j._yday, "昨日");
+        else if (j._yday && j._yday.races > 0) h += dayPanel(j._yday, "昨日");
+
+        if (!accounts.length) {
+          statBox.innerHTML = h + '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7;margin-top:8px">'+periodLabel+'はまだ確定した予想結果がない。<br>'
             + '🔍 結果確認の最終実行: <b>'+fmt(j.lastCheck)+'</b><br><br>'
             + '予想を投稿してレース結果が出た後、1日6回(13〜0時)自動で的中をチェックする。人気順・直前スコアの両オートをONにすると比較データが貯まる。</div>';
           return;
         }
-        let h = todayHtml + '<div class="card" style="padding:12px;margin-top:8px"><div style="font-weight:700;margin-bottom:8px">📊 '+periodLabel+'のロジック成績</div>';
-        stats.forEach(s => {
-          h += '<div style="border-top:1px solid var(--border);padding:8px 0"><div style="font-weight:700;color:var(--accent2)">'+(NAME[s.logic]||s.logic)+'</div>'
-            + '<div style="font-size:13px;margin-top:2px">的中率 <b>'+s.hitRate+'%</b>　回収率 <b style="color:'+(s.roi>=100?"#33cc88":"#ff8866")+'">'+s.roi+'%</b>　<span class="muted">('+s.hits+'/'+s.races+'レース)</span></div>'
-            /* v224: 期間の利益計算(GAS v8のprofit。旧キャッシュにprofitが無い場合は非表示) */
-            + (s.profit != null ? '<div style="font-size:12px;margin-top:2px">収支(100円ずつ) <b style="color:'+(s.profit>=0?"#3DFFA8":"#ff8866")+'">'+(s.profit>=0?"+":"")+'¥'+s.profit.toLocaleString()+'</b></div>' : '')
-            + '</div>';
-        });
-        if (j.combined && j.combined.races) {
-          const cb = j.combined;
+
+        /* 📊 アカウントごとの成績 */
+        h += '<div style="font-weight:800;margin:14px 2px 2px;font-size:13px">📊 '+periodLabel+'のアカウント別 的中成績</div>';
+        accounts.forEach(A => {
+          h += '<div class="card" style="padding:12px;margin-top:8px"><div style="font-weight:800;color:var(--accent2);font-size:13px">@'+esc(A.screen_name)+'</div>';
+          if (!(A.combined && A.combined.races)) {
+            h += '<div class="muted" style="font-size:12px;margin-top:4px">'+(A.pending?('結果待ち '+A.pending+'件（レース終了後に自動集計）'):'確定した予想結果なし')+'</div></div>';
+            return;
+          }
+          (A.stats||[]).forEach(s => {
+            h += '<div style="border-top:1px solid var(--border);padding:7px 0"><div style="font-weight:700">'+(NAME[s.logic]||s.logic)+'</div>'
+              + '<div style="font-size:13px;margin-top:2px">的中率 <b>'+s.hitRate+'%</b>　回収率 <b style="color:'+(s.roi>=100?"#33cc88":"#ff8866")+'">'+s.roi+'%</b>　<span class="muted">('+s.hits+'/'+s.races+'レース)</span></div>'
+              + (s.profit != null ? '<div style="font-size:12px;margin-top:2px">収支(100円ずつ) <b style="color:'+(s.profit>=0?"#3DFFA8":"#ff8866")+'">'+(s.profit>=0?"+":"")+'¥'+s.profit.toLocaleString()+'</b></div>' : '')
+              + '</div>';
+          });
+          const cb = A.combined;
           const pc = (cb.profit != null && cb.profit >= 0) ? "#3DFFA8" : "#ff8866";
-          h += '<div style="border-top:2px solid var(--accent2);margin-top:4px;padding:9px 0 2px"><div style="font-weight:800;color:var(--ink)">🔀 2ロジック合算</div>'
+          h += '<div style="border-top:2px solid var(--accent2);margin-top:2px;padding:8px 0 2px"><div style="font-weight:800;color:var(--ink)">🔀 2ロジック合算</div>'
             + '<div style="font-size:13px;margin-top:2px">的中率 <b>'+cb.hitRate+'%</b>　回収率 <b style="color:'+(cb.roi>=100?"#33cc88":"#ff8866")+'">'+cb.roi+'%</b>　<span class="muted">('+cb.hits+'/'+cb.races+'レース)</span></div>'
-            /* v224: 期間(週間/月間)の利益計算。本日パネルと同じ100/1,000/10,000円の3パターン */
-            + (cb.profit != null ? '<div style="font-size:12px;margin-top:6px;line-height:1.8" class="muted">'+periodLabel+'に買い目を全部買った場合の収支:<br>'
-              + '・100円ずつ: <b style="color:'+pc+'">'+(cb.profit>=0?"+":"")+'¥'+cb.profit.toLocaleString()+'</b><br>'
-              + '・1,000円ずつ: <b style="color:'+pc+'">'+(cb.profit>=0?"+":"")+'¥'+(cb.profit*10).toLocaleString()+'</b><br>'
-              + '・10,000円ずつ: <b style="color:'+pc+'">'+(cb.profit>=0?"+":"")+'¥'+(cb.profit*100).toLocaleString()+'</b></div>' : '')
-            + '</div>';
-        }
-        h += '<div style="border-top:1px solid var(--border);margin-top:6px;padding-top:8px;font-size:11.5px" class="muted">'
-          + '🔍 結果確認の最終実行: <b style="color:var(--ink)">'+fmt(j.lastCheck)+'</b><br>'
-          + '結果待ち(未確定): '+(j.pending||0)+'件'+((j.gaveUp||0)?' / 確認できず打ち切り: '+j.gaveUp+'件':'')+'<br>'
-          + '※結果は1日6回(13〜0時)自動で確認・監視。</div>';
-        h += '<div class="desc" style="margin-top:8px;font-size:11px">回収率100%超えが勝ち。レース数が増えるほど信頼できる。100〜300レース貯まったら勝ってる方をデフォルトに。</div>';
-        h += '<button id="hitCopyBtn" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#3DFFA8,#00e5ff);color:#001;font-weight:800;border:none;padding:11px;border-radius:9px;font-size:13px">🎯 当たったレースを全部コピー</button>';
-        h += '<div id="hitCopyOut"></div></div>';
+            + (cb.profit != null ? '<div style="font-size:12px;margin-top:2px">収支(100円ずつ) <b style="color:'+pc+'">'+(cb.profit>=0?"+":"")+'¥'+cb.profit.toLocaleString()+'</b></div>' : '')
+            + (A.pending?'<div class="muted" style="font-size:11.5px;margin-top:4px">結果待ち '+A.pending+'件</div>':'')
+            + '</div></div>';
+        });
+
+        h += '<div class="card" style="padding:9px 12px;margin-top:8px;font-size:11.5px;line-height:1.7" ><span class="muted">🔍 結果確認の最終実行: <b style="color:var(--ink)">'+fmt(j.lastCheck)+'</b><br>※結果は1日6回(13〜0時)自動で確認・監視。回収率100%超えが勝ち。レース数が増えるほど信頼できる。</span></div>';
+        h += '<button id="hitCopyBtn" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#3DFFA8,#00e5ff);color:#001;font-weight:800;border:none;padding:11px;border-radius:9px;font-size:13px">🎯 当たったレースを全部コピー（@'+esc(acc||"")+'）</button>';
+        h += '<div id="hitCopyOut"></div>';
         statBox.innerHTML = h;
         const hitBtn = document.getElementById("hitCopyBtn");
         if (hitBtn) hitBtn.onclick = async () => {
           hitBtn.disabled = true; const ob = hitBtn.textContent; hitBtn.textContent = "取得中…";
+          /* v230: 出力先は毎回取り直す(裏で再描画されても迷子にならない)。押した瞬間に取得中を出して反応を分かりやすく */
+          const showOut = (html) => { const el = document.getElementById("hitCopyOut"); if (el) { el.innerHTML = html; el.scrollIntoView({behavior:"smooth", block:"nearest"}); } return el; };
+          showOut('<div class="muted" style="font-size:12px;margin-top:6px">取得中…（少し待ってな）</div>');
           try {
             const hj = await gasFetch_("hitList", { screen_name: acc || undefined, days: 0 });
             const rows = (hj && hj.rows) ? hj.rows : [];
-            const outEl = document.getElementById("hitCopyOut");
-            if (!rows.length) { outEl.innerHTML = '<div class="muted" style="font-size:12px;margin-top:6px">まだ的中レースがありません。</div>'; hitBtn.disabled=false; hitBtn.textContent=ob; return; }
+            if (!rows.length) { showOut('<div class="muted" style="font-size:12px;margin-top:6px">まだ的中レースがありません。</div>'); hitBtn.disabled=false; hitBtn.textContent=ob; return; }
             const lines = rows.map(r => {
               const d = String(r.race_date||""); const md = d.length===8 ? (parseInt(d.slice(4,6),10)+"/"+parseInt(d.slice(6,8),10)) : d;
               const yen = r.payout ? Number(r.payout) : 0;
@@ -5794,10 +5794,10 @@ BUILDERS.calendar = (el) => {
             let copied = false;
             try { await navigator.clipboard.writeText(text); copied = true; } catch(err) {}
             hitBtn.textContent = copied ? "✓ コピーした！" : ob;
-            outEl.innerHTML = '<textarea readonly style="width:100%;height:170px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:12px;padding:8px;margin-top:8px;-webkit-user-select:all">'+esc(text)+'</textarea>'
-              + '<div class="muted" style="font-size:11px;margin-top:4px">回収金合計 <b style="color:#3DFFA8">¥'+Number(hj.totalPayout).toLocaleString()+'</b> / 的中'+hj.count+'レース'+(copied?'（コピー済み）':'（上を長押しでコピー）')+'</div>';
+            showOut('<textarea readonly style="width:100%;height:170px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:12px;padding:8px;margin-top:8px;-webkit-user-select:all">'+esc(text)+'</textarea>'
+              + '<div class="muted" style="font-size:11px;margin-top:4px">回収金合計 <b style="color:#3DFFA8">¥'+Number(hj.totalPayout).toLocaleString()+'</b> / 的中'+hj.count+'レース'+(copied?'（コピー済み）':'（上を長押しでコピー）')+'</div>');
             setTimeout(()=>{ hitBtn.disabled=false; hitBtn.textContent=ob; }, 2500);
-          } catch(e) { document.getElementById("hitCopyOut").innerHTML = '<div class="err" style="margin-top:6px">'+esc(e.message)+'</div>'; hitBtn.disabled=false; hitBtn.textContent=ob; }
+          } catch(e) { showOut('<div class="err" style="margin-top:6px">'+esc(e.message)+'</div>'); hitBtn.disabled=false; hitBtn.textContent=ob; }
         };
       } catch(e){ statBox.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
     }
