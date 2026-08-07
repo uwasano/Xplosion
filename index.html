@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "239";
+const APP_VERSION = "242";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2286,6 +2286,14 @@ function defaultCfg() {
     /* 噂のシーシャBar専用: おすすめミックス機能 */
     mixOn: false, mixFreq: 30, mixDB: null, mixImage: false, mixImageAuto: false, mixAutoRefill: false,
   };
+}
+
+/* @やURLからユーザー名だけ取り出す(引用RTの対象指定用) */
+function quoteParseHandle_(s) {
+  s = String(s || "").trim();
+  const m = s.match(/(?:x\.com|twitter\.com)\/@?([A-Za-z0-9_]{1,15})/i);
+  if (m) return m[1];
+  return s.replace(/^@/, "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 15);
 }
 
 /* 現在アクティブなアカウントの設定。各AI機能はこれを読む */
@@ -3693,14 +3701,35 @@ BUILDERS.settings = (el) => {
       b.onclick = () => { CFG.quoteSelectMode = v; save(); renderQuoteCfg(); };
       selRow.appendChild(b);
     });
-    /* 1つ指定なら相手ドロップダウン */
+    /* 1つ指定なら「対象を@またはURLで指定」する欄 */
     if ((CFG.quoteSelectMode || "random") === "single") {
-      const sSel = document.createElement("select"); sSel.style.cssText = "width:100%;padding:9px;border-radius:8px;font-size:14px;margin-top:8px";
-      if (!qTargets.length) { const o = document.createElement("option"); o.value = ""; o.textContent = "(引用RTタブで狙うアカウントを追加してな)"; sSel.appendChild(o); }
-      qTargets.forEach(t => { const o = document.createElement("option"); o.value = t.target_username; o.textContent = "@" + t.target_username; if ((CFG.quoteSingleTarget || "").toLowerCase() === t.target_username.toLowerCase()) o.selected = true; sSel.appendChild(o); });
-      sSel.onchange = () => { CFG.quoteSingleTarget = sSel.value; save(); };
-      if (sSel.value && !CFG.quoteSingleTarget) { CFG.quoteSingleTarget = sSel.value; save(); }
-      qBox.appendChild(sSel);
+      const sLb = document.createElement("div"); sLb.className = "desc"; sLb.style.cssText = "font-size:11.5px;margin:8px 0 4px"; sLb.textContent = "引用する対象アカウント(@ または プロフURL)"; qBox.appendChild(sLb);
+      const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px"; qBox.appendChild(row);
+      const tin = document.createElement("input"); tin.placeholder = "@username または https://x.com/username"; tin.value = CFG.quoteSingleTarget ? ("@" + CFG.quoteSingleTarget) : ""; tin.style.cssText = "flex:1;padding:9px;border-radius:8px;font-size:14px"; row.appendChild(tin);
+      const setBtn = document.createElement("button"); setBtn.className = "mini"; setBtn.textContent = "設定"; setBtn.style.cssText = "padding:9px 14px"; row.appendChild(setBtn);
+      const st = document.createElement("div"); st.className = "desc"; st.style.cssText = "font-size:11px;margin-top:5px"; qBox.appendChild(st);
+      const applyTarget = async () => {
+        const h = quoteParseHandle_(tin.value);
+        if (!h) { st.innerHTML = '<span style="color:#ff8866">@かURLを正しく入れてな</span>'; return; }
+        CFG.quoteSingleTarget = h; save();
+        st.textContent = "設定中…";
+        try {
+          await gasFetch_("quoteTargetAdd", { screen_name: S.activeAccount, target: h }); /* プールにも登録して巡回対象にする */
+          const r = await gasFetch_("quoteTargetsList", { screen_name: S.activeAccount }); qTargets = (r && r.items) ? r.items : [];
+          tin.value = "@" + h;
+          st.innerHTML = '<span style="color:#3DFFA8">✅ @' + esc(h) + ' を対象に設定した</span>';
+        } catch (e) { st.innerHTML = '<span style="color:#ff8866">' + esc(e.message) + '</span>'; }
+      };
+      setBtn.onclick = applyTarget;
+      tin.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); applyTarget(); } };
+      if (CFG.quoteSingleTarget) st.innerHTML = '現在の対象: <b>@' + esc(CFG.quoteSingleTarget) + '</b>';
+      else st.innerHTML = '<span class="muted">まだ未指定。@かURLを入れて「設定」を押す。</span>';
+      /* 登録済みプールを候補として表示(タップで選択) */
+      if (qTargets.length) {
+        const chips = document.createElement("div"); chips.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-top:6px";
+        qTargets.forEach(t => { const b = document.createElement("button"); b.className = "chip" + (((CFG.quoteSingleTarget || "").toLowerCase() === t.target_username.toLowerCase()) ? " on" : ""); b.textContent = "@" + t.target_username; b.onclick = () => { CFG.quoteSingleTarget = t.target_username; save(); renderQuoteCfg(); }; chips.appendChild(b); });
+        qBox.appendChild(chips);
+      }
     }
     /* 投稿方法 */
     const pmLbl = document.createElement("div"); pmLbl.className = "desc"; pmLbl.style.cssText = "margin:10px 0 4px;font-size:11.5px"; pmLbl.textContent = "投稿のしかた"; qBox.appendChild(pmLbl);
@@ -3713,7 +3742,7 @@ BUILDERS.settings = (el) => {
     });
   }
   renderQuoteCfg();
-  /* 狙う相手プールを読み込んで「1つ指定」のドロップダウンに反映 */
+  /* 狙う相手プールを読み込んで「1つ指定」の候補に反映 */
   (async () => { try { const r = await gasFetch_("quoteTargetsList", { screen_name: S.activeAccount }); qTargets = (r && r.items) ? r.items : []; renderQuoteCfg(); } catch (e) {} })();
 
   /* NGワード */
