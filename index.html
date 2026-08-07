@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "242";
+const APP_VERSION = "245";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3686,7 +3686,7 @@ BUILDERS.settings = (el) => {
   /* ★v33: 🔁 引用RT(どの相手から引用するか) */
   fld(el, "🔁 引用RT(狙う相手の選び方)");
   const qNote = document.createElement("p"); qNote.className = "desc"; qNote.style.margin = "0 0 8px";
-  qNote.innerHTML = '狙ったアカウントの<b>直近24hでインプレ最上位の投稿</b>を、このアカウントの喋り方で引用ポストする。狙うアカウントの<b>追加</b>・<b>承認待ちの引用</b>は「分析 → 🔁引用RT」タブ。自動のON/OFFと1日上限は「クライアント管理」。';
+  qNote.innerHTML = '狙ったアカウントの<b>直近24hでインプレ最上位の投稿</b>を、このアカウントの喋り方でAIがコメントを考えて引用ポストします。狙う相手は<b>下でURL/@から登録</b>できます。<b>承認待ちの引用</b>は「分析 → 🔁引用RT」タブ。自動のON/OFFと1日上限は「クライアント管理」。';
   el.appendChild(qNote);
   const qBox = document.createElement("div"); el.appendChild(qBox);
   let qTargets = [];
@@ -3701,6 +3701,35 @@ BUILDERS.settings = (el) => {
       b.onclick = () => { CFG.quoteSelectMode = v; save(); renderQuoteCfg(); };
       selRow.appendChild(b);
     });
+    /* ★v34: ランダムなら「狙う相手を複数、@またはURLで登録」。この中から毎回ランダムに選ばれる */
+    if ((CFG.quoteSelectMode || "random") === "random") {
+      const rLb = document.createElement("div"); rLb.className = "desc"; rLb.style.cssText = "font-size:11.5px;margin:8px 0 4px"; rLb.textContent = "狙う相手を登録(何個でも・@ または プロフURL)。この中から毎回ランダムに1人選ばれます"; qBox.appendChild(rLb);
+      const rRow = document.createElement("div"); rRow.style.cssText = "display:flex;gap:6px"; qBox.appendChild(rRow);
+      const rin = document.createElement("input"); rin.placeholder = "@username または https://x.com/username"; rin.style.cssText = "flex:1;padding:9px;border-radius:8px;font-size:14px"; rRow.appendChild(rin);
+      const rBtn = document.createElement("button"); rBtn.className = "mini"; rBtn.textContent = "＋追加"; rBtn.style.cssText = "padding:9px 14px"; rRow.appendChild(rBtn);
+      const rst = document.createElement("div"); rst.className = "desc"; rst.style.cssText = "font-size:11px;margin-top:5px"; qBox.appendChild(rst);
+      const addR = async () => {
+        const h = quoteParseHandle_(rin.value);
+        if (!h) { rst.innerHTML = '<span style="color:#ff8866">@またはURLを正しく入力してください</span>'; return; }
+        rst.textContent = "追加中…";
+        try { await gasFetch_("quoteTargetAdd", { screen_name: S.activeAccount, target: h }); const r = await gasFetch_("quoteTargetsList", { screen_name: S.activeAccount }); qTargets = (r && r.items) ? r.items : []; rin.value = ""; renderQuoteCfg(); }
+        catch (e) { rst.innerHTML = '<span style="color:#ff8866">' + esc(e.message) + '</span>'; }
+      };
+      rBtn.onclick = addR; rin.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addR(); } };
+      if (qTargets.length) {
+        const chips = document.createElement("div"); chips.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px";
+        qTargets.forEach(t => {
+          const chip = document.createElement("span"); chip.style.cssText = "display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:14px;padding:5px 8px 5px 10px;font-size:12px;font-weight:700";
+          chip.appendChild(document.createTextNode("@" + t.target_username));
+          const x = document.createElement("button"); x.textContent = "✕"; x.style.cssText = "border:none;background:transparent;color:#ff7a7a;font-weight:800;cursor:pointer;padding:0 2px";
+          x.onclick = async () => { try { await gasFetch_("quoteTargetRemove", { id: t.id }); const r = await gasFetch_("quoteTargetsList", { screen_name: S.activeAccount }); qTargets = (r && r.items) ? r.items : []; renderQuoteCfg(); } catch (e) { alert(e.message); } };
+          chip.appendChild(x); chips.appendChild(chip);
+        });
+        qBox.appendChild(chips);
+      } else {
+        const none = document.createElement("div"); none.className = "muted"; none.style.cssText = "font-size:11px;margin-top:6px"; none.textContent = "まだ登録がありません。上で追加してください。"; qBox.appendChild(none);
+      }
+    }
     /* 1つ指定なら「対象を@またはURLで指定」する欄 */
     if ((CFG.quoteSelectMode || "random") === "single") {
       const sLb = document.createElement("div"); sLb.className = "desc"; sLb.style.cssText = "font-size:11.5px;margin:8px 0 4px"; sLb.textContent = "引用する対象アカウント(@ または プロフURL)"; qBox.appendChild(sLb);
@@ -3710,20 +3739,20 @@ BUILDERS.settings = (el) => {
       const st = document.createElement("div"); st.className = "desc"; st.style.cssText = "font-size:11px;margin-top:5px"; qBox.appendChild(st);
       const applyTarget = async () => {
         const h = quoteParseHandle_(tin.value);
-        if (!h) { st.innerHTML = '<span style="color:#ff8866">@かURLを正しく入れてな</span>'; return; }
+        if (!h) { st.innerHTML = '<span style="color:#ff8866">@またはURLを正しく入力してください</span>'; return; }
         CFG.quoteSingleTarget = h; save();
         st.textContent = "設定中…";
         try {
           await gasFetch_("quoteTargetAdd", { screen_name: S.activeAccount, target: h }); /* プールにも登録して巡回対象にする */
           const r = await gasFetch_("quoteTargetsList", { screen_name: S.activeAccount }); qTargets = (r && r.items) ? r.items : [];
           tin.value = "@" + h;
-          st.innerHTML = '<span style="color:#3DFFA8">✅ @' + esc(h) + ' を対象に設定した</span>';
+          st.innerHTML = '<span style="color:#3DFFA8">✅ @' + esc(h) + ' を対象に設定しました</span>';
         } catch (e) { st.innerHTML = '<span style="color:#ff8866">' + esc(e.message) + '</span>'; }
       };
       setBtn.onclick = applyTarget;
       tin.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); applyTarget(); } };
       if (CFG.quoteSingleTarget) st.innerHTML = '現在の対象: <b>@' + esc(CFG.quoteSingleTarget) + '</b>';
-      else st.innerHTML = '<span class="muted">まだ未指定。@かURLを入れて「設定」を押す。</span>';
+      else st.innerHTML = '<span class="muted">まだ未指定です。@またはURLを入力して「設定」を押してください。</span>';
       /* 登録済みプールを候補として表示(タップで選択) */
       if (qTargets.length) {
         const chips = document.createElement("div"); chips.style.cssText = "display:flex;flex-wrap:wrap;gap:5px;margin-top:6px";
@@ -4125,7 +4154,7 @@ async function prepareFlavorPosts(count, wrapEl, silent){
       made++;
     } catch(e) {}
   }
-  setMsg(made>0 ? ("✓ "+made+"本を画像つきで予約したで！時間が来たら自動で投稿される") : "予約に失敗した。もう一度試して", made===0);
+  setMsg(made>0 ? ("✓ "+made+"本を画像つきで予約しました。時間が来たら自動で投稿されます") : "予約に失敗しました。もう一度お試しください", made===0);
 }
 function composeShishaImage_(bg, opts) {
   return new Promise((resolve, reject) => {
@@ -5052,7 +5081,7 @@ BUILDERS.quote = (el) => {
       + '自動巡回: <b>' + (on ? "ON" : "OFF") + '</b>　/　選び方: <b>' + (single ? "📌1つ指定" : "🎲ランダム") + '</b>'
       + (single ? '（@' + esc(qcfg.quoteSingleTarget || "未指定") + '）' : '')
       + '　/　投稿: <b>' + (qcfg.quotePostMode === "auto" ? "⚡自動" : "✅承認") + '</b></div>'
-      + '<div class="muted" style="font-size:11px;margin-top:6px;line-height:1.7">・相手の選び方／投稿のしかた → <b>⚙生成設定</b>の「🔁引用RT」<br>・自動ON/OFF と 1日の上限(1/3/5/10) → <b>クライアント管理</b><br>このタブでは狙うアカウントの<b>追加</b>と<b>承認待ちの引用</b>をする。</div>';
+      + '<div class="muted" style="font-size:11px;margin-top:6px;line-height:1.7">・相手の選び方／投稿のしかた → <b>⚙生成設定</b>の「🔁引用RT」<br>・自動ON/OFF と 1日の上限(1/3/5/10) → <b>クライアント管理</b><br>このタブでは狙うアカウントの<b>追加</b>と<b>承認待ちの引用</b>を行います。</div>';
   }
 
   /* ターゲット追加フォーム */
@@ -5067,7 +5096,7 @@ BUILDERS.quote = (el) => {
 
   addB.onclick = async () => {
     const v = uin.value.trim(); if(!v) return;
-    if(!acct.value){ alert("先に自分のアカウントを選んでな"); return; }
+    if(!acct.value){ alert("先に自分のアカウントを選んでください"); return; }
     addB.disabled=true; const ob=addB.textContent; addB.textContent="追加中…";
     try {
       const r = await gasFetch_("quoteTargetAdd", { screen_name: acct.value, target: v });
@@ -5082,7 +5111,7 @@ BUILDERS.quote = (el) => {
     try {
       const r = await gasFetch_("quoteTargetsList", { screen_name: acct.value });
       const items = (r&&r.items)?r.items:[]; curTargets = items;
-      if(!items.length){ tgtBox.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">まだ登録なし。上で狙うアカウントを追加してな。</div>'; return; }
+      if(!items.length){ tgtBox.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">まだ登録がありません。上で狙うアカウントを追加してください。</div>'; return; }
       tgtBox.innerHTML = '<div style="font-weight:800;font-size:13px;margin:12px 2px 4px">📋 登録中のターゲット('+items.length+')</div>';
       items.forEach(it=>{
         const c=document.createElement("div"); c.className="card"; c.style.cssText="padding:10px 12px;margin-top:6px;display:flex;align-items:center;justify-content:space-between;gap:8px";
@@ -5100,6 +5129,80 @@ BUILDERS.quote = (el) => {
     } catch(e){ tgtBox.innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
   }
 
+  /* ★v34: 承認待ちの引用候補を、挨拶と同じ横スワイプで一気にさばく(右=引用 / 左=スキップ / ↩戻る) */
+  function openQuoteSwipe(items, onClose) {
+    if (!items || !items.length) return;
+    let idx = 0, busy = false;
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
+    const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "✕ 閉じる"; closeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
+    closeBtn.onclick = () => { overlay.remove(); if (onClose) onClose(); };
+    const backBtn = document.createElement("button"); backBtn.className = "mini"; backBtn.textContent = "↩ 戻る"; backBtn.style.cssText = "position:fixed;top:16px;left:16px;z-index:100000;display:none";
+    backBtn.onclick = () => { if (idx <= 0) return; idx--; renderCard(); };
+    const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
+    const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
+    const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
+    hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>引用する</b> →";
+    overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
+    document.body.appendChild(overlay);
+    function doApprove(it) { gasFetch_("quoteApprove", { id: it.id, text: it.quote_text }).catch(() => {}); }
+    function doSkip(it) { gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
+    function fly(card, dir) { busy = true; card.style.transition = "transform .3s, opacity .3s"; card.style.transform = "translateX(" + (dir > 0 ? "120%" : "-120%") + ") rotate(" + (dir * 8) + "deg)"; card.style.opacity = "0"; setTimeout(() => { idx++; renderCard(); }, 280); }
+    function attachSwipe(card, it, tint, label) {
+      let startX = 0, curX = 0, dragging = false;
+      const start = (x) => { if (busy) return; startX = x; dragging = true; card.style.transition = "none"; };
+      const move = (x) => {
+        if (!dragging) return; curX = x - startX;
+        card.style.transform = "translateX(" + curX + "px) rotate(" + (curX * 0.04) + "deg)";
+        const t = Math.min(Math.abs(curX) / 150, 0.85);
+        if (curX > 8) { tint.style.background = "rgba(255,158,196,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "引用 ↗"; label.style.color = "#ff9ec4"; label.style.opacity = String(t); }
+        else if (curX < -8) { tint.style.background = "rgba(127,212,255,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "スキップ"; label.style.color = "#7fd4ff"; label.style.opacity = String(t); }
+        else { tint.style.opacity = "0"; label.style.opacity = "0"; }
+      };
+      const end = () => {
+        if (!dragging) return; dragging = false;
+        if (busy) { card.style.transition = "transform .2s"; card.style.transform = ""; curX = 0; return; }
+        tint.style.opacity = "0"; label.style.opacity = "0";
+        if (curX > 110) { doApprove(it); fly(card, 1); }
+        else if (curX < -110) { doSkip(it); fly(card, -1); }
+        else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
+        curX = 0;
+      };
+      card.addEventListener("touchstart", (e) => start(e.touches[0].clientX), { passive: true });
+      card.addEventListener("touchmove", (e) => move(e.touches[0].clientX), { passive: true });
+      card.addEventListener("touchend", end);
+      card.addEventListener("mousedown", (e) => start(e.clientX));
+      card.addEventListener("mousemove", (e) => move(e.clientX));
+      card.addEventListener("mouseup", end);
+    }
+    function renderCard() {
+      busy = false; stack.innerHTML = "";
+      backBtn.style.display = idx > 0 ? "block" : "none";
+      if (idx >= items.length) { counter.textContent = ""; hint.style.display = "none"; stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px;font-size:16px;line-height:1.9">🎉 全部さばきました！<br>お疲れさまでした。</div>'; return; }
+      counter.textContent = (idx + 1) + " / " + items.length;
+      const it = items[idx];
+      const card = document.createElement("div");
+      card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;overflow-y:auto;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55)";
+      let html = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(it.target_username || "") + ' の投稿を引用' + (it.target_url ? ' ・<a href="' + esc(it.target_url) + '" target="_blank" style="color:var(--accent2)">元投稿</a>' : '') + '</div>';
+      html += '<div style="font-size:12.5px;line-height:1.6;white-space:pre-wrap;background:rgba(255,255,255,.05);border-radius:8px;padding:9px;margin-bottom:12px">' + esc(String(it.target_text || "").slice(0, 240)) + '</div>';
+      html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">あなたの引用コメント(AI生成)</div>';
+      html += '<div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap;font-weight:600">' + esc(it.quote_text || "") + '</div>';
+      card.innerHTML = html;
+      const okB = document.createElement("button"); okB.className = "mini cyan"; okB.style.cssText = "display:block;width:100%;margin-top:14px;padding:12px;font-size:14px;font-weight:800;position:relative;z-index:2"; okB.textContent = "🔁 引用する";
+      okB.onclick = () => { if (busy) return; doApprove(it); fly(card, 1); };
+      card.appendChild(okB);
+      const skB = document.createElement("button"); skB.className = "mini"; skB.style.cssText = "display:block;width:100%;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2"; skB.textContent = "スキップ";
+      skB.onclick = () => { if (busy) return; doSkip(it); fly(card, -1); };
+      card.appendChild(skB);
+      const tint = document.createElement("div"); tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
+      const label = document.createElement("div"); label.style.cssText = "position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:26px;font-weight:900;opacity:0;pointer-events:none;text-shadow:0 2px 10px rgba(0,0,0,.6);z-index:4";
+      card.appendChild(tint); card.appendChild(label);
+      stack.appendChild(card);
+      attachSwipe(card, it, tint, label);
+    }
+    renderCard();
+  }
+
   async function loadInbox() {
     inbox.innerHTML = '<div style="font-weight:800;font-size:13px;margin:4px 2px">📨 承認待ちの引用候補 <button id="qScanBtn" class="mini" style="float:right;padding:5px 10px;font-size:11px">今すぐ探す</button></div>';
     const scanBtn = inbox.querySelector("#qScanBtn");
@@ -5112,8 +5215,10 @@ BUILDERS.quote = (el) => {
     try {
       const r = await gasFetch_("quoteCandidates",{screen_name:acct.value});
       const items=(r&&r.items)?r.items:[];
-      if(!items.length){ listWrap.innerHTML='<div class="muted" style="padding:10px;font-size:12px">承認待ちなし。承認モードのターゲットに新しい投稿が来たらここに出る。「今すぐ探す」で手動チェックもできる(30分ごとに自動巡回)。</div>'; return; }
+      if(!items.length){ listWrap.innerHTML='<div class="muted" style="padding:10px;font-size:12px">承認待ちはありません。承認モードのターゲットに新しい投稿が来ると、ここに表示されます。「今すぐ探す」で手動チェックもできます(30分ごとに自動巡回)。</div>'; return; }
       listWrap.innerHTML="";
+      /* ★v34: 挨拶と同じ横スワイプで一気にさばく */
+      const swBtn=document.createElement("button"); swBtn.className="mini cyan"; swBtn.style.cssText="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px"; swBtn.textContent="🃏 スワイプで一気に引用 ("+items.length+"件)"; swBtn.onclick=()=>openQuoteSwipe(items.slice(), ()=>loadInbox()); listWrap.appendChild(swBtn);
       items.forEach(it=>{
         const c=document.createElement("div"); c.className="card"; c.style.cssText="padding:12px;margin-top:8px";
         c.innerHTML='<div class="muted" style="font-size:11px">@'+esc(it.target_username)+' の投稿を引用'+(it.target_url?' ・<a href="'+esc(it.target_url)+'" target="_blank" style="color:var(--accent2)">元投稿</a>':'')+'</div>'
@@ -5124,7 +5229,7 @@ BUILDERS.quote = (el) => {
         const okB=document.createElement("button"); okB.className="btn"; okB.style.cssText="flex:1;margin:0;padding:10px"; okB.textContent="🔁 引用する";
         const skB=document.createElement("button"); skB.className="mini"; skB.style.cssText="padding:10px 14px"; skB.textContent="スキップ";
         const outM=document.createElement("div"); outM.style.cssText="font-size:11px;margin-top:4px";
-        okB.onclick=async()=>{ okB.disabled=true; skB.disabled=true; okB.textContent="投稿中…"; try{ const rr=await gasFetch_("quoteApprove",{id:it.id,text:ta.value}); if(rr&&rr.ok){ c.style.opacity=".5"; okB.textContent="✓ 投稿した"; outM.innerHTML='<span style="color:#3DFFA8">引用完了</span>'; setTimeout(loadInbox,900);} else { outM.innerHTML='<span class="err">'+esc((rr&&rr.error)||"失敗")+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } }catch(e){ outM.innerHTML='<span class="err">'+esc(e.message)+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } };
+        okB.onclick=async()=>{ okB.disabled=true; skB.disabled=true; okB.textContent="投稿中…"; try{ const rr=await gasFetch_("quoteApprove",{id:it.id,text:ta.value}); if(rr&&rr.ok){ c.style.opacity=".5"; okB.textContent="✓ 投稿しました"; outM.innerHTML='<span style="color:#3DFFA8">引用しました</span>'; setTimeout(loadInbox,900);} else { outM.innerHTML='<span class="err">'+esc((rr&&rr.error)||"失敗")+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } }catch(e){ outM.innerHTML='<span class="err">'+esc(e.message)+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } };
         skB.onclick=async()=>{ skB.disabled=true; try{ await gasFetch_("quoteSkip",{id:it.id}); c.style.opacity=".4"; setTimeout(loadInbox,400); }catch(e){ alert(e.message); skB.disabled=false; } };
         row.appendChild(okB); row.appendChild(skB); c.appendChild(row); c.appendChild(outM);
         listWrap.appendChild(c);
@@ -5141,7 +5246,7 @@ BUILDERS.quote = (el) => {
     async function refreshAll(){ await loadTargets(); await loadQcfg(); renderSettings(); await loadInbox(); }
     acct.onchange = refreshAll;
     if(accounts.length){ await refreshAll(); }
-    else { setCard.style.display="none"; tgtBox.innerHTML='<div class="muted" style="padding:10px;font-size:12px">先にクライアントを登録してな。</div>'; }
+    else { setCard.style.display="none"; tgtBox.innerHTML='<div class="muted" style="padding:10px;font-size:12px">先にクライアントを登録してください。</div>'; }
   })();
 };
 
@@ -6002,7 +6107,7 @@ BUILDERS.calendar = (el) => {
           hitBtn.disabled = true; const ob = hitBtn.textContent; hitBtn.textContent = "取得中…";
           /* v230: 出力先は毎回取り直す(裏で再描画されても迷子にならない)。押した瞬間に取得中を出して反応を分かりやすく */
           const showOut = (html) => { const el = document.getElementById("hitCopyOut"); if (el) { el.innerHTML = html; el.scrollIntoView({behavior:"smooth", block:"nearest"}); } return el; };
-          showOut('<div class="muted" style="font-size:12px;margin-top:6px">取得中…（少し待ってな）</div>');
+          showOut('<div class="muted" style="font-size:12px;margin-top:6px">取得中…（少しお待ちください）</div>');
           try {
             const hj = await gasFetch_("hitList", { screen_name: acc || undefined, days: 0 });
             const rows = (hj && hj.rows) ? hj.rows : [];
@@ -6181,7 +6286,7 @@ BUILDERS.calendar = (el) => {
   trBtnRow.appendChild(mkMenuInfo("伸びてる投稿に気の利いたリプを返して見つけてもらう機能。中の項目：<br>・<b>🎯 バズってる投稿にリプする</b>＝登録した競合の直近12時間の投稿を『勢い＋インプレ』でランキング表示。<b style=\"color:#ffd34d\">🚀即バズ狙撃はここ</b>：バズる寸前の投稿が『🚀早リプ狙い目』として最上位に出る<br>・<b>🎯 バズってる投稿にリプする（フォロー外）</b>＝競合の登録なしでも、あなたの業種ジャンルで伸びてる投稿をX全体から検索。フォロー外の新しい層に見つけてもらえる新規開拓用<br>・<b>🎯 リプハンターPRO</b>＝裏で自動的に溜めておいた『リプすべき投稿』の一覧<br>どれも左スワイプでスルー／右スワイプでリプ", SEC.reply));
   [btnHunter, btnHunterOpen, btnHunterPro].forEach(function (b) { mbtn(b, SEC.reply); trBtnRow.appendChild(b); });
   /* ★v34: URL自動リプの手動版。伸びてる自動投稿に生成設定のURLを今すぐリプ欄で付ける */
-  const btnUrlReply = document.createElement("button"); btnUrlReply.textContent = "🔗 伸びてる投稿にURLでリプ(手動)";
+  const btnUrlReply = document.createElement("button"); btnUrlReply.textContent = "🔗 自分の伸びた投稿にURLをリプ(手動)";
   mbtn(btnUrlReply, SEC.reply); trBtnRow.appendChild(btnUrlReply);
   btnUrlReply.onclick = async () => {
     const screen = (acct.value || "").replace(/^@/, "");
@@ -6192,11 +6297,11 @@ BUILDERS.calendar = (el) => {
       const r = await gasFetch_("urlReplyScanNow", { screen_name: screen });
       if (r && r.error === "NO_URL") {
         trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⚠️ 生成設定でURLが設定されていません</div>'
-          + '<div class="muted" style="font-size:12px;margin-top:4px">リプに貼るURL(note・LINE公式・予約サイトなど)を先に設定してな。</div>'
+          + '<div class="muted" style="font-size:12px;margin-top:4px">リプに貼るURL(note・LINE公式・予約サイトなど)を先に設定してください。</div>'
           + '<button id="goUrlCfg" class="btn" style="margin-top:10px;padding:9px">⚙ URL設定はこちら（生成設定へ）</button></div>';
         const g = document.getElementById("goUrlCfg"); if (g) g.onclick = () => { showTab("settings"); if (typeof renderNav === "function") renderNav(); };
       } else if (r && r.replied > 0) {
-        trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#3DFFA8">✅ URLをリプしました</div><div class="muted" style="font-size:12px;margin-top:4px">伸びてる投稿のリプ欄にURLを付けたで。</div></div>';
+        trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#3DFFA8">✅ URLをリプしました</div><div class="muted" style="font-size:12px;margin-top:4px">自分の伸びている投稿のリプ欄にURLを付けました。</div></div>';
       } else if (r && r.error) {
         trOut.innerHTML = '<div class="err" style="padding:8px">' + esc(r.error) + '</div>';
       } else {
@@ -6801,7 +6906,7 @@ BUILDERS.calendar = (el) => {
     if (screen) { h += '<h3 style="font-size:14px;margin:0 0 6px">📈 フォロワー推移</h3>' + followerChart(fhist); }
     h += '<p class="muted" style="font-size:12px;margin:16px 0 14px">リプした相手が実際にフォローしてくださった率です。毎朝6時に自動で照合しています。</p>';
     if (!s || !s.total) {
-      h += '<div class="muted" style="padding:14px 0;line-height:1.9;font-size:13px">リプのフォロー率はまだデータ待ち。<br>リプ案を「↗Xリプ」やスワイプで送ると記録され、翌朝の照合で「リプ種別別フォロー率」「競合別フォロー率」が出るで。</div>';
+      h += '<div class="muted" style="padding:14px 0;line-height:1.9;font-size:13px">リプのフォロー率はまだデータ待ち。<br>リプ案を「↗Xリプ」やスワイプで送ると記録され、翌朝の照合で「リプ種別別フォロー率」「競合別フォロー率」が表示されます。</div>';
       box.innerHTML = h; return;
     }
     h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">';
