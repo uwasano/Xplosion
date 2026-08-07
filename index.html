@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "245";
+const APP_VERSION = "246";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5032,6 +5032,81 @@ BUILDERS.radar = (el) => {
   })();
 };
 
+/* ★v34: 承認待ちの引用候補を、挨拶と同じ横スワイプで一気にさばく(右=引用 / 左=スキップ / ↩戻る)。
+   引用RTタブと🎯メニューの両方から使うためグローバルに置く */
+function openQuoteSwipe(items, onClose) {
+  if (!items || !items.length) return;
+  let idx = 0, busy = false;
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
+  const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "✕ 閉じる"; closeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
+  closeBtn.onclick = () => { overlay.remove(); if (onClose) onClose(); };
+  const backBtn = document.createElement("button"); backBtn.className = "mini"; backBtn.textContent = "↩ 戻る"; backBtn.style.cssText = "position:fixed;top:16px;left:16px;z-index:100000;display:none";
+  backBtn.onclick = () => { if (idx <= 0) return; idx--; renderCard(); };
+  const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
+  const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
+  const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
+  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>引用する</b> →";
+  overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
+  document.body.appendChild(overlay);
+  function doApprove(it) { gasFetch_("quoteApprove", { id: it.id, text: it.quote_text }).catch(() => {}); }
+  function doSkip(it) { gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
+  function fly(card, dir) { busy = true; card.style.transition = "transform .3s, opacity .3s"; card.style.transform = "translateX(" + (dir > 0 ? "120%" : "-120%") + ") rotate(" + (dir * 8) + "deg)"; card.style.opacity = "0"; setTimeout(() => { idx++; renderCard(); }, 280); }
+  function attachSwipe(card, it, tint, label) {
+    let startX = 0, curX = 0, dragging = false;
+    const start = (x) => { if (busy) return; startX = x; dragging = true; card.style.transition = "none"; };
+    const move = (x) => {
+      if (!dragging) return; curX = x - startX;
+      card.style.transform = "translateX(" + curX + "px) rotate(" + (curX * 0.04) + "deg)";
+      const t = Math.min(Math.abs(curX) / 150, 0.85);
+      if (curX > 8) { tint.style.background = "rgba(255,158,196,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "引用 ↗"; label.style.color = "#ff9ec4"; label.style.opacity = String(t); }
+      else if (curX < -8) { tint.style.background = "rgba(127,212,255,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "スキップ"; label.style.color = "#7fd4ff"; label.style.opacity = String(t); }
+      else { tint.style.opacity = "0"; label.style.opacity = "0"; }
+    };
+    const end = () => {
+      if (!dragging) return; dragging = false;
+      if (busy) { card.style.transition = "transform .2s"; card.style.transform = ""; curX = 0; return; }
+      tint.style.opacity = "0"; label.style.opacity = "0";
+      if (curX > 110) { doApprove(it); fly(card, 1); }
+      else if (curX < -110) { doSkip(it); fly(card, -1); }
+      else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
+      curX = 0;
+    };
+    card.addEventListener("touchstart", (e) => start(e.touches[0].clientX), { passive: true });
+    card.addEventListener("touchmove", (e) => move(e.touches[0].clientX), { passive: true });
+    card.addEventListener("touchend", end);
+    card.addEventListener("mousedown", (e) => start(e.clientX));
+    card.addEventListener("mousemove", (e) => move(e.clientX));
+    card.addEventListener("mouseup", end);
+  }
+  function renderCard() {
+    busy = false; stack.innerHTML = "";
+    backBtn.style.display = idx > 0 ? "block" : "none";
+    if (idx >= items.length) { counter.textContent = ""; hint.style.display = "none"; stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px;font-size:16px;line-height:1.9">🎉 全部さばきました！<br>お疲れさまでした。</div>'; return; }
+    counter.textContent = (idx + 1) + " / " + items.length;
+    const it = items[idx];
+    const card = document.createElement("div");
+    card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;overflow-y:auto;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55)";
+    let html = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(it.target_username || "") + ' の投稿を引用' + (it.target_url ? ' ・<a href="' + esc(it.target_url) + '" target="_blank" style="color:var(--accent2)">元投稿</a>' : '') + '</div>';
+    html += '<div style="font-size:12.5px;line-height:1.6;white-space:pre-wrap;background:rgba(255,255,255,.05);border-radius:8px;padding:9px;margin-bottom:12px">' + esc(String(it.target_text || "").slice(0, 240)) + '</div>';
+    html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">あなたの引用コメント(AI生成・フック強め)</div>';
+    html += '<div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap;font-weight:600">' + esc(it.quote_text || "") + '</div>';
+    card.innerHTML = html;
+    const okB = document.createElement("button"); okB.className = "mini cyan"; okB.style.cssText = "display:block;width:100%;margin-top:14px;padding:12px;font-size:14px;font-weight:800;position:relative;z-index:2"; okB.textContent = "🔁 引用する";
+    okB.onclick = () => { if (busy) return; doApprove(it); fly(card, 1); };
+    card.appendChild(okB);
+    const skB = document.createElement("button"); skB.className = "mini"; skB.style.cssText = "display:block;width:100%;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2"; skB.textContent = "スキップ";
+    skB.onclick = () => { if (busy) return; doSkip(it); fly(card, -1); };
+    card.appendChild(skB);
+    const tint = document.createElement("div"); tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
+    const label = document.createElement("div"); label.style.cssText = "position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:26px;font-weight:900;opacity:0;pointer-events:none;text-shadow:0 2px 10px rgba(0,0,0,.6);z-index:4";
+    card.appendChild(tint); card.appendChild(label);
+    stack.appendChild(card);
+    attachSwipe(card, it, tint, label);
+  }
+  renderCard();
+}
+
 /* ---- 🔁 引用RT(狙い撃ち) ---- */
 BUILDERS.quote = (el) => {
   head(el, "🔁 引用RT(狙い撃ち)",
@@ -5129,79 +5204,7 @@ BUILDERS.quote = (el) => {
     } catch(e){ tgtBox.innerHTML='<div class="err">'+esc(e.message)+'</div>'; }
   }
 
-  /* ★v34: 承認待ちの引用候補を、挨拶と同じ横スワイプで一気にさばく(右=引用 / 左=スキップ / ↩戻る) */
-  function openQuoteSwipe(items, onClose) {
-    if (!items || !items.length) return;
-    let idx = 0, busy = false;
-    const overlay = document.createElement("div");
-    overlay.style.cssText = "position:fixed;inset:0;background:rgba(5,8,18,.97);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px";
-    const closeBtn = document.createElement("button"); closeBtn.className = "mini"; closeBtn.textContent = "✕ 閉じる"; closeBtn.style.cssText = "position:fixed;top:16px;right:16px;z-index:100000";
-    closeBtn.onclick = () => { overlay.remove(); if (onClose) onClose(); };
-    const backBtn = document.createElement("button"); backBtn.className = "mini"; backBtn.textContent = "↩ 戻る"; backBtn.style.cssText = "position:fixed;top:16px;left:16px;z-index:100000;display:none";
-    backBtn.onclick = () => { if (idx <= 0) return; idx--; renderCard(); };
-    const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
-    const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
-    const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
-    hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>引用する</b> →";
-    overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
-    document.body.appendChild(overlay);
-    function doApprove(it) { gasFetch_("quoteApprove", { id: it.id, text: it.quote_text }).catch(() => {}); }
-    function doSkip(it) { gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
-    function fly(card, dir) { busy = true; card.style.transition = "transform .3s, opacity .3s"; card.style.transform = "translateX(" + (dir > 0 ? "120%" : "-120%") + ") rotate(" + (dir * 8) + "deg)"; card.style.opacity = "0"; setTimeout(() => { idx++; renderCard(); }, 280); }
-    function attachSwipe(card, it, tint, label) {
-      let startX = 0, curX = 0, dragging = false;
-      const start = (x) => { if (busy) return; startX = x; dragging = true; card.style.transition = "none"; };
-      const move = (x) => {
-        if (!dragging) return; curX = x - startX;
-        card.style.transform = "translateX(" + curX + "px) rotate(" + (curX * 0.04) + "deg)";
-        const t = Math.min(Math.abs(curX) / 150, 0.85);
-        if (curX > 8) { tint.style.background = "rgba(255,158,196,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "引用 ↗"; label.style.color = "#ff9ec4"; label.style.opacity = String(t); }
-        else if (curX < -8) { tint.style.background = "rgba(127,212,255,.45)"; tint.style.opacity = String(t * 0.6); label.textContent = "スキップ"; label.style.color = "#7fd4ff"; label.style.opacity = String(t); }
-        else { tint.style.opacity = "0"; label.style.opacity = "0"; }
-      };
-      const end = () => {
-        if (!dragging) return; dragging = false;
-        if (busy) { card.style.transition = "transform .2s"; card.style.transform = ""; curX = 0; return; }
-        tint.style.opacity = "0"; label.style.opacity = "0";
-        if (curX > 110) { doApprove(it); fly(card, 1); }
-        else if (curX < -110) { doSkip(it); fly(card, -1); }
-        else { card.style.transition = "transform .2s, opacity .2s"; card.style.transform = ""; card.style.opacity = "1"; }
-        curX = 0;
-      };
-      card.addEventListener("touchstart", (e) => start(e.touches[0].clientX), { passive: true });
-      card.addEventListener("touchmove", (e) => move(e.touches[0].clientX), { passive: true });
-      card.addEventListener("touchend", end);
-      card.addEventListener("mousedown", (e) => start(e.clientX));
-      card.addEventListener("mousemove", (e) => move(e.clientX));
-      card.addEventListener("mouseup", end);
-    }
-    function renderCard() {
-      busy = false; stack.innerHTML = "";
-      backBtn.style.display = idx > 0 ? "block" : "none";
-      if (idx >= items.length) { counter.textContent = ""; hint.style.display = "none"; stack.innerHTML = '<div style="text-align:center;color:var(--muted);padding-top:60px;font-size:16px;line-height:1.9">🎉 全部さばきました！<br>お疲れさまでした。</div>'; return; }
-      counter.textContent = (idx + 1) + " / " + items.length;
-      const it = items[idx];
-      const card = document.createElement("div");
-      card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;overflow-y:auto;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55)";
-      let html = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(it.target_username || "") + ' の投稿を引用' + (it.target_url ? ' ・<a href="' + esc(it.target_url) + '" target="_blank" style="color:var(--accent2)">元投稿</a>' : '') + '</div>';
-      html += '<div style="font-size:12.5px;line-height:1.6;white-space:pre-wrap;background:rgba(255,255,255,.05);border-radius:8px;padding:9px;margin-bottom:12px">' + esc(String(it.target_text || "").slice(0, 240)) + '</div>';
-      html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">あなたの引用コメント(AI生成)</div>';
-      html += '<div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap;font-weight:600">' + esc(it.quote_text || "") + '</div>';
-      card.innerHTML = html;
-      const okB = document.createElement("button"); okB.className = "mini cyan"; okB.style.cssText = "display:block;width:100%;margin-top:14px;padding:12px;font-size:14px;font-weight:800;position:relative;z-index:2"; okB.textContent = "🔁 引用する";
-      okB.onclick = () => { if (busy) return; doApprove(it); fly(card, 1); };
-      card.appendChild(okB);
-      const skB = document.createElement("button"); skB.className = "mini"; skB.style.cssText = "display:block;width:100%;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2"; skB.textContent = "スキップ";
-      skB.onclick = () => { if (busy) return; doSkip(it); fly(card, -1); };
-      card.appendChild(skB);
-      const tint = document.createElement("div"); tint.style.cssText = "position:absolute;inset:0;border-radius:18px;pointer-events:none;opacity:0;transition:opacity .12s;z-index:3";
-      const label = document.createElement("div"); label.style.cssText = "position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:26px;font-weight:900;opacity:0;pointer-events:none;text-shadow:0 2px 10px rgba(0,0,0,.6);z-index:4";
-      card.appendChild(tint); card.appendChild(label);
-      stack.appendChild(card);
-      attachSwipe(card, it, tint, label);
-    }
-    renderCard();
-  }
+  /* openQuoteSwipe はグローバル関数に移動(🎯メニューからも使うため。すぐ下の loadInbox から呼ぶ) */
 
   async function loadInbox() {
     inbox.innerHTML = '<div style="font-weight:800;font-size:13px;margin:4px 2px">📨 承認待ちの引用候補 <button id="qScanBtn" class="mini" style="float:right;padding:5px 10px;font-size:11px">今すぐ探す</button></div>';
@@ -6285,30 +6288,29 @@ BUILDERS.calendar = (el) => {
   trBtnRow.appendChild(mkMenuHead("🎯 リプで絡んで見つけてもらう", SEC.reply));
   trBtnRow.appendChild(mkMenuInfo("伸びてる投稿に気の利いたリプを返して見つけてもらう機能。中の項目：<br>・<b>🎯 バズってる投稿にリプする</b>＝登録した競合の直近12時間の投稿を『勢い＋インプレ』でランキング表示。<b style=\"color:#ffd34d\">🚀即バズ狙撃はここ</b>：バズる寸前の投稿が『🚀早リプ狙い目』として最上位に出る<br>・<b>🎯 バズってる投稿にリプする（フォロー外）</b>＝競合の登録なしでも、あなたの業種ジャンルで伸びてる投稿をX全体から検索。フォロー外の新しい層に見つけてもらえる新規開拓用<br>・<b>🎯 リプハンターPRO</b>＝裏で自動的に溜めておいた『リプすべき投稿』の一覧<br>どれも左スワイプでスルー／右スワイプでリプ", SEC.reply));
   [btnHunter, btnHunterOpen, btnHunterPro].forEach(function (b) { mbtn(b, SEC.reply); trBtnRow.appendChild(b); });
-  /* ★v34: URL自動リプの手動版。伸びてる自動投稿に生成設定のURLを今すぐリプ欄で付ける */
-  const btnUrlReply = document.createElement("button"); btnUrlReply.textContent = "🔗 自分の伸びた投稿にURLをリプ(手動)";
-  mbtn(btnUrlReply, SEC.reply); trBtnRow.appendChild(btnUrlReply);
-  btnUrlReply.onclick = async () => {
+  /* ★v34: 引用RTの手動版。狙った相手の伸びてる投稿を、フック強めの引用コメントでAIが作成→スワイプで引用 */
+  const btnQuoteManual = document.createElement("button"); btnQuoteManual.textContent = "🔁 人の投稿を引用して絡む(手動)";
+  mbtn(btnQuoteManual, SEC.reply); trBtnRow.appendChild(btnQuoteManual);
+  btnQuoteManual.onclick = async () => {
     const screen = (acct.value || "").replace(/^@/, "");
     if (!screen) { trOut.innerHTML = '<div class="muted" style="padding:8px">先にアカウントを選んでください。</div>'; return; }
-    btnUrlReply.disabled = true; const ob = btnUrlReply.textContent; btnUrlReply.textContent = "実行中…";
-    trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">伸びてる自動投稿を探して、生成設定のURLをリプ欄に付けています…</div>';
+    btnQuoteManual.disabled = true; const ob = btnQuoteManual.textContent; btnQuoteManual.textContent = "候補を探しています…";
+    trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">狙った相手の伸びてる投稿を探して、引用コメントを作成しています…（10〜20秒）</div>';
     try {
-      const r = await gasFetch_("urlReplyScanNow", { screen_name: screen });
-      if (r && r.error === "NO_URL") {
-        trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⚠️ 生成設定でURLが設定されていません</div>'
-          + '<div class="muted" style="font-size:12px;margin-top:4px">リプに貼るURL(note・LINE公式・予約サイトなど)を先に設定してください。</div>'
-          + '<button id="goUrlCfg" class="btn" style="margin-top:10px;padding:9px">⚙ URL設定はこちら（生成設定へ）</button></div>';
-        const g = document.getElementById("goUrlCfg"); if (g) g.onclick = () => { showTab("settings"); if (typeof renderNav === "function") renderNav(); };
-      } else if (r && r.replied > 0) {
-        trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#3DFFA8">✅ URLをリプしました</div><div class="muted" style="font-size:12px;margin-top:4px">自分の伸びている投稿のリプ欄にURLを付けました。</div></div>';
-      } else if (r && r.error) {
-        trOut.innerHTML = '<div class="err" style="padding:8px">' + esc(r.error) + '</div>';
+      await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない) */
+      const cj = await gasFetch_("quoteCandidates", { screen_name: screen });
+      const cands = (cj && cj.items) ? cj.items : [];
+      if (cands.length) {
+        trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">候補 ' + cands.length + ' 件。スワイプで引用していけます。</div>';
+        openQuoteSwipe(cands.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。もう一度ボタンを押すと次の候補を探します。</div>'; });
       } else {
-        trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">' + esc((r && r.note) || "URLを付けられる投稿が今はありません(ノウハウ/トレンド/炎上の自動投稿が直近30hに必要)") + '</div>';
+        trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補がありませんでした</div>'
+          + '<div class="muted" style="font-size:12px;margin-top:4px">狙う相手が未登録か、相手の直近24時間に引用できる投稿がない可能性があります。生成設定の「🔁引用RT」で狙う相手(URL/@)を登録してください。</div>'
+          + '<button id="goQuoteCfg" class="btn" style="margin-top:10px;padding:9px">⚙ 引用RTの設定へ（生成設定）</button></div>';
+        const g = document.getElementById("goQuoteCfg"); if (g) g.onclick = () => { showTab("settings"); if (typeof renderNav === "function") renderNav(); };
       }
     } catch (e) { trOut.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
-    btnUrlReply.disabled = false; btnUrlReply.textContent = ob;
+    btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob;
   };
 
   trBtnRow.appendChild(mkMenuHead("👋 フォロワーを増やす", SEC.follow));
