@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "248";
+const APP_VERSION = "249";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5037,7 +5037,19 @@ BUILDERS.radar = (el) => {
   })();
 };
 
-/* ★v34: 承認待ちの引用候補を、挨拶と同じ横スワイプで一気にさばく(右=引用 / 左=スキップ / ↩戻る)。
+/* ★v34: 引用ポスト作成画面をXで開く＋コメントをクリップボードにコピー(自分で最終確認して投稿)。
+   iOS対策: ジェスチャー内で最優先にXを開く→そのあとコピー(先に非同期を挟むとブロックされる) */
+function xQuoteIntent(it, textOverride) {
+  const text = (textOverride != null ? textOverride : (it.quote_text || "")) || "";
+  let turl = it.target_url || "";
+  if (!turl && it.target_username && it.target_tweet_id) turl = "https://x.com/" + it.target_username + "/status/" + it.target_tweet_id;
+  const intent = "https://x.com/intent/tweet?text=" + encodeURIComponent(text) + (turl ? "&url=" + encodeURIComponent(turl) : "");
+  let w = null; try { w = window.open(intent, "_blank"); } catch (e) {}
+  if (!w) { try { location.href = intent; } catch (e) {} }
+  try { navigator.clipboard.writeText(text); } catch (e) {}
+}
+
+/* ★v34: 承認待ちの引用候補を、挨拶と同じ横スワイプで一気にさばく(右=引用画面へ / 左=スキップ / ↩戻る)。
    引用RTタブと🎯メニューの両方から使うためグローバルに置く */
 function openQuoteSwipe(items, onClose) {
   if (!items || !items.length) return;
@@ -5051,10 +5063,11 @@ function openQuoteSwipe(items, onClose) {
   const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
   const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
   const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
-  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>引用する</b> →";
+  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>Xの引用画面へ</b> →<br><span style='font-size:11px'>コメントはコピー済み。Xで確認して投稿</span>";
   overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
   document.body.appendChild(overlay);
-  function doApprove(it) { gasFetch_("quoteApprove", { id: it.id, text: it.quote_text }).catch(() => {}); }
+  /* 右=Xの引用作成画面を開く(コメントはコピー)＋この候補は処理済みにして次へ */
+  function doApprove(it) { xQuoteIntent(it); gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
   function doSkip(it) { gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
   function fly(card, dir) { busy = true; card.style.transition = "transform .3s, opacity .3s"; card.style.transform = "translateX(" + (dir > 0 ? "120%" : "-120%") + ") rotate(" + (dir * 8) + "deg)"; card.style.opacity = "0"; setTimeout(() => { idx++; renderCard(); }, 280); }
   function attachSwipe(card, it, tint, label) {
@@ -5097,7 +5110,7 @@ function openQuoteSwipe(items, onClose) {
     html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">あなたの引用コメント(AI生成・フック強め)</div>';
     html += '<div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap;font-weight:600">' + esc(it.quote_text || "") + '</div>';
     card.innerHTML = html;
-    const okB = document.createElement("button"); okB.className = "mini cyan"; okB.style.cssText = "display:block;width:100%;margin-top:14px;padding:12px;font-size:14px;font-weight:800;position:relative;z-index:2"; okB.textContent = "🔁 引用する";
+    const okB = document.createElement("button"); okB.className = "mini cyan"; okB.style.cssText = "display:block;width:100%;margin-top:14px;padding:12px;font-size:14px;font-weight:800;position:relative;z-index:2"; okB.textContent = "🔁 Xで引用する（コメントはコピー）";
     okB.onclick = () => { if (busy) return; doApprove(it); fly(card, 1); };
     card.appendChild(okB);
     const skB = document.createElement("button"); skB.className = "mini"; skB.style.cssText = "display:block;width:100%;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2"; skB.textContent = "スキップ";
@@ -5234,10 +5247,11 @@ BUILDERS.quote = (el) => {
         const ta=document.createElement("textarea"); ta.value=it.quote_text||""; ta.style.cssText="width:100%;height:80px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:13px;padding:8px";
         c.appendChild(ta);
         const row=document.createElement("div"); row.style.cssText="display:flex;gap:8px;margin-top:8px";
-        const okB=document.createElement("button"); okB.className="btn"; okB.style.cssText="flex:1;margin:0;padding:10px"; okB.textContent="🔁 引用する";
+        const okB=document.createElement("button"); okB.className="btn"; okB.style.cssText="flex:1;margin:0;padding:10px"; okB.textContent="🔁 Xで引用";
         const skB=document.createElement("button"); skB.className="mini"; skB.style.cssText="padding:10px 14px"; skB.textContent="スキップ";
         const outM=document.createElement("div"); outM.style.cssText="font-size:11px;margin-top:4px";
-        okB.onclick=async()=>{ okB.disabled=true; skB.disabled=true; okB.textContent="投稿中…"; try{ const rr=await gasFetch_("quoteApprove",{id:it.id,text:ta.value}); if(rr&&rr.ok){ c.style.opacity=".5"; okB.textContent="✓ 投稿しました"; outM.innerHTML='<span style="color:#3DFFA8">引用しました</span>'; setTimeout(loadInbox,900);} else { outM.innerHTML='<span class="err">'+esc((rr&&rr.error)||"失敗")+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } }catch(e){ outM.innerHTML='<span class="err">'+esc(e.message)+'</span>'; okB.disabled=false; skB.disabled=false; okB.textContent="🔁 引用する"; } };
+        /* Xの引用作成画面を開く(コメントはコピー)＝ジェスチャー内で同期的に開く。そのあと処理済みにする */
+        okB.onclick=()=>{ xQuoteIntent(it, ta.value); c.style.opacity=".5"; okB.textContent="✓ Xを開きました"; outM.innerHTML='<span style="color:#3DFFA8">コメントはコピー済み。Xで確認して投稿してください</span>'; gasFetch_("quoteSkip",{id:it.id}).catch(()=>{}); setTimeout(loadInbox,1200); };
         skB.onclick=async()=>{ skB.disabled=true; try{ await gasFetch_("quoteSkip",{id:it.id}); c.style.opacity=".4"; setTimeout(loadInbox,400); }catch(e){ alert(e.message); skB.disabled=false; } };
         row.appendChild(okB); row.appendChild(skB); c.appendChild(row); c.appendChild(outM);
         listWrap.appendChild(c);
