@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "256";
+const APP_VERSION = "257";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6347,16 +6347,7 @@ BUILDERS.calendar = (el) => {
       /* 承認待ちが無い時だけ新規スキャン */
       btnQuoteManual.textContent = "候補を探しています…";
       trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">狙った相手の伸びてる投稿を探して、引用コメントを作成しています…（10〜20秒）</div>';
-      let sr = await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない) */
-      if (isBusy_(sr)) { await new Promise(r => setTimeout(r, 2500)); sr = await gasFetch_("quoteScanNow", { screen_name: screen }); } /* 一過性→2.5秒待って1回だけ自動再試行 */
-      if (isBusy_(sr)) {
-        /* ★v44: 原因確定のため、生のエラー詳細を必ず表示する */
-        const detail = esc(String((sr && (sr.error || (sr.fetchLimit ? "fetchLimit(ガード)" : ""))) || "不明")).slice(0, 400);
-        trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⏳ 取得に失敗しました</div>'
-          + '<div class="muted" style="font-size:12px;margin-top:4px;line-height:1.7">数秒おいてもう一度お試しください。続く場合は下の「詳細」をそのまま松岡さんに送ってください。</div>'
-          + '<div class="muted" style="font-size:10.5px;margin-top:6px;word-break:break-all;background:rgba(255,255,255,.05);border-radius:6px;padding:6px">詳細: ' + detail + '</div></div>';
-        btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; return;
-      }
+      const sr = await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない)。結果理由もsr.resultsで返る */
       const cj = await gasFetch_("quoteCandidates", { screen_name: screen });
       const cands = (cj && cj.items) ? cj.items : [];
       if (cands.length) {
@@ -6376,9 +6367,12 @@ BUILDERS.calendar = (el) => {
           }
         }
         let h = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補が出ませんでした</div>';
-        if (!dg) { h += '<div class="err" style="margin-top:6px">診断に失敗しました。GASを最新にしてください。</div>'; }
-        else if (isBusy_(dg)) { h += '<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.7">⏳ 一時的に混み合っただけです。数秒おいて、もう一度ボタンを押してください（上限にはまだ余裕あり）。</div>'; }
-        else if (dg.error) { h += '<div class="err" style="margin-top:6px">' + esc(dg.error) + '</div>'; }
+        /* ★v47: スキャンの"本当の理由"を最優先で表示(握りつぶさない) */
+        if (sr && sr.error) h += '<div class="err" style="margin-top:6px;font-size:11px;word-break:break-all">スキャンエラー: ' + esc(String(sr.error).slice(0, 300)) + '</div>';
+        if (sr && sr.results && sr.results.length) { h += '<div style="font-size:12px;margin-top:6px;line-height:1.8">'; sr.results.forEach(r => { h += '・@' + esc(r.screen) + ' → ' + esc(String(r.error || r.reason || (r.ok ? ('作成: @' + r.target) : '不明'))) + '<br>'; }); h += '</div>'; }
+        if (cj && cj.error) h += '<div class="err" style="margin-top:6px;font-size:11px;word-break:break-all">候補取得エラー: ' + esc(String(cj.error).slice(0, 300)) + '</div>';
+        if (!dg) { h += '<div class="muted" style="margin-top:6px;font-size:11px">（詳細診断は取得できず）</div>'; }
+        else if (dg.error) { h += '<div class="err" style="margin-top:6px;font-size:11px;word-break:break-all">診断エラー: ' + esc(String(dg.error).slice(0, 300)) + '</div>'; }
         else {
           if (!dg.apiKey) h += '<div class="err" style="margin-top:6px">⚠️ X APIキーが未設定です（相手の投稿が取得できません）。</div>';
           if (!dg.targets || !dg.targets.length) {
