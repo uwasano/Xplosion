@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "249";
+const APP_VERSION = "251";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2288,12 +2288,18 @@ function defaultCfg() {
   };
 }
 
-/* @やURLからユーザー名だけ取り出す(引用RTの対象指定用) */
+/* @やURLからユーザー名だけ取り出す(引用RTの対象指定用)。
+   X/TwitterのURL(www./mobile./?s=..付き・status付き等)からも確実に抜く。認識できなければ空を返す(ゴミ登録を防ぐ) */
 function quoteParseHandle_(s) {
   s = String(s || "").trim();
-  const m = s.match(/(?:x\.com|twitter\.com)\/@?([A-Za-z0-9_]{1,15})/i);
-  if (m) return m[1];
-  return s.replace(/^@/, "").replace(/[^A-Za-z0-9_]/g, "").slice(0, 15);
+  if (!s) return "";
+  s = s.split(/[?#\s]/)[0].trim(); /* クエリ/フラグメント/末尾スペースを除去 */
+  const RES = /^(home|explore|notifications|messages|i|intent|search|hashtag|settings|compose|status|share|about|tos|privacy)$/i;
+  const um = s.match(/(?:x|twitter)\.com\/@?([A-Za-z0-9_]{1,15})/i); /* X/TwitterのURL */
+  if (um) return RES.test(um[1]) ? "" : um[1];
+  if (/https?:\/\//i.test(s) || /\.[a-z]{2,}\//i.test(s)) return ""; /* X以外のURLっぽい→無効(ゴミ化させない) */
+  const bm = s.replace(/^@/, "").match(/^([A-Za-z0-9_]{1,15})$/); /* 素の@handle / handle */
+  return bm ? bm[1] : "";
 }
 
 /* 現在アクティブなアカウントの設定。各AI機能はこれを読む */
@@ -3710,15 +3716,25 @@ BUILDERS.settings = (el) => {
     if ((CFG.quoteSelectMode || "random") === "random") {
       const rLb = document.createElement("div"); rLb.className = "desc"; rLb.style.cssText = "font-size:11.5px;margin:8px 0 4px"; rLb.textContent = "狙う相手を登録(何個でも・@ または プロフURL)。この中から毎回ランダムに1人選ばれます"; qBox.appendChild(rLb);
       const rRow = document.createElement("div"); rRow.style.cssText = "display:flex;gap:6px"; qBox.appendChild(rRow);
-      const rin = document.createElement("input"); rin.placeholder = "@username または https://x.com/username"; rin.style.cssText = "flex:1;padding:9px;border-radius:8px;font-size:14px"; rRow.appendChild(rin);
+      const rin = document.createElement("input"); rin.placeholder = "@username または https://x.com/username（複数OK）"; rin.style.cssText = "flex:1;padding:9px;border-radius:8px;font-size:14px"; rRow.appendChild(rin);
       const rBtn = document.createElement("button"); rBtn.className = "mini"; rBtn.textContent = "＋追加"; rBtn.style.cssText = "padding:9px 14px"; rRow.appendChild(rBtn);
       const rst = document.createElement("div"); rst.className = "desc"; rst.style.cssText = "font-size:11px;margin-top:5px"; qBox.appendChild(rst);
+      const parseMany_ = () => [...new Set(rin.value.split(/[\s,、\n]+/).map(x => x.trim()).filter(Boolean).map(quoteParseHandle_).filter(Boolean))];
+      /* 入力中に「→ @xxx を追加」を即表示(認識できてるか一目で分かる) */
+      rin.oninput = () => {
+        const hs = parseMany_();
+        rst.innerHTML = hs.length ? '<span style="color:#3DFFA8">→ ' + hs.map(h => "@" + esc(h)).join(" ") + ' を追加</span>'
+          : (rin.value.trim() ? '<span style="color:#ff8866">@ か Xのプロフ URL を入れてください</span>' : '');
+      };
       const addR = async () => {
-        const h = quoteParseHandle_(rin.value);
-        if (!h) { rst.innerHTML = '<span style="color:#ff8866">@またはURLを正しく入力してください</span>'; return; }
-        rst.textContent = "追加中…";
-        try { await gasFetch_("quoteTargetAdd", { screen_name: S.activeAccount, target: h }); const r = await gasFetch_("quoteTargetsList", { screen_name: S.activeAccount }); qTargets = (r && r.items) ? r.items : []; rin.value = ""; renderQuoteCfg(); }
-        catch (e) { rst.innerHTML = '<span style="color:#ff8866">' + esc(e.message) + '</span>'; }
+        const hs = parseMany_();
+        if (!hs.length) { rst.innerHTML = '<span style="color:#ff8866">@ か Xのプロフ URL を入れてください（例: https://x.com/username）</span>'; return; }
+        rBtn.disabled = true; rst.textContent = "追加中…";
+        let ok = 0;
+        for (const h of hs) { try { await gasFetch_("quoteTargetAdd", { screen_name: S.activeAccount, target: h }); ok++; } catch (e) {} }
+        try { const r = await gasFetch_("quoteTargetsList", { screen_name: S.activeAccount }); qTargets = (r && r.items) ? r.items : []; } catch (e) {}
+        rin.value = ""; renderQuoteCfg();
+        if (typeof toast === "function") toast("🎯 " + ok + "件追加しました", "ok");
       };
       rBtn.onclick = addR; rin.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addR(); } };
       if (qTargets.length) {
@@ -3742,9 +3758,14 @@ BUILDERS.settings = (el) => {
       const tin = document.createElement("input"); tin.placeholder = "@username または https://x.com/username"; tin.value = CFG.quoteSingleTarget ? ("@" + CFG.quoteSingleTarget) : ""; tin.style.cssText = "flex:1;padding:9px;border-radius:8px;font-size:14px"; row.appendChild(tin);
       const setBtn = document.createElement("button"); setBtn.className = "mini"; setBtn.textContent = "設定"; setBtn.style.cssText = "padding:9px 14px"; row.appendChild(setBtn);
       const st = document.createElement("div"); st.className = "desc"; st.style.cssText = "font-size:11px;margin-top:5px"; qBox.appendChild(st);
+      tin.oninput = () => {
+        const h = quoteParseHandle_(tin.value);
+        if (!tin.value.trim()) { st.innerHTML = CFG.quoteSingleTarget ? '現在の対象: <b>@' + esc(CFG.quoteSingleTarget) + '</b>' : ''; return; }
+        st.innerHTML = h ? '<span style="color:#3DFFA8">→ @' + esc(h) + ' に設定（「設定」を押す）</span>' : '<span style="color:#ff8866">@ か Xのプロフ URL を入れてください</span>';
+      };
       const applyTarget = async () => {
         const h = quoteParseHandle_(tin.value);
-        if (!h) { st.innerHTML = '<span style="color:#ff8866">@またはURLを正しく入力してください</span>'; return; }
+        if (!h) { st.innerHTML = '<span style="color:#ff8866">@ か Xのプロフ URL を入れてください（例: https://x.com/username）</span>'; return; }
         CFG.quoteSingleTarget = h; save();
         st.textContent = "設定中…";
         try {
@@ -6316,7 +6337,10 @@ BUILDERS.calendar = (el) => {
     btnQuoteManual.disabled = true; const ob = btnQuoteManual.textContent; btnQuoteManual.textContent = "候補を探しています…";
     trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">狙った相手の伸びてる投稿を探して、引用コメントを作成しています…（10〜20秒）</div>';
     try {
-      await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない) */
+      const isQuota_ = (x) => !!(x && (x.fetchLimit || (x.error && /urlfetch|多すぎ|too many|quota/i.test(String(x.error)))));
+      const quotaHtml_ = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⏳ 本日のアクセス上限に達しています</div><div class="muted" style="font-size:12px;margin-top:4px;line-height:1.7">GASの1日のUrlFetch上限（Supabase・X API・AIの合算回数）に達しています。<b>日本時間の夕方(16〜17時ごろ)に自動リセット</b>されます。時間をおいて再度お試しください。</div></div>';
+      const sr = await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない) */
+      if (isQuota_(sr)) { trOut.innerHTML = quotaHtml_; btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; return; }
       const cj = await gasFetch_("quoteCandidates", { screen_name: screen });
       const cands = (cj && cj.items) ? cj.items : [];
       if (cands.length) {
@@ -6326,7 +6350,8 @@ BUILDERS.calendar = (el) => {
         /* ★v34: 候補ゼロ→その場で診断して「どこで繋がってないか」を出す */
         let dg = null; try { dg = await gasFetch_("quoteDiag", { screen_name: screen }); } catch (e) {}
         let h = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補が出ませんでした</div>';
-        if (!dg) { h += '<div class="err" style="margin-top:6px">診断に失敗しました。GASを最新(v39)にしてください。</div>'; }
+        if (!dg) { h += '<div class="err" style="margin-top:6px">診断に失敗しました。GASを最新にしてください。</div>'; }
+        else if (isQuota_(dg)) { h += '<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.7">⏳ 本日のGASアクセス上限(UrlFetch)に達しているため、相手投稿の確認をスキップしました。夕方(日本時間16〜17時ごろ)に自動リセットされます。</div>'; }
         else if (dg.error) { h += '<div class="err" style="margin-top:6px">' + esc(dg.error) + '</div>'; }
         else {
           if (!dg.apiKey) h += '<div class="err" style="margin-top:6px">⚠️ X APIキーが未設定です（相手の投稿が取得できません）。</div>';
