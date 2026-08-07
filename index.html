@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "252";
+const APP_VERSION = "253";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6337,10 +6337,11 @@ BUILDERS.calendar = (el) => {
     btnQuoteManual.disabled = true; const ob = btnQuoteManual.textContent; btnQuoteManual.textContent = "候補を探しています…";
     trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">狙った相手の伸びてる投稿を探して、引用コメントを作成しています…（10〜20秒）</div>';
     try {
-      const isQuota_ = (x) => !!(x && (x.fetchLimit || (x.error && /urlfetch|多すぎ|too many|quota/i.test(String(x.error)))));
-      const quotaHtml_ = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⏳ 本日のアクセス上限に達しています</div><div class="muted" style="font-size:12px;margin-top:4px;line-height:1.7">GASの1日のUrlFetch上限（Supabase・X API・AIの合算回数）に達しています。<b>日本時間の夕方(16〜17時ごろ)に自動リセット</b>されます。時間をおいて再度お試しください。</div></div>';
-      const sr = await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない) */
-      if (isQuota_(sr)) { trOut.innerHTML = quotaHtml_; btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; return; }
+      const isBusy_ = (x) => !!(x && (x.fetchLimit || (x.error && /urlfetch|多すぎ|too many|quota|rate|一時的|しばらく/i.test(String(x.error)))));
+      const busyHtml_ = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⏳ 一時的に混み合っています</div><div class="muted" style="font-size:12px;margin-top:4px;line-height:1.7">Xの取得が一瞬だけ混み合いました（1日の上限にはまだ余裕があります）。数秒おいて、もう一度ボタンを押してください。</div></div>';
+      let sr = await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない) */
+      if (isBusy_(sr)) { await new Promise(r => setTimeout(r, 2500)); sr = await gasFetch_("quoteScanNow", { screen_name: screen }); } /* 一過性→2.5秒待って1回だけ自動再試行 */
+      if (isBusy_(sr)) { trOut.innerHTML = busyHtml_; btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; return; }
       const cj = await gasFetch_("quoteCandidates", { screen_name: screen });
       const cands = (cj && cj.items) ? cj.items : [];
       if (cands.length) {
@@ -6350,7 +6351,7 @@ BUILDERS.calendar = (el) => {
         /* ★v34: 候補ゼロ→その場で診断して「どこで繋がってないか」を出す */
         let dg = null; try { dg = await gasFetch_("quoteDiag", { screen_name: screen }); } catch (e) {}
         /* ★v44: 承認待ちが実在するのに0で返った=取り出しが一過性でコケただけ→取り直してスワイプを開く救済 */
-        if (dg && dg.pending > 0 && !isQuota_(dg)) {
+        if (dg && dg.pending > 0 && !isBusy_(dg)) {
           let cj2 = null; try { cj2 = await gasFetch_("quoteCandidates", { screen_name: screen }); } catch (e) {}
           const cands2 = (cj2 && cj2.items) ? cj2.items : [];
           if (cands2.length) {
@@ -6361,7 +6362,7 @@ BUILDERS.calendar = (el) => {
         }
         let h = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補が出ませんでした</div>';
         if (!dg) { h += '<div class="err" style="margin-top:6px">診断に失敗しました。GASを最新にしてください。</div>'; }
-        else if (isQuota_(dg)) { h += '<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.7">⏳ 本日のGASアクセス上限(UrlFetch)に達しているため、相手投稿の確認をスキップしました。夕方(日本時間16〜17時ごろ)に自動リセットされます。</div>'; }
+        else if (isBusy_(dg)) { h += '<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.7">⏳ 一時的に混み合っただけです。数秒おいて、もう一度ボタンを押してください（上限にはまだ余裕あり）。</div>'; }
         else if (dg.error) { h += '<div class="err" style="margin-top:6px">' + esc(dg.error) + '</div>'; }
         else {
           if (!dg.apiKey) h += '<div class="err" style="margin-top:6px">⚠️ X APIキーが未設定です（相手の投稿が取得できません）。</div>';
