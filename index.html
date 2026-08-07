@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "251";
+const APP_VERSION = "252";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6349,6 +6349,16 @@ BUILDERS.calendar = (el) => {
       } else {
         /* ★v34: 候補ゼロ→その場で診断して「どこで繋がってないか」を出す */
         let dg = null; try { dg = await gasFetch_("quoteDiag", { screen_name: screen }); } catch (e) {}
+        /* ★v44: 承認待ちが実在するのに0で返った=取り出しが一過性でコケただけ→取り直してスワイプを開く救済 */
+        if (dg && dg.pending > 0 && !isQuota_(dg)) {
+          let cj2 = null; try { cj2 = await gasFetch_("quoteCandidates", { screen_name: screen }); } catch (e) {}
+          const cands2 = (cj2 && cj2.items) ? cj2.items : [];
+          if (cands2.length) {
+            trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">承認待ち ' + cands2.length + ' 件。スワイプで引用していけます。</div>';
+            openQuoteSwipe(cands2.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。もう一度ボタンを押すと次の候補を探します。</div>'; });
+            btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; return;
+          }
+        }
         let h = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補が出ませんでした</div>';
         if (!dg) { h += '<div class="err" style="margin-top:6px">診断に失敗しました。GASを最新にしてください。</div>'; }
         else if (isQuota_(dg)) { h += '<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.7">⏳ 本日のGASアクセス上限(UrlFetch)に達しているため、相手投稿の確認をスキップしました。夕方(日本時間16〜17時ごろ)に自動リセットされます。</div>'; }
@@ -6377,9 +6387,12 @@ BUILDERS.calendar = (el) => {
             if (en.length && dg.perTarget.every(t => !t.pickable)) h += '<div class="muted" style="font-size:11.5px;margin-top:6px">→ 相手が直近24時間に投稿していないか、既に引用済みが多いようです。相手を増やすか、時間をおいて試してください。</div>';
           }
         }
+        if (dg && dg.pending > 0) h += '<button id="qOpenPending" class="mini cyan" style="width:100%;margin-top:10px;padding:11px;font-weight:800">🃏 承認待ち' + dg.pending + '件をスワイプで開く</button>';
         h += '<button id="goQuoteCfg" class="btn" style="margin-top:10px;padding:9px">⚙ 引用RTの設定へ（生成設定）</button></div>';
         trOut.innerHTML = h;
         const g = document.getElementById("goQuoteCfg"); if (g) g.onclick = () => { showTab("settings"); if (typeof renderNav === "function") renderNav(); };
+        const qop = document.getElementById("qOpenPending");
+        if (qop) qop.onclick = async () => { qop.disabled = true; qop.textContent = "取得中…"; try { const cj3 = await gasFetch_("quoteCandidates", { screen_name: screen }); const c3 = (cj3 && cj3.items) ? cj3.items : []; if (c3.length) { openQuoteSwipe(c3.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。</div>'; }); } else { qop.textContent = "承認待ちが取得できませんでした（少し待って再度）"; } } catch (e) { qop.disabled = false; qop.textContent = "🃏 もう一度開く"; } };
       }
     } catch (e) { trOut.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
     btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob;
