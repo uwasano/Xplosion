@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "257";
+const APP_VERSION = "258";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6365,6 +6365,13 @@ BUILDERS.calendar = (el) => {
             openQuoteSwipe(cands2.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。もう一度ボタンを押すと次の候補を探します。</div>'; });
             btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; return;
           }
+        }
+        /* ★v48: GoogleのUrlFetch上限に当たっている場合は、3連発の生エラーでなく1個の説明にまとめる */
+        const allErr_ = [sr && sr.error, cj && cj.error, dg && dg.error].filter(Boolean).join(" ");
+        if (/多すぎ|too many|urlfetch/i.test(allErr_)) {
+          trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⏳ GoogleのUrlFetch上限に当たっています</div>'
+            + '<div class="muted" style="font-size:12px;margin-top:6px;line-height:1.85">GAS(Google)側が「本日のurlfetch上限」を返しています。<b>太平洋時間0時＝日本時間の夕方16〜17時ごろに自動リセット</b>されるまでは取得できません。<br><br>この口座は実測で1日3,600〜4,000回あたりが天井のようです。恒常的に出るなら、自動機能(先回りリプ・挨拶など)の実行頻度を下げて1日のアクセス数を減らす調整が必要です。</div></div>';
+          btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; return;
         }
         let h = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補が出ませんでした</div>';
         /* ★v47: スキャンの"本当の理由"を最優先で表示(握りつぶさない) */
