@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "247";
+const APP_VERSION = "248";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3692,6 +3692,11 @@ BUILDERS.settings = (el) => {
   let qTargets = [];
   function renderQuoteCfg() {
     qBox.innerHTML = "";
+    /* ★v34: 引用RTはアカウントごとの機能。共通設定(_default_)では登録させない(保存先が実アカウントと繋がらないため) */
+    if (!S.activeAccount || S.activeAccount === "_default_") {
+      qBox.innerHTML = '<div class="card" style="padding:12px;border:1px solid #ffb02055"><div style="font-weight:800;color:#ffb020">⚠️ 上で対象アカウントを選んでください</div><div class="muted" style="font-size:12px;margin-top:4px">引用RTは<b>アカウントごと</b>の設定です。「共通設定(既定)」のままだと狙う相手が実際のアカウントに紐づきません。ページ上部の「どのアカウントの設定?」で<b>@あなたの競艇アカウント等</b>を選んでから登録してください。</div></div>';
+      return;
+    }
     /* 相手の選び方 */
     const selLbl = document.createElement("div"); selLbl.className = "desc"; selLbl.style.cssText = "font-size:11.5px;margin-bottom:4px"; selLbl.textContent = "相手の選び方"; qBox.appendChild(selLbl);
     const selRow = document.createElement("div"); selRow.className = "chips"; qBox.appendChild(selRow);
@@ -6312,7 +6317,15 @@ BUILDERS.calendar = (el) => {
         else {
           if (!dg.apiKey) h += '<div class="err" style="margin-top:6px">⚠️ X APIキーが未設定です（相手の投稿が取得できません）。</div>';
           if (!dg.targets || !dg.targets.length) {
-            h += '<div class="muted" style="font-size:12px;margin-top:6px">このアカウント(<b>@' + esc(screen) + '</b>)に狙う相手が<b>1件も登録されていません</b>。<br>※生成設定で相手を登録した時のアカウントと、今このメニューで選んでいるアカウントが違う可能性があります。上のアカウント選択を確認してください。</div>';
+            h += '<div class="muted" style="font-size:12px;margin-top:6px">このアカウント(<b>@' + esc(screen) + '</b>)に狙う相手が<b>1件も登録されていません</b>。</div>';
+            const others = (dg.allTargets || []);
+            if (others.length) {
+              h += '<div style="font-size:12px;margin-top:8px;line-height:1.7">👉 登録は<b>別の名義</b>で保存されています：<br>';
+              others.forEach(o => { h += '・<b>' + (o.screen === "_default_" ? "共通設定(既定)" : "@" + esc(o.screen)) + '</b> に ' + (o.users || []).map(u => "@" + esc(u)).join("・") + '<br>'; });
+              h += '</div><div class="muted" style="font-size:11.5px;margin-top:6px">→ 生成設定で<b>@' + esc(screen) + '</b>を選んでから、狙う相手を登録し直してください（「共通設定」ではなく実際のアカウントを選ぶ）。</div>';
+            } else {
+              h += '<div class="muted" style="font-size:11.5px;margin-top:6px">→ どのアカウントにも登録がありません。生成設定で<b>@' + esc(screen) + '</b>を選び、狙う相手(URL/@)を登録してください。</div>';
+            }
           } else {
             const en = dg.targets.filter(t => t.enabled);
             h += '<div class="muted" style="font-size:12px;margin-top:6px">登録: ' + dg.targets.length + '件（有効' + en.length + '件）／承認待ち既存: ' + (dg.pending || 0) + '件</div>';
