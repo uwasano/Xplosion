@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "246";
+const APP_VERSION = "247";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6304,9 +6304,29 @@ BUILDERS.calendar = (el) => {
         trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">候補 ' + cands.length + ' 件。スワイプで引用していけます。</div>';
         openQuoteSwipe(cands.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。もう一度ボタンを押すと次の候補を探します。</div>'; });
       } else {
-        trOut.innerHTML = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補がありませんでした</div>'
-          + '<div class="muted" style="font-size:12px;margin-top:4px">狙う相手が未登録か、相手の直近24時間に引用できる投稿がない可能性があります。生成設定の「🔁引用RT」で狙う相手(URL/@)を登録してください。</div>'
-          + '<button id="goQuoteCfg" class="btn" style="margin-top:10px;padding:9px">⚙ 引用RTの設定へ（生成設定）</button></div>';
+        /* ★v34: 候補ゼロ→その場で診断して「どこで繋がってないか」を出す */
+        let dg = null; try { dg = await gasFetch_("quoteDiag", { screen_name: screen }); } catch (e) {}
+        let h = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">引用できる候補が出ませんでした</div>';
+        if (!dg) { h += '<div class="err" style="margin-top:6px">診断に失敗しました。GASを最新(v39)にしてください。</div>'; }
+        else if (dg.error) { h += '<div class="err" style="margin-top:6px">' + esc(dg.error) + '</div>'; }
+        else {
+          if (!dg.apiKey) h += '<div class="err" style="margin-top:6px">⚠️ X APIキーが未設定です（相手の投稿が取得できません）。</div>';
+          if (!dg.targets || !dg.targets.length) {
+            h += '<div class="muted" style="font-size:12px;margin-top:6px">このアカウント(<b>@' + esc(screen) + '</b>)に狙う相手が<b>1件も登録されていません</b>。<br>※生成設定で相手を登録した時のアカウントと、今このメニューで選んでいるアカウントが違う可能性があります。上のアカウント選択を確認してください。</div>';
+          } else {
+            const en = dg.targets.filter(t => t.enabled);
+            h += '<div class="muted" style="font-size:12px;margin-top:6px">登録: ' + dg.targets.length + '件（有効' + en.length + '件）／承認待ち既存: ' + (dg.pending || 0) + '件</div>';
+            h += '<div style="font-size:12px;margin-top:8px;line-height:1.8">';
+            (dg.perTarget || []).forEach(t => {
+              const ok = t.pickable;
+              h += '・@' + esc(t.user) + ' → ' + (ok ? '<span style="color:#3DFFA8">引用できる投稿あり ✅</span>' : '<span style="color:#ffb020">' + esc(t.note || t.error || '不明') + '</span>') + (t.fetched != null ? ' <span class="muted">(取得' + t.fetched + '件/24h内' + (t.in24h || 0) + '件)</span>' : '') + '<br>';
+            });
+            h += '</div>';
+            if (en.length && dg.perTarget.every(t => !t.pickable)) h += '<div class="muted" style="font-size:11.5px;margin-top:6px">→ 相手が直近24時間に投稿していないか、既に引用済みが多いようです。相手を増やすか、時間をおいて試してください。</div>';
+          }
+        }
+        h += '<button id="goQuoteCfg" class="btn" style="margin-top:10px;padding:9px">⚙ 引用RTの設定へ（生成設定）</button></div>';
+        trOut.innerHTML = h;
         const g = document.getElementById("goQuoteCfg"); if (g) g.onclick = () => { showTab("settings"); if (typeof renderNav === "function") renderNav(); };
       }
     } catch (e) { trOut.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
