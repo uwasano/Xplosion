@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "261";
+const APP_VERSION = "262";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2917,6 +2917,47 @@ BUILDERS.home = (el) => {
   const cFoll = card("フォロワー", acctName ? "@" + acctName : "アカ未設定", "followers");
   const cReport = card("週報", "今週をAI集計 →", "report");
   cReport.val.style.fontSize = "18px"; cReport.val.style.color = "var(--accent2)"; cReport.val.textContent = "作る";
+
+  /* ★v262: 📧 エラー通知メールの設定(オートでエラーが出たら「アカウント・項目・内容」をメールで受け取る) */
+  (function () {
+    const box = document.createElement("div");
+    box.className = "card";
+    box.style.cssText = "margin-top:12px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--surface2)";
+    box.innerHTML = '<div style="font-weight:800;font-size:13px">📧 エラー通知メール</div>'
+      + '<div class="muted" style="font-size:11px;margin-top:2px;line-height:1.6">オート処理でエラーが出たら「どのアカウント・どの項目・エラー内容」をメールでお知らせ。空欄で保存すると通知停止。</div>';
+    const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;margin-top:8px";
+    const inp = document.createElement("input");
+    inp.type = "email"; inp.placeholder = "例: boss@example.com"; inp.autocomplete = "email";
+    inp.style.cssText = "flex:1;min-width:0;background:var(--card);border:1px solid var(--border);border-radius:9px;color:var(--ink);font-size:13px;padding:10px";
+    const save = document.createElement("button"); save.textContent = "保存";
+    save.style.cssText = "flex:0 0 auto;padding:10px 16px;border:none;border-radius:9px;font-weight:800;font-size:13px;cursor:pointer;background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002";
+    const test = document.createElement("button"); test.textContent = "📧 テスト送信";
+    test.style.cssText = "flex:0 0 auto;padding:10px 12px;border:1px solid var(--border);border-radius:9px;font-weight:700;font-size:12px;cursor:pointer;background:transparent;color:var(--muted)";
+    row.appendChild(inp); row.appendChild(save); row.appendChild(test); box.appendChild(row);
+    const msg = document.createElement("div"); msg.style.cssText = "font-size:11px;margin-top:5px"; box.appendChild(msg);
+    (async () => { try { const v = await kvGet("error_notify_email", null); const em = (v && typeof v === "object") ? (v.email || "") : (v || ""); if (em) inp.value = em; } catch (e) {} })();
+    save.onclick = async () => {
+      const em = inp.value.trim();
+      if (em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { msg.innerHTML = '<span style="color:#ff6b6b">メールアドレスの形式が正しくありません</span>'; return; }
+      save.disabled = true; const ob = save.textContent; save.textContent = "保存中…";
+      try {
+        await kvSet("error_notify_email", em);
+        msg.innerHTML = em ? '<span style="color:#3DFFA8">✓ 保存しました。エラー発生時に ' + esc(em) + ' へ通知します</span>' : '<span class="muted">通知を停止しました(空欄で保存)</span>';
+        if (typeof toast === "function") toast(em ? "📧 エラー通知先を保存" : "📧 エラー通知を停止", "ok");
+      } catch (e) { msg.innerHTML = '<span style="color:#ff6b6b">保存失敗: ' + esc(e.message || String(e)) + '</span>'; }
+      save.disabled = false; save.textContent = ob;
+    };
+    test.onclick = async () => {
+      test.disabled = true; const ot = test.textContent; test.textContent = "送信中…";
+      try {
+        const r = await gasFetch_("errMailTest", {});
+        if (r && r.ok) msg.innerHTML = '<span style="color:#3DFFA8">✓ テストメールを送信しました → ' + esc(r.email) + '(届かない時は迷惑メールも確認)</span>';
+        else msg.innerHTML = '<span style="color:#ff6b6b">' + esc((r && r.error) || "送信失敗") + '</span>';
+      } catch (e) { msg.innerHTML = '<span style="color:#ff6b6b">送信失敗: ' + esc(e.message || String(e)) + '</span>'; }
+      test.disabled = false; test.textContent = ot;
+    };
+    el.appendChild(box);
+  })();
 
   const stuckBox = document.createElement("div"); stuckBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(stuckBox);
   const postErrBox = document.createElement("div"); postErrBox.style.cssText = "margin:12px 0 0;display:none"; el.appendChild(postErrBox);
