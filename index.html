@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "258";
+const APP_VERSION = "260";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -5058,18 +5058,27 @@ BUILDERS.radar = (el) => {
   })();
 };
 
-/* ★v44: 元の投稿をXで開く＋コメントをクリップボードにコピー。
-   本文にツイートURLを入れる方式(=リンク扱いでインプレ低下の恐れ)をやめ、
-   ユーザーがXの「引用」ボタンを押す=ネイティブの引用リポストにする。コメントは貼るだけ。
+/* ★v49: コメント入りで引用作成画面を開く=投稿を押すだけ。
+   url= に「引用元ツイートURL」を渡すとXが引用カードにする(内部ツイート参照=外部リンクではないのでリーチ低下しない)。
+   コメント(text)は最初から入った状態で開く。念のためクリップボードにもコピー。
    iOS対策: ジェスチャー内で最優先にXを開く→そのあとコピー(先に非同期を挟むとブロックされる) */
 function xQuoteIntent(it, textOverride) {
   const text = (textOverride != null ? textOverride : (it.quote_text || "")) || "";
   let turl = it.target_url || "";
   if (!turl && it.target_username && it.target_tweet_id) turl = "https://x.com/" + it.target_username + "/status/" + it.target_tweet_id;
-  if (!turl) turl = "https://x.com/";
-  let w = null; try { w = window.open(turl, "_blank"); } catch (e) {} /* 元投稿そのものを開く→X内で「引用」を押す */
-  if (!w) { try { location.href = turl; } catch (e) {} }
+  const intent = "https://x.com/intent/post?text=" + encodeURIComponent(text) + (turl ? "&url=" + encodeURIComponent(turl) : "");
+  let w = null; try { w = window.open(intent, "_blank"); } catch (e) {}
+  if (!w) { try { location.href = intent; } catch (e) {} }
   try { navigator.clipboard.writeText(text); } catch (e) {}
+}
+
+/* ★v49: 引用元投稿の統計行(投稿時刻・インプレ・いいね)。スキャン時に保存した値を表示 */
+function quoteStatsLine_(it) {
+  const parts = [];
+  if (it && it.target_posted_at) { const h = Math.round((Date.now() - new Date(it.target_posted_at).getTime()) / 3600000); parts.push('🕐 ' + (h < 1 ? '1時間以内' : ('約' + h + '時間前'))); }
+  if (it && it.target_views != null) parts.push('👁 ' + Number(it.target_views).toLocaleString() + ' 表示');
+  if (it && it.target_likes != null) parts.push('❤ ' + Number(it.target_likes).toLocaleString());
+  return parts.join('　・　');
 }
 
 /* ★v34: 承認待ちの引用候補を、挨拶と同じ横スワイプで一気にさばく(右=引用画面へ / 左=スキップ / ↩戻る)。
@@ -5086,7 +5095,7 @@ function openQuoteSwipe(items, onClose) {
   const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
   const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
   const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
-  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>元投稿をXで開く</b> →<br><span style='font-size:11px'>X内で「引用」を押す→コメントを貼り付け（コピー済み）</span>";
+  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>Xで引用（コメント入り）</b> →<br><span style='font-size:11px'>コメント入りの引用画面が開くので、投稿を押すだけ</span>";
   overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
   document.body.appendChild(overlay);
   /* 右=Xの引用作成画面を開く(コメントはコピー)＋この候補は処理済みにして次へ */
@@ -5128,12 +5137,13 @@ function openQuoteSwipe(items, onClose) {
     const it = items[idx];
     const card = document.createElement("div");
     card.style.cssText = "position:absolute;inset:0;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;overflow-y:auto;touch-action:pan-y;box-shadow:0 12px 36px rgba(0,0,0,.55)";
-    let html = '<div style="font-size:12px;color:var(--accent2);margin-bottom:8px">@' + esc(it.target_username || "") + ' の投稿を引用' + (it.target_url ? ' ・<a href="' + esc(it.target_url) + '" target="_blank" style="color:var(--accent2)">元投稿</a>' : '') + '</div>';
+    let html = '<div style="font-size:12px;color:var(--accent2);margin-bottom:4px">@' + esc(it.target_username || "") + ' の投稿を引用' + (it.target_url ? ' ・<a href="' + esc(it.target_url) + '" target="_blank" style="color:var(--accent2)">元投稿</a>' : '') + '</div>';
+    const _sl = quoteStatsLine_(it); if (_sl) html += '<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px">' + _sl + '</div>';
     html += '<div style="font-size:12.5px;line-height:1.6;white-space:pre-wrap;background:rgba(255,255,255,.05);border-radius:8px;padding:9px;margin-bottom:12px">' + esc(String(it.target_text || "").slice(0, 240)) + '</div>';
     html += '<div style="font-size:11px;color:var(--muted);margin-bottom:4px">あなたの引用コメント(AI生成・フック強め／コピーされます)</div>';
     html += '<div style="font-size:14.5px;line-height:1.6;white-space:pre-wrap;font-weight:600">' + esc(it.quote_text || "") + '</div>';
     card.innerHTML = html;
-    const okB = document.createElement("button"); okB.className = "mini cyan"; okB.style.cssText = "display:block;width:100%;margin-top:14px;padding:12px;font-size:14px;font-weight:800;position:relative;z-index:2"; okB.textContent = "🔁 元投稿をXで開く（引用→貼付）";
+    const okB = document.createElement("button"); okB.className = "mini cyan"; okB.style.cssText = "display:block;width:100%;margin-top:14px;padding:12px;font-size:14px;font-weight:800;position:relative;z-index:2"; okB.textContent = "🔁 Xで引用（コメント入り・投稿押すだけ）";
     okB.onclick = () => { if (busy) return; doApprove(it); fly(card, 1); };
     card.appendChild(okB);
     const skB = document.createElement("button"); skB.className = "mini"; skB.style.cssText = "display:block;width:100%;margin-top:8px;padding:11px;font-size:13px;position:relative;z-index:2"; skB.textContent = "スキップ";
@@ -5265,16 +5275,18 @@ BUILDERS.quote = (el) => {
       const swBtn=document.createElement("button"); swBtn.className="mini cyan"; swBtn.style.cssText="width:100%;padding:12px;margin-bottom:10px;font-weight:800;font-size:14px"; swBtn.textContent="🃏 スワイプで一気に引用 ("+items.length+"件)"; swBtn.onclick=()=>openQuoteSwipe(items.slice(), ()=>loadInbox()); listWrap.appendChild(swBtn);
       items.forEach(it=>{
         const c=document.createElement("div"); c.className="card"; c.style.cssText="padding:12px;margin-top:8px";
+        const _sl2 = quoteStatsLine_(it);
         c.innerHTML='<div class="muted" style="font-size:11px">@'+esc(it.target_username)+' の投稿を引用'+(it.target_url?' ・<a href="'+esc(it.target_url)+'" target="_blank" style="color:var(--accent2)">元投稿</a>':'')+'</div>'
+          +(_sl2?'<div class="muted" style="font-size:11px;margin-top:2px">'+_sl2+'</div>':'')
           +'<div style="font-size:12px;background:rgba(255,255,255,.05);border-radius:8px;padding:8px;margin:6px 0;white-space:pre-wrap">'+esc(String(it.target_text||"").slice(0,220))+'</div>';
         const ta=document.createElement("textarea"); ta.value=it.quote_text||""; ta.style.cssText="width:100%;height:80px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:13px;padding:8px";
         c.appendChild(ta);
         const row=document.createElement("div"); row.style.cssText="display:flex;gap:8px;margin-top:8px";
-        const okB=document.createElement("button"); okB.className="btn"; okB.style.cssText="flex:1;margin:0;padding:10px"; okB.textContent="🔁 元投稿をXで開く";
+        const okB=document.createElement("button"); okB.className="btn"; okB.style.cssText="flex:1;margin:0;padding:10px"; okB.textContent="🔁 Xで引用（コメント入り）";
         const skB=document.createElement("button"); skB.className="mini"; skB.style.cssText="padding:10px 14px"; skB.textContent="スキップ";
         const outM=document.createElement("div"); outM.style.cssText="font-size:11px;margin-top:4px";
-        /* 元投稿をXで開く(コメントはコピー)＝ジェスチャー内で同期的に開く。そのあと処理済みにする */
-        okB.onclick=()=>{ xQuoteIntent(it, ta.value); c.style.opacity=".5"; okB.textContent="✓ Xを開きました"; outM.innerHTML='<span style="color:#3DFFA8">X内で「引用」を押し、コメントを貼り付けて投稿してください（コピー済み）</span>'; gasFetch_("quoteSkip",{id:it.id}).catch(()=>{}); setTimeout(loadInbox,1200); };
+        /* コメント入りで引用画面を開く＝ジェスチャー内で同期的に開く。そのあと処理済みにする(=かぶり防止で記録) */
+        okB.onclick=()=>{ xQuoteIntent(it, ta.value); c.style.opacity=".5"; okB.textContent="✓ Xを開きました"; outM.innerHTML='<span style="color:#3DFFA8">コメント入りの引用画面が開きます。投稿を押すだけです</span>'; gasFetch_("quoteSkip",{id:it.id}).catch(()=>{}); setTimeout(loadInbox,1200); };
         skB.onclick=async()=>{ skB.disabled=true; try{ await gasFetch_("quoteSkip",{id:it.id}); c.style.opacity=".4"; setTimeout(loadInbox,400); }catch(e){ alert(e.message); skB.disabled=false; } };
         row.appendChild(okB); row.appendChild(skB); c.appendChild(row); c.appendChild(outM);
         listWrap.appendChild(c);
