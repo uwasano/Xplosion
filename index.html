@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "260";
+const APP_VERSION = "261";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2279,6 +2279,7 @@ function defaultCfg() {
     tone: "カジュアル", emoji: "少なめ", words: "", wordFreq: 30, hook: 60,
     url: "", urlFreq: 20, urlReplyOn: true, ngWords: "", origProfile: "",
     quoteEnabled: true, quoteSelectMode: "random", quotePostMode: "approve", quoteSingleTarget: "", quoteDailyCap: 3,
+    hitCard: true, /* ★v261: 的中報告への画像カード自動添付(既定ON) */
     gender: "不問",
     competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare", notifyEmail: false,
     useHours: true, openTime: "21:00", closeTime: "06:00",
@@ -6158,6 +6159,7 @@ BUILDERS.calendar = (el) => {
         h += '<div class="card" style="padding:9px 12px;margin-top:8px;font-size:11.5px;line-height:1.7" ><span class="muted">🔍 結果確認の最終実行: <b style="color:var(--ink)">'+fmt(j.lastCheck)+'</b><br>※結果は1日6回(13〜0時)自動で確認・監視。回収率100%超えが勝ち。レース数が増えるほど信頼できる。</span></div>';
         h += '<button id="hitCopyBtn" style="width:100%;margin-top:10px;background:linear-gradient(135deg,#3DFFA8,#00e5ff);color:#001;font-weight:800;border:none;padding:11px;border-radius:9px;font-size:13px">🎯 当たったレースを全部コピー（@'+esc(acc||"")+'）</button>';
         h += '<div id="hitCopyOut"></div>';
+        h += '<div id="hitCardSec"></div>'; /* ★v261: 🖼的中カード画像の置き場 */
         statBox.innerHTML = h;
         const hitBtn = document.getElementById("hitCopyBtn");
         if (hitBtn) hitBtn.onclick = async () => {
@@ -6191,7 +6193,119 @@ BUILDERS.calendar = (el) => {
             setTimeout(()=>{ hitBtn.disabled=false; hitBtn.textContent=ob; }, 2500);
           } catch(e) { showOut('<div class="err" style="margin-top:6px">'+esc(e.message)+'</div>'); hitBtn.disabled=false; hitBtn.textContent=ob; }
         };
+        buildHitCardSec_(acc); /* ★v261: 🖼的中カード画像コーナー */
       } catch(e){ statBox.innerHTML = '<div class="err">'+esc(e.message)+'</div>'; }
+    }
+
+    /* ★v261: 🖼 的中カード画像(実績の見える化)。当たった瞬間の自動報告に画像を付けるON/OFFと、
+       手動でカードを生成→編集→画像付き即投稿。GAS v50の hitCardMake/hitCardRecent を使用 */
+    function buildHitCardSec_(acc) {
+      const sec = document.getElementById("hitCardSec"); if (!sec) return;
+      const tgl = (on) => "min-width:64px;padding:8px 14px;border-radius:20px;border:none;font-weight:800;font-size:13px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.1);color:#94a3b8");
+      const card = document.createElement("div");
+      card.className = "card"; card.style.cssText = "padding:12px;margin-top:10px;border:1px solid var(--border)";
+      const head = document.createElement("div"); head.style.cssText = "font-weight:800;font-size:13px";
+      head.innerHTML = '🖼 的中カード画像 <span class="muted" style="font-size:11px;font-weight:400">実績を画像で見せてインプレ＆フォロー獲得</span>';
+      card.appendChild(head);
+      if (!acc) {
+        const m = document.createElement("div"); m.className = "muted"; m.style.cssText = "font-size:12px;margin-top:6px";
+        m.textContent = "上でアカウントを選択すると使えます。";
+        card.appendChild(m); sec.innerHTML = ""; sec.appendChild(card); return;
+      }
+      /* 自動添付トグル(gen_config.hitCard・既定ON) */
+      const tr = document.createElement("div"); tr.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px";
+      const tlbl = document.createElement("div"); tlbl.style.cssText = "font-size:12.5px;line-height:1.4";
+      tlbl.innerHTML = '的中報告に画像カードを自動添付<br><span class="muted" style="font-size:11px">当たった瞬間の自動報告に「🎯的中！」のカード画像が付きます</span>';
+      const sw = document.createElement("button"); let swOn = true;
+      const pSw = () => { sw.textContent = swOn ? "ON" : "OFF"; sw.style.cssText = tgl(swOn); };
+      pSw();
+      sw.onclick = async () => {
+        swOn = !swOn; pSw();
+        try { const cfg = (await kvGet("gen_config:" + acc, null)) || {}; cfg.hitCard = swOn; await kvSet("gen_config:" + acc, cfg); if (typeof toast === "function") toast((swOn ? "🖼 的中カード自動添付 ON" : "🖼 的中カード自動添付 OFF") + " @" + acc, "ok"); }
+        catch (e) { swOn = !swOn; pSw(); alert("保存失敗: " + e); }
+      };
+      tr.appendChild(tlbl); tr.appendChild(sw); card.appendChild(tr);
+      (async () => { try { const cfg = (await kvGet("gen_config:" + acc, null)) || {}; swOn = (cfg.hitCard !== false); pSw(); } catch (e) {} })();
+
+      /* 手動生成ボタン群 */
+      const btnRow = document.createElement("div"); btnRow.style.cssText = "display:flex;gap:6px;margin-top:10px;flex-wrap:wrap";
+      const mkBtn = (label, grad) => { const b = document.createElement("button"); b.textContent = label; b.style.cssText = "flex:1;min-width:31%;padding:10px 4px;border:none;border-radius:9px;font-weight:800;font-size:11.5px;cursor:pointer;background:" + grad + ";color:#001"; return b; };
+      const bLatest = mkBtn("🎯 最新の的中でカード", "linear-gradient(135deg,#3DFFA8,#00e5ff)");
+      const bToday = mkBtn("📅 本日まとめ", "linear-gradient(135deg,#38d4f0,#7cc7ff)");
+      const bYday = mkBtn("📅 昨日まとめ", "linear-gradient(135deg,#9fb3c8,#c3d0e0)");
+      btnRow.appendChild(bLatest); btnRow.appendChild(bToday); btnRow.appendChild(bYday);
+      card.appendChild(btnRow);
+      const pickWrap = document.createElement("div"); pickWrap.style.cssText = "margin-top:2px";
+      const out = document.createElement("div");
+
+      let lastB64 = null;
+      const makeCard = async (params, btn) => {
+        const ob = btn.textContent; btn.disabled = true; btn.textContent = "生成中…";
+        out.innerHTML = '<div class="muted" style="font-size:12px;margin-top:8px">🖼 カード画像を生成中…（5〜10秒かかります）</div>';
+        try {
+          const j = await gasFetch_("hitCardMake", Object.assign({ screen_name: acc }, params));
+          if (!j || !j.ok) throw new Error((j && j.error) || "生成に失敗しました");
+          lastB64 = j.b64; const info = j.info || {};
+          const defText = (info.mode === "day")
+            ? ("📅" + (info.date || "本日") + "の無料予想 結果\n" + info.hits + "/" + info.races + "レース的中・回収率" + info.roi + "%\n明日も無料で公開します！")
+            : ("🎯無料予想 的中！\n" + (info.venue || "") + info.rno + "R 3連単 " + (info.combo || "")
+              + (info.payout ? ("\n払戻 ¥" + Number(info.payout).toLocaleString() + "（" + (info.payout / 100).toFixed(1) + "倍）") : "")
+              + "\n取れた人おめでとう！");
+          out.innerHTML = "";
+          const img = document.createElement("img"); img.src = "data:image/png;base64," + lastB64;
+          img.style.cssText = "width:100%;border-radius:10px;margin-top:8px;border:1px solid var(--border)"; out.appendChild(img);
+          const hint = document.createElement("div"); hint.className = "muted"; hint.style.cssText = "font-size:10.5px;margin-top:2px"; hint.textContent = "画像を長押しで保存もできます"; out.appendChild(hint);
+          const ta = document.createElement("textarea"); ta.value = defText;
+          ta.style.cssText = "width:100%;height:92px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--ink);font-size:12.5px;padding:8px;margin-top:8px"; out.appendChild(ta);
+          const post = document.createElement("button"); post.textContent = "📤 この画像＋文章で今すぐ投稿（@" + acc + "）";
+          post.style.cssText = "width:100%;margin-top:8px;background:linear-gradient(135deg,#3DFFA8,#00e5ff);color:#001;font-weight:800;border:none;padding:11px;border-radius:9px;font-size:13px";
+          post.onclick = async () => {
+            if (!confirm("画像付きでXに今すぐ投稿します。OK？")) return;
+            post.disabled = true; const po = post.textContent; post.textContent = "投稿中…";
+            try {
+              const r = await gasFetch_("postMixImage", { screen_name: acc, text: ta.value, media_b64: lastB64 });
+              if (!r || !r.ok) throw new Error((r && r.error) || "投稿に失敗しました");
+              post.textContent = "✅ 投稿しました！";
+              if (typeof toast === "function") toast("🖼 的中カードを投稿しました @" + acc, "ok");
+              setTimeout(() => { post.disabled = false; post.textContent = po; }, 3000);
+            } catch (e) { alert("投稿失敗: " + e.message); post.disabled = false; post.textContent = po; }
+          };
+          out.appendChild(post);
+        } catch (e) {
+          out.innerHTML = '<div class="err" style="margin-top:8px;font-size:12px">' + esc(e.message) + '</div>'
+            + (/権限|承認|HTTP/.test(e.message) ? '<div class="muted" style="font-size:11px;margin-top:4px">初回のみ: GASエディタで TEST_hitCard を1回実行して権限を承認してください（実行後もう一度このボタンを押す）。</div>' : '');
+        }
+        btn.disabled = false; btn.textContent = ob;
+      };
+      bLatest.onclick = () => makeCard({ mode: "hit" }, bLatest);
+      bToday.onclick = () => makeCard({ mode: "day", dayOffset: 0 }, bToday);
+      bYday.onclick = () => makeCard({ mode: "day", dayOffset: 1 }, bYday);
+
+      /* 過去の的中から選んでカード化 */
+      const pickBtn = document.createElement("button"); pickBtn.textContent = "▼ 別の的中レースを選んでカードにする";
+      pickBtn.style.cssText = "width:100%;margin-top:6px;background:transparent;border:1px dashed var(--border);color:var(--muted);padding:8px;border-radius:9px;font-size:12px;cursor:pointer";
+      pickBtn.onclick = async () => {
+        pickBtn.disabled = true; const pb = pickBtn.textContent; pickBtn.textContent = "読み込み中…";
+        try {
+          const j = await gasFetch_("hitCardRecent", { screen_name: acc });
+          const rows = (j && j.rows) || [];
+          pickWrap.innerHTML = "";
+          if (!rows.length) pickWrap.innerHTML = '<div class="muted" style="font-size:12px;margin-top:6px">まだ的中レースがありません。</div>';
+          rows.forEach(r => {
+            const d = String(r.race_date || ""); const md = d.length === 8 ? (parseInt(d.slice(4, 6), 10) + "/" + parseInt(d.slice(6, 8), 10)) : d;
+            const b = document.createElement("button");
+            b.textContent = md + " " + (r.venue || "") + r.rno + "R " + (r.result_combo || "") + (r.payout ? " ¥" + Number(r.payout).toLocaleString() : "");
+            b.style.cssText = "display:block;width:100%;text-align:left;margin-top:5px;background:rgba(0,229,255,.06);border:1px solid var(--border);color:var(--ink);padding:8px 10px;border-radius:8px;font-size:12px;cursor:pointer";
+            b.onclick = () => makeCard({ mode: "hit", id: r.id }, b);
+            pickWrap.appendChild(b);
+          });
+        } catch (e) { pickWrap.innerHTML = '<div class="err" style="font-size:12px;margin-top:6px">' + esc(e.message) + '</div>'; }
+        pickBtn.disabled = false; pickBtn.textContent = pb;
+      };
+      card.appendChild(pickBtn);
+      card.appendChild(pickWrap);
+      card.appendChild(out);
+      sec.innerHTML = ""; sec.appendChild(card);
     }
     renderStats(7);
   };
