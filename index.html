@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "267";
+const APP_VERSION = "268";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -3446,6 +3446,49 @@ BUILDERS.settings = (el) => {
   const typeNote = document.createElement("p"); typeNote.className = "desc"; typeNote.style.margin = "6px 0 0";
   typeNote.textContent = "ここに「競艇」または「ボート」と入れると、カレンダーに🚤無料予想ボタンが出る。";
   el.appendChild(typeNote);
+
+  /* ★v268 的中カードの見た目(競艇のみ)。生成設定にも切替を用意。設定は gen_config を共有(無料予想エリアと同じ) */
+  (function () {
+    const isBoat = /競艇|ボート/.test(String(CFG.bizType || ""));
+    if (!isBoat) {
+      const hint = document.createElement("p"); hint.className = "desc"; hint.style.margin = "10px 0 0";
+      hint.textContent = "※業種に「競艇」を入れて保存すると、ここに🖼的中カードの見た目(3種)の設定が出ます。";
+      el.appendChild(hint);
+      return;
+    }
+    fld(el, "🖼 的中カードの見た目（3種・競艇公式そっくり）");
+    const cnote = document.createElement("p"); cnote.className = "desc"; cnote.style.margin = "0 0 8px";
+    cnote.innerHTML = "的中明細=公式の的中モーダル(出走選手6人＋大きな払戻)。契約明細=買い目一覧＋的中バッジ。シンプル=1枚もの。全部無料。払戻は100倍以上が赤・未満は黒(公式仕様)。";
+    el.appendChild(cnote);
+    const seg = document.createElement("div"); seg.style.cssText = "display:flex;gap:6px"; el.appendChild(seg);
+    const LBL = { meisai: "🎯 的中明細", table: "📋 契約明細", simple: "✨ シンプル" };
+    let cur = (CFG.hitCardMode === "simple" || CFG.hitCardMode === "table") ? CFG.hitCardMode : "meisai";
+    const paint = () => {
+      seg.innerHTML = "";
+      [["meisai", LBL.meisai], ["table", LBL.table], ["simple", LBL.simple]].forEach(([v, label]) => {
+        const b = document.createElement("button"); b.textContent = label;
+        const on = (cur === v);
+        b.style.cssText = "flex:1;padding:9px 3px;border-radius:9px;border:none;font-weight:800;font-size:11.5px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
+        b.onclick = () => { cur = v; CFG.hitCardMode = v; save(); paint(); if (typeof toast === "function") toast("的中カード= " + LBL[v], "ok"); };
+        seg.appendChild(b);
+      });
+    };
+    paint();
+    fld(el, "💰 購入金額（的中明細・契約明細に反映）");
+    const seg2 = document.createElement("div"); seg2.style.cssText = "display:flex;gap:6px"; el.appendChild(seg2);
+    let curS = ([100, 1000, 5000, 10000].indexOf(Number(CFG.hitCardStake)) >= 0) ? Number(CFG.hitCardStake) : 10000;
+    const paintS = () => {
+      seg2.innerHTML = "";
+      [100, 1000, 5000, 10000].forEach((v) => {
+        const b = document.createElement("button"); b.textContent = v.toLocaleString() + "円";
+        const on = (curS === v);
+        b.style.cssText = "flex:1;padding:9px 3px;border-radius:9px;border:none;font-weight:800;font-size:11.5px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
+        b.onclick = () => { curS = v; CFG.hitCardStake = v; save(); paintS(); if (typeof toast === "function") toast("💰 購入金額 " + v.toLocaleString() + "円", "ok"); };
+        seg2.appendChild(b);
+      });
+    };
+    paintS();
+  })();
 
   /* 競合アカウント(バズミラー・リプハンター・レーダーで使う相手) — タグ式で1個ずつ追加/❌で削除 */
   fld(el, "競合アカウント(URL貼り付けOK)");
