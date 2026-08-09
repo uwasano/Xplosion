@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "266";
+const APP_VERSION = "267";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6268,21 +6268,21 @@ BUILDERS.calendar = (el) => {
       tr.appendChild(tlbl); tr.appendChild(sw); card.appendChild(tr);
       (async () => { try { const cfg = (await kvGet("gen_config:" + acc, null)) || {}; swOn = (cfg.hitCard !== false); pSw(); } catch (e) {} })();
 
-      /* ★v264: 的中カードの見た目を2種から選択(シンプル / 公式風テーブル・両方無料)。競艇の的中カード専用。
+      /* ★v267: 的中カードの見た目を3種から選択(的中明細 / 契約明細 / シンプル・全部無料)。競艇の的中カード専用。
          ★アカウント切替でも正しい状態を出すため、この関数はアカウントごとに作り直され、保存中アカを固定して読み込む */
       const modeWrap = document.createElement("div"); modeWrap.style.cssText = "margin-top:10px;padding-top:8px;border-top:1px solid var(--border)";
-      modeWrap.innerHTML = '<div style="font-size:12.5px;font-weight:700">🖼 カードの見た目（2種）</div>'
-        + '<div class="muted" style="font-size:11px;margin-top:2px;line-height:1.6">シンプル=「🎯的中！」の1枚もの。公式風テーブル=公式の投票結果画面そっくりの表(契約情報・枠番カラー・的中バッジ・1万円想定の大きな払戻)。どちらも無料。</div>';
+      modeWrap.innerHTML = '<div style="font-size:12.5px;font-weight:700">🖼 カードの見た目（3種・競艇公式そっくり）</div>'
+        + '<div class="muted" style="font-size:11px;margin-top:2px;line-height:1.6">的中明細=公式の的中モーダル(出走選手6人＋枠番カラー＋大きな払戻)。契約明細=公式の投票内容照会(買い目一覧＋的中バッジ)。シンプル=「🎯的中！」の1枚もの。全部無料。払戻は100倍以上が赤・以下は黒(公式仕様)。</div>';
       const modeSeg = document.createElement("div"); modeSeg.style.cssText = "display:flex;gap:6px;margin-top:8px";
       const modeAcc = acc; /* このセクションのアカウントを固定(切替時の取り違え防止) */
-      const MODE_LABEL = { simple: "🎯 シンプル", table: "🏆 公式風テーブル" };
-      let hcMode = "table";
+      const MODE_LABEL = { meisai: "🎯 的中明細", table: "📋 契約明細", simple: "✨ シンプル" };
+      let hcMode = "meisai";
       const paintMode = () => {
         modeSeg.innerHTML = "";
-        [["simple", MODE_LABEL.simple], ["table", MODE_LABEL.table]].forEach(([v, label]) => {
+        [["meisai", MODE_LABEL.meisai], ["table", MODE_LABEL.table], ["simple", MODE_LABEL.simple]].forEach(([v, label]) => {
           const b = document.createElement("button"); b.textContent = label;
           const on = (hcMode === v);
-          b.style.cssText = "flex:1;padding:9px 4px;border-radius:9px;border:none;font-weight:800;font-size:12px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
+          b.style.cssText = "flex:1;padding:9px 3px;border-radius:9px;border:none;font-weight:800;font-size:11.5px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
           b.onclick = async () => {
             hcMode = v; paintMode();
             try { const cfg = (await kvGet("gen_config:" + modeAcc, null)) || {}; cfg.hitCardMode = v; await kvSet("gen_config:" + modeAcc, cfg); if (typeof toast === "function") toast("的中カード= " + MODE_LABEL[v], "ok"); }
@@ -6292,11 +6292,11 @@ BUILDERS.calendar = (el) => {
         });
       };
       paintMode(); modeWrap.appendChild(modeSeg); card.appendChild(modeWrap);
-      (async () => { try { const cfg = (await kvGet("gen_config:" + modeAcc, null)) || {}; hcMode = (cfg.hitCardMode === "simple") ? "simple" : "table"; if (modeAcc === acc) paintMode(); } catch (e) {} })();
+      (async () => { try { const cfg = (await kvGet("gen_config:" + modeAcc, null)) || {}; hcMode = (cfg.hitCardMode === "simple" || cfg.hitCardMode === "table") ? cfg.hitCardMode : "meisai"; if (modeAcc === acc) paintMode(); } catch (e) {} })();
 
       /* ★v266: 公式風テーブルの想定購入額(いくら賭けたか)。100〜1万円で切替。払戻はオッズ×購入額 */
       const stakeWrap = document.createElement("div"); stakeWrap.style.cssText = "margin-top:10px";
-      stakeWrap.innerHTML = '<div style="font-size:12px;font-weight:700">💰 購入金額（公式風テーブル用）</div>'
+      stakeWrap.innerHTML = '<div style="font-size:12px;font-weight:700">💰 購入金額（的中明細・契約明細に反映）</div>'
         + '<div class="muted" style="font-size:11px;margin-top:2px;line-height:1.6">「◯円ずつ買った想定」でカードに表示する額。払戻は自動でオッズ×購入額になります。</div>';
       const stakeSeg = document.createElement("div"); stakeSeg.style.cssText = "display:flex;gap:6px;margin-top:8px";
       let hcStake = 10000;
