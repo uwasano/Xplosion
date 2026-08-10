@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "269";
+const APP_VERSION = "270";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2473,11 +2473,31 @@ async function gasFetch_(action, extra) {
   return await res.json();
 }
 
+/* ★v270 フロント→Supabase Edge直結(GASのfetch枠を一切使わない)。
+   失敗時は呼び出し側でGAS経由に自動フォールバックする */
+async function edgeFetch_(action, extra) {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) throw new Error("ログインが切れた。リロードして。");
+  const res = await fetch(SUPABASE_URL + "/functions/v1/worker", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + data.session.access_token, "apikey": SUPABASE_ANON },
+    body: JSON.stringify(Object.assign({ action }, extra || {})),
+  });
+  const j = await res.json();
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+
 async function callAI(prompt, useSearch, model, wantUrls) {
   const { data } = await sb.auth.getSession();
   if (!data.session) throw new Error("ログインが切れた。リロードして。");
   let lastUrls = [];
   const doFetch = async (p) => {
+    /* ★v270 まずEdge直結(GAS枠ゼロ)。Edge未対応・障害時はGAS経由に自動フォールバック */
+    try {
+      const je = await edgeFetch_("ai", { prompt: p, useSearch: (typeof useSearch === "number") ? useSearch : !!useSearch, model: model || null });
+      if (je && je.text) { lastUrls = je.urls || []; return je.text; }
+    } catch (eEdge) { /* フォールバックへ */ }
     const res = await fetch(GAS_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
@@ -6170,12 +6190,16 @@ BUILDERS.calendar = (el) => {
       if (_psCache[psKey]) { paintAll(_psCache[psKey], days, acc); } /* キャッシュ即表示→裏で最新を取得して上書き */
       else statBox.innerHTML = '<div class="muted" style="padding:10px">集計中…</div>';
       try {
-        const j = await gasFetch_("predStatsAll", { days });
+        /* ★v270 Edge直結(GAS枠ゼロ・枠切れ中でも動く)→ダメならGAS経由 */
+        let j;
+        try { j = await edgeFetch_("stats", { days }); }
+        catch (eEdge) { j = await gasFetch_("predStatsAll", { days }); }
+        const dayGet = async (off) => {
+          try { return await edgeFetch_("statsDay", { screen_name: acc || undefined, dayOffset: off }); }
+          catch (e2) { return await gasFetch_("predStatsDay", { screen_name: acc || undefined, dayOffset: off }); }
+        };
         try {
-          const [td, yd] = await Promise.all([
-            gasFetch_("predStatsDay", { screen_name: acc || undefined, dayOffset: 0 }),
-            gasFetch_("predStatsDay", { screen_name: acc || undefined, dayOffset: 1 }),
-          ]);
+          const [td, yd] = await Promise.all([dayGet(0), dayGet(1)]);
           j._today = td; j._yday = yd; j._selAcc = acc;
         } catch (e) {}
         _psCache[psKey] = j;
