@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "270";
+const APP_VERSION = "271";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6407,7 +6407,12 @@ BUILDERS.calendar = (el) => {
         const ob = btn.textContent; btn.disabled = true; btn.textContent = "生成中…";
         out.innerHTML = '<div class="muted" style="font-size:12px;margin-top:8px">🖼 カード画像を生成中…（5〜10秒かかります）</div>';
         try {
-          const j = await gasFetch_("hitCardMake", Object.assign({ screen_name: acc }, params));
+          /* ★v271 まずEdge直結(GAS枠ゼロ・枠切れ中でも動く)。まとめ/シンプル/Edge障害はGASへ自動フォールバック */
+          let j = null;
+          if (params.mode !== "day") {
+            try { j = await edgeFetch_("cardMake", Object.assign({ screen_name: acc }, params)); } catch (eEc) { j = null; }
+          }
+          if (!j || !j.ok) j = await gasFetch_("hitCardMake", Object.assign({ screen_name: acc }, params));
           if (!j || !j.ok) throw new Error((j && j.error) || "生成に失敗しました");
           lastB64 = j.b64; const info = j.info || {};
           const defText = (info.mode === "day")
@@ -6427,7 +6432,10 @@ BUILDERS.calendar = (el) => {
             if (!confirm("画像付きでXに今すぐ投稿します。OK？")) return;
             post.disabled = true; const po = post.textContent; post.textContent = "投稿中…";
             try {
-              const r = await gasFetch_("postMixImage", { screen_name: acc, text: ta.value, media_b64: lastB64 });
+              /* ★v271 まずEdge直結で即時投稿。ダメならGAS経由 */
+              let r = null;
+              try { r = await edgeFetch_("postNow", { screen_name: acc, text: ta.value, media_b64: lastB64 }); } catch (ePn) { r = null; }
+              if (!r || !r.ok) r = await gasFetch_("postMixImage", { screen_name: acc, text: ta.value, media_b64: lastB64 });
               if (!r || !r.ok) throw new Error((r && r.error) || "投稿に失敗しました");
               post.textContent = "✅ 投稿しました！";
               if (typeof toast === "function") toast("🖼 的中カードを投稿しました @" + acc, "ok");
@@ -6451,7 +6459,10 @@ BUILDERS.calendar = (el) => {
       pickBtn.onclick = async () => {
         pickBtn.disabled = true; const pb = pickBtn.textContent; pickBtn.textContent = "読み込み中…";
         try {
-          const j = await gasFetch_("hitCardRecent", { screen_name: acc });
+          /* ★v271 Edge直結→GASフォールバック */
+          let j = null;
+          try { j = await edgeFetch_("cardRecent", { screen_name: acc }); } catch (eEr) { j = null; }
+          if (!j || !Array.isArray(j.rows)) j = await gasFetch_("hitCardRecent", { screen_name: acc });
           const rows = (j && j.rows) || [];
           pickWrap.innerHTML = "";
           if (!rows.length) pickWrap.innerHTML = '<div class="muted" style="font-size:12px;margin-top:6px">まだ的中レースがありません。</div>';
