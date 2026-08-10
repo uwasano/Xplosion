@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "268";
+const APP_VERSION = "269";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6210,10 +6210,17 @@ BUILDERS.calendar = (el) => {
         if (!(j._today && j._today.races > 0)) h += dayPanel(j._yday, "昨日");
         else if (j._yday && j._yday.races > 0) h += dayPanel(j._yday, "昨日");
 
+        /* ★v269 取得失敗(fetch枠切れ等)は「データなし」と区別して表示する */
+        if (j && (j.fetchError || j.error || !Array.isArray(j.accounts))) {
+          statBox.innerHTML = h + '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7;margin-top:8px;border:1px solid #ff8866">⚠ 成績データの取得に失敗した(データが無いわけではない)。<br>'
+            + '<span class="muted" style="font-size:11.5px">原因: '+esc(String(j.fetchError||j.error||"応答形式エラー").slice(0,150))+'</span><br><br>'
+            + 'GASのfetch枠切れ中はこうなる。時間をおいてもう一度「📊 ロジック的中率を比較する」を押して。</div>';
+          return;
+        }
         if (!accounts.length) {
           statBox.innerHTML = h + '<div class="card" style="padding:12px;font-size:12.5px;line-height:1.7;margin-top:8px">'+periodLabel+'はまだ確定した予想結果がない。<br>'
             + '🔍 結果確認の最終実行: <b>'+fmt(j.lastCheck)+'</b><br><br>'
-            + '予想を投稿してレース結果が出た後、1日6回(13〜0時)自動で的中をチェックする。人気順・直前スコアの両オートをONにすると比較データが貯まる。</div>';
+            + '予想を投稿してレース結果が出た後、結果確認(Supabase Cronで15分ごと+GASで1日6回)が自動で的中をチェックする。</div>';
           return;
         }
 
