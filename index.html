@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "271";
+const APP_VERSION = "272";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -6407,11 +6407,10 @@ BUILDERS.calendar = (el) => {
         const ob = btn.textContent; btn.disabled = true; btn.textContent = "生成中…";
         out.innerHTML = '<div class="muted" style="font-size:12px;margin-top:8px">🖼 カード画像を生成中…（5〜10秒かかります）</div>';
         try {
-          /* ★v271 まずEdge直結(GAS枠ゼロ・枠切れ中でも動く)。まとめ/シンプル/Edge障害はGASへ自動フォールバック */
+          /* ★v272 全カード(明細/契約/シンプル/日次まとめ)をEdge直結で生成(GAS枠ゼロ・枠切れ中でも動く)。
+             Edge障害時のみGASへ自動フォールバック */
           let j = null;
-          if (params.mode !== "day") {
-            try { j = await edgeFetch_("cardMake", Object.assign({ screen_name: acc }, params)); } catch (eEc) { j = null; }
-          }
+          try { j = await edgeFetch_("cardMake", Object.assign({ screen_name: acc }, params)); } catch (eEc) { j = null; }
           if (!j || !j.ok) j = await gasFetch_("hitCardMake", Object.assign({ screen_name: acc }, params));
           if (!j || !j.ok) throw new Error((j && j.error) || "生成に失敗しました");
           lastB64 = j.b64; const info = j.info || {};
