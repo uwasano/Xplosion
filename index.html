@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "272";
+const APP_VERSION = "273";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2280,6 +2280,7 @@ function defaultCfg() {
     url: "", urlFreq: 20, urlReplyOn: true, ngWords: "", origProfile: "",
     quoteEnabled: true, quoteSelectMode: "random", quotePostMode: "approve", quoteSingleTarget: "", quoteDailyCap: 3,
     hitCard: true, /* ★v261: 的中報告への画像カード自動添付(既定ON) */
+    presentOn: true, /* ★v274: プレゼント企画(PayPay還元)のオンオフ(既定ON=従来どおり)。オフで的中報告の企画誘導・リプ企画を止める */
     gender: "不問",
     competitors: "", hunterWatch: 0, proactiveFreq: 0, yosouLogic: "compare", notifyEmail: false,
     useHours: true, openTime: "21:00", closeTime: "06:00",
@@ -3494,7 +3495,7 @@ BUILDERS.settings = (el) => {
       });
     };
     paint();
-    fld(el, "💰 購入金額（的中明細・契約明細に反映）");
+    fld(el, "💰 購入金額（的中明細・契約明細・シンプルに反映）");
     const seg2 = document.createElement("div"); seg2.style.cssText = "display:flex;gap:6px"; el.appendChild(seg2);
     let curS = ([100, 1000, 5000, 10000].indexOf(Number(CFG.hitCardStake)) >= 0) ? Number(CFG.hitCardStake) : 10000;
     const paintS = () => {
@@ -3508,6 +3509,23 @@ BUILDERS.settings = (el) => {
       });
     };
     paintS();
+    /* ★v274 プレゼント企画(PayPay還元)のオンオフ。オフ時: 的中報告の企画誘導・リプ欄の企画詳細・LINEの企画文言を全部止める(締めの一言は毎回付く) */
+    fld(el, "🎁 プレゼント企画（PayPay還元）");
+    const pnote = document.createElement("p"); pnote.className = "desc"; pnote.style.margin = "0 0 8px";
+    pnote.innerHTML = "オンのとき、的中報告に還元フックを付け、リプ欄にPayPay企画の詳細を自動投稿する。<b>オフにすると企画の文言・リプ投稿をすべて止めて、的中報告だけをクリーンに出す</b>(勢いのある締めの一言は毎回付く)。";
+    el.appendChild(pnote);
+    const seg3 = document.createElement("div"); seg3.style.cssText = "display:flex;gap:6px"; el.appendChild(seg3);
+    const paintP = () => {
+      seg3.innerHTML = "";
+      [[true, "🎁 企画オン"], [false, "🚫 企画オフ"]].forEach(([v, label]) => {
+        const b = document.createElement("button"); b.textContent = label;
+        const on = ((CFG.presentOn !== false) === v);
+        b.style.cssText = "flex:1;padding:9px 3px;border-radius:9px;border:none;font-weight:800;font-size:11.5px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
+        b.onclick = () => { CFG.presentOn = v; save(); paintP(); if (typeof toast === "function") toast(v ? "🎁 プレゼント企画オン" : "🚫 プレゼント企画オフ", "ok"); };
+        seg3.appendChild(b);
+      });
+    };
+    paintP();
   })();
 
   /* 競合アカウント(バズミラー・リプハンター・レーダーで使う相手) — タグ式で1個ずつ追加/❌で削除 */
@@ -9335,8 +9353,8 @@ BUILDERS.schedule = (el) => {
 
 /* ---- ⏰ オート予定(今日のキュー一覧・時刻変更可) ---- */
 BUILDERS.autoqueue = (el) => {
-  head(el, "オート予定", "今日オートで投稿される予定の一覧。時刻をタップすると変更できる。生成は各投稿時刻の少し前に自動で行われる。",
-    ["朝に自動で今日の予定が作られる","投稿時刻が近づくと内容が生成される","時刻を変えたい時はタップして調整"]);
+  head(el, "オート予定", "今日オートで投稿される予定の一覧。時刻をタップすると変更できる。生成は各投稿時刻の少し前に自動で行われる。予想はこの時刻に「レースを探し始め」、投稿は選んだレースの締切15分前になる。",
+    ["朝に自動で今日の予定が作られる","投稿時刻が近づくと内容が生成される","見送り・エラーの行も時刻を変えれば再実行される"]);
 
   const KIND_LABEL = { trend: "🔥 トレンド", normal: "📝 通常投稿", yosou: "🚤 無料予想(人気順)", yosou_score: "🎯 無料予想(直前スコア)", yokoku: "📣 レース予告", enjou: "🔥 炎上ニュース", flavor: "💨 フレーバー" };
   const STATUS_LABEL = { waiting: "待機中", processing: "生成中…", done: "生成済✓", error: "エラー" };
@@ -9387,14 +9405,20 @@ BUILDERS.autoqueue = (el) => {
       const timeBtn = document.createElement("input"); timeBtn.type = "time";
       timeBtn.value = String(tm.getHours()).padStart(2,"0")+":"+String(tm.getMinutes()).padStart(2,"0");
       timeBtn.style.cssText = "width:auto;padding:6px 10px;font-family:var(--mono);font-size:15px;font-weight:800;color:var(--accent2);background:rgba(0,229,255,.08);border:1px solid var(--accent2);border-radius:8px";
-      timeBtn.disabled = (q.status === "done" || q.status === "processing");
+      /* ★v273 見送り(「(対象レースなし)」等でdoneになった未投稿の行)とエラー行は、
+         時刻を変えたらwaitingに戻して再実行させる(従来は一度見送りになるとその日はもう動かなかった)。
+         本当に投稿済みの行(result_textが本文)だけ編集不可のまま */
+      const isMiokuri = q.status === "done" && /^[(（]/.test(q.result_text || "");
+      timeBtn.disabled = (q.status === "processing" || (q.status === "done" && !isMiokuri));
       timeBtn.onchange = async () => {
         if (!/^\d{1,2}:\d{2}$/.test(timeBtn.value)) return;
         const [h,mi] = timeBtn.value.split(":").map(Number);
         const nd = new Date(tm.getFullYear(), tm.getMonth(), tm.getDate(), h, mi, 0, 0);
-        const { error } = await sb.from("auto_queue").update({ scheduled_at: nd.toISOString() }).eq("id", q.id);
+        const upd = { scheduled_at: nd.toISOString() };
+        if (q.status !== "waiting") { upd.status = "waiting"; upd.result_text = null; upd.error_msg = null; }
+        const { error } = await sb.from("auto_queue").update(upd).eq("id", q.id);
         if (error) { alert("変更失敗: "+error.message); return; }
-        timeBtn.style.borderColor = "var(--ok)"; setTimeout(()=>{ timeBtn.style.borderColor="var(--accent2)"; }, 1200);
+        timeBtn.style.borderColor = "var(--ok)"; setTimeout(()=>{ timeBtn.style.borderColor="var(--accent2)"; draw(); }, 1200);
       };
       d.appendChild(timeBtn);
       /* 種類 */
@@ -9405,7 +9429,7 @@ BUILDERS.autoqueue = (el) => {
       acct.textContent = "@"+q.screen_name; d.appendChild(acct);
       /* ステータス */
       const st = document.createElement("span"); st.className = "muted"; st.style.cssText="font-size:12px;margin-left:auto";
-      st.textContent = STATUS_LABEL[q.status] || q.status; d.appendChild(st);
+      st.textContent = isMiokuri ? "見送り(時刻変更で再実行)" : (STATUS_LABEL[q.status] || q.status); d.appendChild(st);
       /* 生成済みなら本文プレビュー */
       if (q.status === "done" && q.result_text) {
         const pre = document.createElement("div");
