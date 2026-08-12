@@ -5235,11 +5235,17 @@ function openQuoteSwipe(items, onClose) {
   const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
   const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
   const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
-  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>Xで引用（コメント入り）</b> →<br><span style='font-size:11px'>コメント入りの引用画面が開くので、投稿を押すだけ</span>";
+  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>そのまま引用ポスト（ネイティブ引用）</b> →<br><span style='font-size:11px'>本文はAIコメントのみ・引用元はカードで紐づく＝URLは付きません（リーチ低下なし）</span>";
   overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
   document.body.appendChild(overlay);
   /* 右=Xの引用作成画面を開く(コメントはコピー)＋この候補は処理済みにして次へ */
-  function doApprove(it) { xQuoteIntent(it); gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
+  /* ★v274 右スワイプ=そのままネイティブ引用ポスト(quote_tweet_idでAPI投稿)。本文はAIコメントのみ=URLなし・リーチ低下しない。
+     旧: xQuoteIntent(X公式コンポーズにURLを貼る方式)→本文にURLが乗り引用にならなかった */
+  function doApprove(it) {
+    gasFetch_("quoteApprove", { id: it.id, text: it.quote_text }).then((r) => {
+      if (typeof toast === "function") toast((r && r.ok) ? "🔁 引用ポストしました @" + (it.target_username || "") : ("引用失敗: " + ((r && r.error) || "不明")), (r && r.ok) ? "ok" : "err");
+    }).catch(() => {});
+  }
   function doSkip(it) { gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
   function fly(card, dir) { busy = true; card.style.transition = "transform .3s, opacity .3s"; card.style.transform = "translateX(" + (dir > 0 ? "120%" : "-120%") + ") rotate(" + (dir * 8) + "deg)"; card.style.opacity = "0"; setTimeout(() => { idx++; renderCard(); }, 280); }
   function attachSwipe(card, it, tint, label) {
