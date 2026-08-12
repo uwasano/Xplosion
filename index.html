@@ -3477,6 +3477,23 @@ BUILDERS.settings = (el) => {
       el.appendChild(hint);
       return;
     }
+    /* ★v274 的中カード画像の自動添付ON/OFF(競艇のみ・生成設定へ集約)。実績を画像で見せてインプレ&フォロー獲得 */
+    fld(el, "🖼 的中カード画像（実績を画像で見せてインプレ＆フォロー獲得）");
+    const cardOnNote = document.createElement("p"); cardOnNote.className = "desc"; cardOnNote.style.margin = "0 0 8px";
+    cardOnNote.innerHTML = "的中報告の投稿に的中カード画像を自動で添付する。オフにすると文章だけの報告になる。";
+    el.appendChild(cardOnNote);
+    const seg0 = document.createElement("div"); seg0.style.cssText = "display:flex;gap:6px"; el.appendChild(seg0);
+    const paint0 = () => {
+      seg0.innerHTML = "";
+      [[true, "🖼 添付オン"], [false, "🚫 添付オフ"]].forEach(([v, label]) => {
+        const b = document.createElement("button"); b.textContent = label;
+        const on = ((CFG.hitCard !== false) === v);
+        b.style.cssText = "flex:1;padding:9px 3px;border-radius:9px;border:none;font-weight:800;font-size:11.5px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
+        b.onclick = () => { CFG.hitCard = v; save(); paint0(); if (typeof toast === "function") toast(v ? "🖼 的中カード添付 ON" : "🚫 的中カード添付 OFF", "ok"); };
+        seg0.appendChild(b);
+      });
+    };
+    paint0();
     fld(el, "🖼 的中カードの見た目（3種・競艇公式そっくり）");
     const cnote = document.createElement("p"); cnote.className = "desc"; cnote.style.margin = "0 0 8px";
     cnote.innerHTML = "的中明細=公式の的中モーダル(出走選手6人＋大きな払戻)。契約明細=買い目一覧＋的中バッジ。シンプル=1枚もの。全部無料。払戻は100倍以上が赤・未満は黒(公式仕様)。";
