@@ -9556,7 +9556,7 @@ BUILDERS.clients = (el) => {
       let cap = 3;
       const paint = () => {
         seg.innerHTML = "";
-        [1, 3, 5, 10].forEach((n) => {
+        [1, 3, 5, 10, 15].forEach((n) => {
           const b = document.createElement("button"); b.textContent = n + "回";
           const isOn = (cap === n);
           b.style.cssText = "flex:1;padding:8px;border-radius:9px;border:none;font-weight:800;font-size:13px;cursor:pointer;" + (isOn ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
@@ -9569,7 +9569,7 @@ BUILDERS.clients = (el) => {
         });
       };
       paint(); capWrap.appendChild(seg); wrap.appendChild(capWrap);
-      (async () => { try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; on = (cfg.quoteEnabled !== false); paintSw(); capWrap.style.opacity = on ? "1" : ".4"; const v = Number(cfg.quoteDailyCap); cap = ([1, 3, 5, 10].indexOf(v) >= 0) ? v : 3; paint(); } catch (e) {} })();
+      (async () => { try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; on = (cfg.quoteEnabled !== false); paintSw(); capWrap.style.opacity = on ? "1" : ".4"; const v = Number(cfg.quoteDailyCap); cap = (v >= 1 && v <= 50) ? v : 3; paint(); } catch (e) {} })();
       return wrap;
     }
 
