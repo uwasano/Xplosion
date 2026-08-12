@@ -6683,9 +6683,9 @@ BUILDERS.calendar = (el) => {
       const isBusy_ = (x) => !!(x && (x.fetchLimit || (x.error && /urlfetch|多すぎ|too many|quota|rate|一時的|しばらく/i.test(String(x.error)))));
       const busyHtml_ = '<div class="card" style="padding:12px"><div style="font-weight:800;color:#ffb020">⏳ 一時的に混み合っています</div><div class="muted" style="font-size:12px;margin-top:4px;line-height:1.7">Xの取得が一瞬だけ混み合いました（1日の上限にはまだ余裕があります）。数秒おいて、もう一度ボタンを押してください。</div></div>';
       const openCands_ = (arr) => { trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">承認待ち ' + arr.length + ' 件。スワイプで引用していけます。</div>'; openQuoteSwipe(arr.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。もう一度ボタンを押すと新しい候補を探します。</div>'; }); btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob; };
-      /* ★v44: まず既存の承認待ちをそのまま開く(スキャン前・軽い・確実)。「3件あるのに開けない」問題の根治 */
-      { const cj0 = await gasFetch_("quoteCandidates", { screen_name: screen }); const c0 = (cj0 && cj0.items) ? cj0.items : []; if (c0.length) { openCands_(c0); return; } }
-      /* 承認待ちが無い時だけ新規スキャン */
+      /* ★v79 毎回スキャンして新しい候補を足してから開く。
+         旧v44は「既存の承認待ちが1件でもあると再スキャンせず古い候補を再表示」していたため、
+         古い1件が残っていると押しても押しても同じ古い候補しか出ない=「全く変わらない/古い」の原因だった。 */
       btnQuoteManual.textContent = "候補を探しています…";
       trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">狙った相手の伸びてる投稿を探して、引用コメントを作成しています…（10〜20秒）</div>';
       const sr = await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない)。結果理由もsr.resultsで返る */
