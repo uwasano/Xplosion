@@ -5243,7 +5243,11 @@ function openQuoteSwipe(items, onClose) {
      旧: xQuoteIntent(X公式コンポーズにURLを貼る方式)→本文にURLが乗り引用にならなかった */
   function doApprove(it) {
     gasFetch_("quoteApprove", { id: it.id, text: it.quote_text }).then((r) => {
-      if (typeof toast === "function") toast((r && r.ok) ? "🔁 引用ポストしました @" + (it.target_username || "") : ("引用失敗: " + ((r && r.error) || "不明")), (r && r.ok) ? "ok" : "err");
+      if (r && r.ok) { if (typeof toast === "function") toast("🔁 引用ポストしました @" + (it.target_username || ""), "ok"); return; }
+      /* ★v79.3 XがこのアカのAPI引用を制限中(403)の場合は、Xの投稿画面を開いて手動投稿に切替(投稿を押すだけ)。
+         手動のX経由なら通る(実証済み)。制限が解ければ右スワイプだけで自動投稿に戻る */
+      if (r && r.restricted) { xQuoteIntent(it); if (typeof toast === "function") toast("APIが制限中→Xの投稿画面を開きました。投稿を押すだけ", "ok"); return; }
+      if (typeof toast === "function") toast("引用失敗: " + ((r && r.error) || "不明"), "err");
     }).catch(() => {});
   }
   function doSkip(it) { gasFetch_("quoteSkip", { id: it.id }).catch(() => {}); }
