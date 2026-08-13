@@ -5235,18 +5235,29 @@ function openQuoteSwipe(items, onClose) {
   const counter = document.createElement("div"); counter.style.cssText = "color:var(--muted);font-size:13px;margin-bottom:12px";
   const stack = document.createElement("div"); stack.style.cssText = "position:relative;width:100%;max-width:440px;height:62vh";
   const hint = document.createElement("div"); hint.style.cssText = "color:var(--muted);font-size:12px;margin-top:16px;text-align:center;line-height:1.7";
-  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>そのまま引用ポスト（ネイティブ引用）</b> →<br><span style='font-size:11px'>本文はAIコメントのみ・引用元はカードで紐づく＝URLは付きません（リーチ低下なし）</span>";
+  hint.innerHTML = "← 左スワイプで<b style='color:#7fd4ff'>スキップ</b> ／ 右スワイプで<b style='color:#ff9ec4'>引用ポスト</b> →<br><span style='font-size:11px'>APIが通る時はそのまま自動投稿。X制限中は元投稿が即開く→<b>リポスト→引用</b>を押して貼り付け(コメントはコピー済み・URLは一切入らない)</span>";
   overlay.appendChild(closeBtn); overlay.appendChild(backBtn); overlay.appendChild(counter); overlay.appendChild(stack); overlay.appendChild(hint);
   document.body.appendChild(overlay);
   /* 右=Xの引用作成画面を開く(コメントはコピー)＋この候補は処理済みにして次へ */
   /* ★v274 右スワイプ=そのままネイティブ引用ポスト(quote_tweet_idでAPI投稿)。本文はAIコメントのみ=URLなし・リーチ低下しない。
      旧: xQuoteIntent(X公式コンポーズにURLを貼る方式)→本文にURLが乗り引用にならなかった */
+  /* ★v79.4 手動ネイティブ引用: 元投稿そのものをXで開く(URLは投稿本文に一切入れない)。
+     コメントはコピー済み→Xの「リポスト→引用」を押して貼り付けるだけ=本物の引用ポスト。
+     ジェスチャー内で即openするので反応も速い */
+  function quoteManualOpen_(it) {
+    const turl = it.target_url || ("https://x.com/" + (it.target_username || "") + "/status/" + (it.target_tweet_id || ""));
+    try { navigator.clipboard.writeText(it.quote_text || ""); } catch (e) {}
+    let w = null; try { w = window.open(turl, "_blank"); } catch (e) {}
+    if (!w) { try { location.href = turl; } catch (e) {} }
+    gasFetch_("quoteSkip", { id: it.id }).catch(() => {});
+    if (typeof toast === "function") toast("コメントをコピー済み。Xで「リポスト → 引用」を押して貼り付けるだけ", "ok");
+  }
   function doApprove(it) {
+    /* クールダウン中(=今このアカはAPI引用が403)はAPI往復を待たず、即Xで元投稿を開く */
+    if (window.__quoteCooling) { quoteManualOpen_(it); return; }
     gasFetch_("quoteApprove", { id: it.id, text: it.quote_text }).then((r) => {
       if (r && r.ok) { if (typeof toast === "function") toast("🔁 引用ポストしました @" + (it.target_username || ""), "ok"); return; }
-      /* ★v79.3 XがこのアカのAPI引用を制限中(403)の場合は、Xの投稿画面を開いて手動投稿に切替(投稿を押すだけ)。
-         手動のX経由なら通る(実証済み)。制限が解ければ右スワイプだけで自動投稿に戻る */
-      if (r && r.restricted) { xQuoteIntent(it); if (typeof toast === "function") toast("APIが制限中→Xの投稿画面を開きました。投稿を押すだけ", "ok"); return; }
+      if (r && r.restricted) { window.__quoteCooling = true; quoteManualOpen_(it); return; }
       if (typeof toast === "function") toast("引用失敗: " + ((r && r.error) || "不明"), "err");
     }).catch(() => {});
   }
@@ -5417,7 +5428,7 @@ BUILDERS.quote = (el) => {
     const listWrap=document.createElement("div"); inbox.appendChild(listWrap);
     listWrap.innerHTML='<div class="muted" style="padding:8px">読み込み中…</div>';
     try {
-      const r = await gasFetch_("quoteCandidates",{screen_name:acct.value});
+      const r = await gasFetch_("quoteCandidates",{screen_name:acct.value}); window.__quoteCooling = !!(r && r.cooling);
       const items=(r&&r.items)?r.items:[];
       if(!items.length){ listWrap.innerHTML='<div class="muted" style="padding:10px;font-size:12px">承認待ちはありません。承認モードのターゲットに新しい投稿が来ると、ここに表示されます。「今すぐ探す」で手動チェックもできます(30分ごとに自動巡回)。</div>'; return; }
       listWrap.innerHTML="";
@@ -6693,7 +6704,7 @@ BUILDERS.calendar = (el) => {
       btnQuoteManual.textContent = "候補を探しています…";
       trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">狙った相手の伸びてる投稿を探して、引用コメントを作成しています…（10〜20秒）</div>';
       const sr = await gasFetch_("quoteScanNow", { screen_name: screen }); /* 手動は必ず候補化(勝手に投稿しない)。結果理由もsr.resultsで返る */
-      const cj = await gasFetch_("quoteCandidates", { screen_name: screen });
+      const cj = await gasFetch_("quoteCandidates", { screen_name: screen }); window.__quoteCooling = !!(cj && cj.cooling);
       const cands = (cj && cj.items) ? cj.items : [];
       if (cands.length) {
         trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">候補 ' + cands.length + ' 件。スワイプで引用していけます。</div>';
@@ -6703,7 +6714,7 @@ BUILDERS.calendar = (el) => {
         let dg = null; try { dg = await gasFetch_("quoteDiag", { screen_name: screen }); } catch (e) {}
         /* ★v44: 承認待ちが実在するのに0で返った=取り出しが一過性でコケただけ→取り直してスワイプを開く救済 */
         if (dg && dg.pending > 0 && !isBusy_(dg)) {
-          let cj2 = null; try { cj2 = await gasFetch_("quoteCandidates", { screen_name: screen }); } catch (e) {}
+          let cj2 = null; try { cj2 = await gasFetch_("quoteCandidates", { screen_name: screen }); window.__quoteCooling = !!(cj2 && cj2.cooling); } catch (e) {}
           const cands2 = (cj2 && cj2.items) ? cj2.items : [];
           if (cands2.length) {
             trOut.innerHTML = '<div class="muted" style="padding:8px;font-size:12px">承認待ち ' + cands2.length + ' 件。スワイプで引用していけます。</div>';
@@ -6754,7 +6765,7 @@ BUILDERS.calendar = (el) => {
         trOut.innerHTML = h;
         const g = document.getElementById("goQuoteCfg"); if (g) g.onclick = () => { showTab("settings"); if (typeof renderNav === "function") renderNav(); };
         const qop = document.getElementById("qOpenPending");
-        if (qop) qop.onclick = async () => { qop.disabled = true; qop.textContent = "取得中…"; try { const cj3 = await gasFetch_("quoteCandidates", { screen_name: screen }); const c3 = (cj3 && cj3.items) ? cj3.items : []; if (c3.length) { openQuoteSwipe(c3.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。</div>'; }); } else { qop.textContent = "承認待ちが取得できませんでした（少し待って再度）"; } } catch (e) { qop.disabled = false; qop.textContent = "🃏 もう一度開く"; } };
+        if (qop) qop.onclick = async () => { qop.disabled = true; qop.textContent = "取得中…"; try { const cj3 = await gasFetch_("quoteCandidates", { screen_name: screen }); window.__quoteCooling = !!(cj3 && cj3.cooling); const c3 = (cj3 && cj3.items) ? cj3.items : []; if (c3.length) { openQuoteSwipe(c3.slice(), () => { trOut.innerHTML = '<div class="muted" style="padding:10px;font-size:12px">完了しました。</div>'; }); } else { qop.textContent = "承認待ちが取得できませんでした（少し待って再度）"; } } catch (e) { qop.disabled = false; qop.textContent = "🃏 もう一度開く"; } };
       }
     } catch (e) { trOut.innerHTML = '<div class="err">' + esc(e.message) + '</div>'; }
     btnQuoteManual.disabled = false; btnQuoteManual.textContent = ob;
