@@ -9876,6 +9876,44 @@ BUILDERS.clients = (el) => {
       return wrap;
     }
 
+    /* ★v80.2 規制(シャドウバン)週次チェック: ON/OFFトグル＋最新の分析結果表示。
+       実行はサーバ側(実績回収と同じ週1タイミング)。閲覧中央値が異常に低い時だけAIが原因分析する */
+    function shadowCheckRow(screen) {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
+      const top = document.createElement("div");
+      top.style.cssText = "display:flex;align-items:center;justify-content:space-between";
+      const lbl = document.createElement("div");
+      lbl.style.cssText = "font-size:12.5px;line-height:1.4";
+      lbl.innerHTML = '🕵️ 規制(シャドウバン)週次チェック<br><span class="muted" style="font-size:11px">週1回(実績回収と同時)、教育・反応投稿の閲覧数を確認。異常に低い時だけ「なぜ規制がかかっている可能性があるか」をAIが運用データ込みで分析して下に表示。追加のAPI消費はほぼゼロ。</span>';
+      const sw = document.createElement("button");
+      let on = true;
+      const paint = () => { sw.textContent = on ? "ON" : "OFF"; sw.style.cssText = toggleCss_(on); };
+      paint();
+      top.appendChild(lbl); top.appendChild(sw); wrap.appendChild(top);
+      sw.onclick = async () => {
+        on = !on; paint();
+        try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; cfg.shadowCheckOn = on; await kvSet("gen_config:" + screen, cfg); if (typeof toast === "function") toast((on ? "🕵️ 規制チェックON" : "🕵️ 規制チェックOFF") + " @" + screen, "ok"); }
+        catch (e) { on = !on; paint(); alert("保存失敗: " + e); }
+      };
+      const resBox = document.createElement("div");
+      wrap.appendChild(resBox);
+      (async () => {
+        try {
+          const cfg = (await kvGet("gen_config:" + screen, null)) || {};
+          on = (cfg.shadowCheckOn !== false); paint();
+          const r = await kvGet("kh_shadow:" + screen, null);
+          if (r && r.at) {
+            const okS = (r.status === "ok");
+            resBox.innerHTML = '<div style="margin-top:8px;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.7;background:' + (okS ? 'rgba(61,255,168,.08)' : 'rgba(255,80,80,.10)') + ';color:' + (okS ? '#3DFFA8' : '#ff9a9a') + '">'
+              + (okS ? '✅ ' : '⚠️ ') + esc(String(r.text || "")).replace(/\n/g, "<br>")
+              + '<br><span class="muted" style="font-size:10.5px">最終チェック: ' + new Date(r.at).toLocaleString("ja-JP") + '</span></div>';
+          }
+        } catch (e) {}
+      })();
+      return wrap;
+    }
+
     const frag = document.createElement("div");
     if (!S.clients.length) frag.innerHTML = '<div class="muted">まだ登録なし。</div>';
     S.clients.forEach((c) => {
@@ -9888,6 +9926,7 @@ BUILDERS.clients = (el) => {
       d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
       d.appendChild(forYouRotationPanel_(c.screen_name)); /* ★v79 教育＋反応はこの1つで管理(個別行は廃止=かぶり防止・全ジャンル) */
       d.appendChild(funnelFreqRow(c.screen_name)); /* ★v79 商品導線は専用の頻度セレクタ(上限1日2回・広告アカ回避) */
+      d.appendChild(shadowCheckRow(c.screen_name)); /* ★v80.2 規制(シャドウバン)週次チェック ON/OFF＋最新結果 */
       d.appendChild(autoUrlRow(c.screen_name)); /* ★v229: トレンド/炎上の本文URL添付 ON/OFF */
       d.appendChild(quoteCapRow(c.screen_name)); /* ★v232: 引用RT自動の1日上限 1/3/5/10 */
       /* v202: 📱 LINE自動配信(トークンの有無=ON/OFF)。無料予想の生成時に友だち全員へ一斉配信 */
