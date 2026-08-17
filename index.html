@@ -3274,7 +3274,7 @@ BUILDERS.home = (el) => {
          さらに「最後に投稿成功した時刻」より前の生成エラーは解決済みとみなして隠す(04:39の古いやつ対策)。 */
       const errs = (aq || []).filter((e) => !String(e.error_msg || "").startsWith("(対象レース") && (!lastOK[e.screen_name] || String(e.scheduled_at || "") > lastOK[e.screen_name]));
       if (errs.length) {
-        const kindJP = { trend: "トレンド", enjou: "炎上ニュース", normal: "通常投稿", flavor: "フレーバー", yosou: "予想(人気順)", yosou_score: "予想(スコア)", yokoku: "レース予告" };
+        const kindJP = { trend: "トレンド", enjou: "炎上ニュース", normal: "通常投稿", knowhow: "教育・保存", react: "反応・リプ誘発", weekly: "実績・週まとめ", funnel: "商品導線(ツリー)", flavor: "フレーバー", yosou: "予想(人気順)", yosou_score: "予想(スコア)", yokoku: "レース予告" };
         let html = '<div style="background:rgba(255,123,123,.12);border:1px solid var(--bad);border-radius:10px;padding:11px">';
         html += '<div style="font-weight:700;color:var(--bad);margin-bottom:4px">⚠️ オート投稿でエラー ' + errs.length + '件</div>';
         html += '<div style="font-size:11px;color:var(--muted);margin-bottom:6px">下の原因を直すか、生成設定をご確認ください。直れば次回から自動で復帰します。</div>';
@@ -6426,7 +6426,7 @@ BUILDERS.calendar = (el) => {
 
       /* ★v266: 公式風テーブルの想定購入額(いくら賭けたか)。100〜1万円で切替。払戻はオッズ×購入額 */
       const stakeWrap = document.createElement("div"); stakeWrap.style.cssText = "margin-top:10px";
-      stakeWrap.innerHTML = '<div style="font-size:12px;font-weight:700">💰 購入金額（的中明細・契約明細に反映）</div>'
+      stakeWrap.innerHTML = '<div style="font-size:12px;font-weight:700">💰 購入金額（的中明細・契約明細・シンプルに反映）</div>'
         + '<div class="muted" style="font-size:11px;margin-top:2px;line-height:1.6">「◯円ずつ買った想定」でカードに表示する額。払戻は自動でオッズ×購入額になります。</div>';
       const stakeSeg = document.createElement("div"); stakeSeg.style.cssText = "display:flex;gap:6px;margin-top:8px";
       let hcStake = 10000;
@@ -9662,6 +9662,150 @@ BUILDERS.clients = (el) => {
       return wrap;
     }
 
+    /* ★v79 For You 役割ローテ(競艇のみ): 1日の投稿本数を選ぶと、ファネルの黄金比で役割の回数を自動配分して
+       auto_config に反映する。予想・教育(保存)・反応(リプ誘発)を1本ずつの合計=選んだ本数にする。
+       引用RT/トレンド/炎上は別枠。週まとめは日曜に別途1本。 */
+    function foryouDist_(n) {
+      if (n <= 3) return { yosou: 2, knowhow: 1, react: 0 };
+      if (n <= 5) return { yosou: 2, knowhow: 2, react: 1 };
+      if (n <= 7) return { yosou: 3, knowhow: 2, react: 2 };
+      return { yosou: 4, knowhow: 3, react: 3 }; /* 10 */
+    }
+    function forYouRotationPanel_(screen) {
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin-top:10px;padding:12px;border:1px solid var(--accent2);border-radius:12px;background:linear-gradient(135deg,rgba(0,229,255,.08),rgba(61,255,168,.06))";
+      const head = document.createElement("div");
+      head.style.cssText = "font-weight:800;font-size:13.5px;margin-bottom:2px";
+      head.textContent = "🎯 For You 役割ローテ(1日の投稿設計)";
+      const sub = document.createElement("div");
+      sub.className = "muted"; sub.style.cssText = "font-size:11px;line-height:1.6;margin-bottom:8px";
+      sub.innerHTML = "1日の本数を選んで<b>「この配分で適用」</b>を押すと、<b>予想・教育(保存)・反応(リプ誘発)</b>の回数を自動でセットします。朝=教育→昼夜=反応→締切前=予想、の順で時間帯も自動最適化。<br>※引用RT/トレンド/炎上は別枠。実績・週まとめは日曜の夜に別途1本。";
+      wrap.appendChild(head); wrap.appendChild(sub);
+
+      let n = 5;
+      const seg = document.createElement("div"); seg.style.cssText = "display:flex;gap:6px";
+      const prev = document.createElement("div"); prev.style.cssText = "font-size:12px;line-height:1.7;margin-top:8px;padding:8px 10px;background:var(--card);border:1px solid var(--border);border-radius:8px";
+      const paintPrev = () => {
+        const d = foryouDist_(n);
+        prev.innerHTML = "<b>" + n + "投稿/日</b>の配分:<br>🚤 無料予想 <b>" + d.yosou + "回</b> ／ 📚 教育・保存 <b>" + d.knowhow + "回</b>" + (d.react ? " ／ 💬 反応・リプ誘発 <b>" + d.react + "回</b>" : "") + "<br><span class='muted' style='font-size:11px'>＋ 日曜夜に 📊 実績・週まとめ 1本</span>";
+      };
+      const paintSeg = () => {
+        seg.innerHTML = "";
+        [3, 5, 7, 10].forEach((v) => {
+          const b = document.createElement("button"); b.textContent = v + "投稿";
+          const on = (n === v);
+          b.style.cssText = "flex:1;padding:9px;border-radius:9px;border:none;font-weight:800;font-size:13px;cursor:pointer;" + (on ? "background:linear-gradient(135deg,#38d4f0,#3DFFA8);color:#002" : "background:rgba(255,255,255,.08);color:#94a3b8");
+          b.onclick = () => { n = v; paintSeg(); paintPrev(); };
+          seg.appendChild(b);
+        });
+      };
+      paintSeg(); wrap.appendChild(seg); paintPrev(); wrap.appendChild(prev);
+
+      const apply = document.createElement("button");
+      apply.textContent = "この配分で適用";
+      apply.style.cssText = "width:100%;margin-top:10px;padding:10px;border-radius:9px;border:none;font-weight:800;font-size:13.5px;cursor:pointer;background:linear-gradient(135deg,#00e5ff,#3DFFA8);color:#002";
+      apply.onclick = async () => {
+        apply.disabled = true; const old = apply.textContent; apply.textContent = "適用中…";
+        try {
+          const d = foryouDist_(n);
+          const plan = [
+            { kind: "yosou", enabled: true, count: d.yosou },
+            { kind: "knowhow", enabled: true, count: d.knowhow },
+            { kind: "react", enabled: d.react > 0, count: Math.max(1, d.react) },
+            { kind: "weekly", enabled: true, count: 1 },
+          ];
+          const rows = plan.map((p) => ({ screen_name: screen, kind: p.kind, enabled: p.enabled, count: p.count, updated_at: new Date().toISOString() }));
+          const { error } = await sb.from("auto_config").upsert(rows, { onConflict: "screen_name,kind" });
+          if (error) throw new Error(error.message);
+          try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; cfg.forYouPostsPerDay = n; await kvSet("gen_config:" + screen, cfg); } catch (e) {}
+          if (typeof toast === "function") toast("🎯 " + n + "投稿/日の役割配分を適用しました @" + screen, "ok");
+          draw(); /* 各役割のトグル表示を更新 */
+        } catch (e) { alert("適用に失敗: " + (e.message || e)); apply.disabled = false; apply.textContent = old; }
+      };
+      wrap.appendChild(apply);
+      (async () => { try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; const v = Number(cfg.forYouPostsPerDay); if ([3, 5, 7, 10].indexOf(v) >= 0) { n = v; paintSeg(); paintPrev(); } } catch (e) {} })();
+      return wrap;
+    }
+
+    /* ★v79 商品導線(funnel)の頻度セレクタ。広告アカ認定を避けるため上限は1日2回まで。
+       頻度は gen_config.funnelFreq に保存し、auto_config(funnel)の enabled/count も連動させる。
+       実際の配信本数はサーバ側で「価値投稿の20%かつ最大2/日」にさらに自動で丸める(売り投稿を必ず少数派に保つ)。 */
+    function funnelFreqRow(screen) {
+      const OPTS = [
+        { key: "off", label: "オフ", enabled: false, count: 0 },
+        { key: "week2", label: "週2回", enabled: true, count: 1 },
+        { key: "alt", label: "2日に1回", enabled: true, count: 1 },
+        { key: "daily1", label: "1日1回", enabled: true, count: 1, rec: true },
+        { key: "daily2", label: "1日2回", enabled: true, count: 2, cap: true },
+      ];
+      const wrap = document.createElement("div");
+      wrap.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid var(--border)";
+      const lbl = document.createElement("div");
+      lbl.style.cssText = "font-size:12.5px;line-height:1.4";
+      lbl.innerHTML = '🧵 オート商品導線(ツリー式)<br><span class="muted" style="font-size:11px">まず本文で価値を出して興味を作り、スレッド最後のツイートに『⚙生成設定の入れたいURL』を自動で付ける導線投稿。本文にURLを入れないのでリーチは落ちない。<b>売り投稿は多いほど「広告アカ」と見なされて表示が落ちる</b>ため上限は<b>1日2回</b>まで。おすすめは<b>1日1回</b>。実際の本数はサーバ側で「価値投稿の20%以内」にも自動調整。※入れたいURL未設定なら投稿されません</span>';
+      wrap.appendChild(lbl);
+
+      let curKey = "daily1";
+      const seg = document.createElement("div"); seg.style.cssText = "display:flex;gap:6px;margin-top:8px;flex-wrap:wrap";
+      const save = async (opt) => {
+        /* gen_config.funnelFreq */
+        try { const cfg = (await kvGet("gen_config:" + screen, null)) || {}; cfg.funnelFreq = opt.key; await kvSet("gen_config:" + screen, cfg); } catch (e) { alert("保存失敗: " + e); return false; }
+        /* auto_config(funnel) の enabled/count を連動 */
+        const { error } = await sb.from("auto_config").upsert({ screen_name: screen, kind: "funnel", enabled: opt.enabled, count: Math.max(1, opt.count), updated_at: new Date().toISOString() }, { onConflict: "screen_name,kind" });
+        if (error) { alert("保存失敗: " + error.message); return false; }
+        return true;
+      };
+      const paint = () => {
+        seg.innerHTML = "";
+        OPTS.forEach((opt) => {
+          const b = document.createElement("button");
+          b.textContent = opt.label + (opt.rec ? " ✓" : "");
+          const on = (curKey === opt.key);
+          b.style.cssText = "flex:1;min-width:74px;padding:8px;border-radius:9px;border:none;font-weight:800;font-size:12.5px;cursor:pointer;" +
+            (on ? (opt.key === "off" ? "background:rgba(255,255,255,.16);color:#cbd5e1" : "background:linear-gradient(135deg,#a855f7,#00e5ff);color:#002")
+                : "background:rgba(255,255,255,.08);color:#94a3b8");
+          b.onclick = async () => { const prev = curKey; curKey = opt.key; paint(); const ok = await save(opt); if (!ok) { curKey = prev; paint(); return; } if (typeof toast === "function") toast("🧵 商品導線: " + opt.label + " @" + screen, "ok"); };
+          seg.appendChild(b);
+        });
+      };
+      paint(); wrap.appendChild(seg);
+
+      /* サンプル確認ボタン(autoSampleに相乗り) */
+      const sampleBtn = document.createElement("button"); sampleBtn.className = "mini";
+      sampleBtn.textContent = "👀 商品導線ツリーのサンプルを見る";
+      sampleBtn.style.cssText = "width:100%;margin-top:8px;padding:7px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--accent2);font-size:12.5px;font-weight:700;cursor:pointer";
+      const sampleOut = document.createElement("div");
+      sampleBtn.onclick = async () => {
+        sampleBtn.disabled = true; sampleBtn.textContent = "生成中…"; sampleOut.innerHTML = "";
+        try {
+          const { data: sess } = await sb.auth.getSession();
+          if (!sess.session) throw new Error("ログインが切れた。リロードして。");
+          const res = await fetch(GAS_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify({ auth: sess.session.access_token, action: "autoSample", screen_name: screen, kind: "funnel" }) });
+          const j = await res.json();
+          const box = document.createElement("div");
+          box.style.cssText = "background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:6px;font-size:13px;line-height:1.6;white-space:pre-wrap";
+          box.textContent = (j && j.text) ? j.text : "(生成できず)";
+          sampleOut.appendChild(box);
+          const note = document.createElement("p"); note.className = "desc"; note.style.margin = "4px 0 0";
+          note.textContent = (j && j.threadCount && j.threadCount > 1) ? ("🧵" + j.threadCount + "本のツリーで投稿され、最後のツイートに入れたいURLが付きます。") : "※入れたいURL未設定の場合はこのメッセージが出ます。";
+          sampleOut.appendChild(note);
+        } catch (e) { sampleOut.innerHTML = '<div class="err">' + e.message + '</div>'; }
+        sampleBtn.disabled = false; sampleBtn.textContent = "👀 商品導線ツリーのサンプルを見る";
+      };
+      wrap.appendChild(sampleBtn); wrap.appendChild(sampleOut);
+
+      /* 現在値を読み込み(gen_config優先、無ければauto_configのcountから推定) */
+      (async () => {
+        try {
+          const cfg = (await kvGet("gen_config:" + screen, null)) || {};
+          if (cfg.funnelFreq && OPTS.some((o) => o.key === cfg.funnelFreq)) { curKey = cfg.funnelFreq; }
+          else { const r = (autoMap[screen] && autoMap[screen]["funnel"]) ? autoMap[screen]["funnel"] : null; curKey = (r && r.enabled) ? (Number(r.count) >= 2 ? "daily2" : "daily1") : "off"; }
+          paint();
+        } catch (e) {}
+      })();
+      return wrap;
+    }
+
     const frag = document.createElement("div");
     if (!S.clients.length) frag.innerHTML = '<div class="muted">まだ登録なし。</div>';
     S.clients.forEach((c) => {
@@ -9672,7 +9816,9 @@ BUILDERS.clients = (el) => {
       d.appendChild(autoFeatureRow(c.screen_name, "trend", "🔥 オートトレンド投稿", "毎日、今のトレンドからバズ投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#ff2d95,#a855f7)"));
       d.appendChild(autoFeatureRow(c.screen_name, "enjou", "🔥 オート炎上ニュース", "炎上系ニュースに自分の視点でコメント(2日以内・話題が無い日は投稿なし)", "linear-gradient(135deg,#ff6b35,#ff2d95)"));
       d.appendChild(autoFeatureRow(c.screen_name, "normal", "📝 オート通常投稿", "毎日、いつもの投稿をバラバラの時間に自動投稿", "linear-gradient(135deg,#a855f7,#6366f1)"));
-      d.appendChild(autoFeatureRow(c.screen_name, "knowhow", "📚 オートノウハウ・解説系", "業種の役立つノウハウ・解説を本文で出し切る価値提供型。伸びたら生成設定の「入れたいURL」が自動でリプされる(URL導線はこの種別だけ)", "linear-gradient(135deg,#3DFFA8,#38d4f0)"));
+      d.appendChild(autoFeatureRow(c.screen_name, "knowhow", "📚 オート教育・保存系(ノウハウ)", "「保存したくなる」ノウハウ・解説を本文で出し切る価値提供型。For Youの初速を作るため朝〜昼に自動投稿。伸びたら生成設定の「入れたいURL」が自動でリプされる(URL導線はこの種別だけ)", "linear-gradient(135deg,#3DFFA8,#38d4f0)"));
+      d.appendChild(autoFeatureRow(c.screen_name, "react", "💬 オート反応・リプ誘発", "賛否が自然に割れる問い・二択(例『予想で一番見るのは①展示②モーター③ST?』)を昼〜夜に投稿。炎上ではなく健全な議論でリプ(=強いエンゲージ)を狙う。締めは必ず質問", "linear-gradient(135deg,#f59e0b,#ff2d95)"));
+      d.appendChild(funnelFreqRow(c.screen_name)); /* ★v79 商品導線は専用の頻度セレクタ(上限1日2回・広告アカ回避) */
       d.appendChild(autoUrlRow(c.screen_name)); /* ★v229: トレンド/炎上の本文URL添付 ON/OFF */
       d.appendChild(quoteCapRow(c.screen_name)); /* ★v232: 引用RT自動の1日上限 1/3/5/10 */
       /* v202: 📱 LINE自動配信(トークンの有無=ON/OFF)。無料予想の生成時に友だち全員へ一斉配信 */
@@ -9737,6 +9883,8 @@ BUILDERS.clients = (el) => {
       })(c.screen_name);
       /* 競艇業種のみ: 予想 */
       if (/競艇|ボートレース|ボート/.test(biz)) {
+        d.appendChild(forYouRotationPanel_(c.screen_name)); /* ★v79 For You役割ローテ: 1日の本数を選ぶと役割を自動配分 */
+        d.appendChild(autoFeatureRow(c.screen_name, "weekly", "📊 オート実績・週まとめ", "日曜の夜に、直近7日の予想実績(的中率・回収率・ベスト配当)を“本物の数字だけ”でまとめて投稿。フォローする理由=信用を作る。実績が薄い週は投稿しない(捏造しない)", "linear-gradient(135deg,#00e5ff,#3DFFA8)", true));
         d.appendChild(autoFeatureRow(c.screen_name, "yosou", "🚤 オート無料予想(人気順)", "毎日、締切が近いレースを人気順ロジックで自動予想して締切15分前に投稿", "linear-gradient(135deg,#00e5ff,#a855f7)"));
         d.appendChild(autoFeatureRow(c.screen_name, "yosou_score", "🎯 オート無料予想(直前スコア)", "締切直前の展示・ST・気象でスコアリングして本命6点を厳選し締切15分前に投稿。人気順と両方ONにすれば成績比較できる", "linear-gradient(135deg,#00e5ff,#22c55e)"));
         d.appendChild(autoFeatureRow(c.screen_name, "yokoku", "📣 オート明日の予告", "明日の開催情報を取得して『明日◯◯でレース!注目選手!』の集客予告を21時台に投稿(数字予想は出さない)", "linear-gradient(135deg,#00e5ff,#22c55e)", true));
