@@ -219,8 +219,8 @@ function showMiniModal(title, body, actions, icon) {
 </script>
 <script>
 /* ============ CONFIG(ここを書き換える) ============ */
-const SUPABASE_URL = "https://hwoltvzmsznprsbyrbaj.supabase.co";
-const SUPABASE_ANON = "sb_publishable_1JsQKCxHNyH4fGzFUJeEHg_czjaZxPR";
+const SUPABASE_URL = "https://vdvheevotrtuyblxfhwa.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkdmhlZXZvdHJ0dXlibHhmaHdhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcyMjU5ODUsImV4cCI6MjEwMjgwMTk4NX0.vcAcDY6Jfq6zCS1ugjUvfGbanfKGKmgBBGJ-9N999YE";
 const GAS_URL = "https://script.google.com/macros/s/AKfycbyQ3OxIQ3fA60kAOKf3_kcXWtE0N8A3WPH4c4uG-KdyiYwo2HIS0U8IjmS-AHftieOP/exec";
 let _lastAuthToken = "";   /* sendBeacon用に直近トークンを保持 */
 /* ページ離脱(Xを開く等)でも送信が切れないsendBeacon送信。成功でtrue */
@@ -1660,7 +1660,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "281";
+const APP_VERSION = "283";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2684,12 +2684,29 @@ const TABS = [
   { id:"schedule", num:"09", label:"予約管理" },
   { id:"autoqueue", num:"10", label:"⏰ オート予定" },
   { id:"clients", num:"11", label:"クライアント" },
+  /* ★v282 📸Instagram(新規独立機能・既存Xタブとは完全分離) */
+  { id:"ig_dashboard", num:"", label:"📊 Dashboard" },
+  { id:"ig_accounts", num:"", label:"👤 Accounts" },
+  { id:"ig_genres", num:"", label:"🏷 Genres" },
+  { id:"ig_content", num:"", label:"📝 Content" },
+  { id:"ig_racers", num:"", label:"🏁 Racers" },
+  { id:"ig_news", num:"", label:"📰 News" },
+  { id:"ig_images", num:"", label:"🖼 Images" },
+  { id:"ig_templates", num:"", label:"🎨 Templates" },
+  { id:"ig_schedule", num:"", label:"⏰ Schedule" },
+  { id:"ig_review", num:"", label:"✅ Review" },
+  { id:"ig_published", num:"", label:"📤 Published" },
+  { id:"ig_analytics", num:"", label:"📈 Analytics" },
+  { id:"ig_queue", num:"", label:"⚙ Queue" },
+  { id:"ig_logs", num:"", label:"🧾 Logs" },
+  { id:"ig_settings", num:"", label:"🔧 Settings" },
 ];
 const NAV_GROUPS = [
   { id: "home", icon: "🏠", label: "ホーム", tabs: [] },
   { id: "post", icon: "✍️", label: "投稿", tabs: ["dailytask", "calendar", "gapcheck"] },
   { id: "analyze", icon: "📈", label: "分析", tabs: ["competitor", "radar", "unfollow", "outreach", "quote", "followers", "report"] },
   { id: "config", icon: "⚙️", label: "設定", tabs: ["settings", "schedule", "autoqueue", "clients"] },
+  { id: "instagram", icon: "📸", label: "Instagram", tabs: ["ig_dashboard", "ig_accounts", "ig_genres", "ig_content", "ig_racers", "ig_news", "ig_images", "ig_templates", "ig_schedule", "ig_review", "ig_published", "ig_analytics", "ig_queue", "ig_logs", "ig_settings"] },
 ];
 function currentGroup() {
   if (S.tab === "home") return "home";
@@ -2908,6 +2925,325 @@ function aiTab(el, cfg) {
 }
 
 const BUILDERS = {};
+
+/* ============================================================
+   ★v282 📸 Instagram 独立機能(フェーズ1)
+   既存X機能のコード・設定・DBを一切流用しない。通信は専用Edge Function
+   「instagram-worker」だけ。テーブルはinstagram_*のみ。
+   ============================================================ */
+async function igFetch_(action, extra) {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) throw new Error("ログインが切れた。リロードして。");
+  const res = await fetch(SUPABASE_URL + "/functions/v1/instagram-worker", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + data.session.access_token, "apikey": SUPABASE_ANON },
+    body: JSON.stringify(Object.assign({ action }, extra || {})),
+  });
+  const j = await res.json();
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+const IG = {
+  shell(el, title, desc) {
+    const wrap = document.createElement("div");
+    wrap.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin:4px 2px 10px"><div style="font-size:19px;font-weight:800">📸 ' + esc(title) + '</div>'
+      + (desc ? '<div class="muted" style="font-size:11.5px">' + esc(desc) + '</div>' : '') + '</div><div class="igbody"></div>';
+    el.appendChild(wrap);
+    return wrap.querySelector(".igbody");
+  },
+  card(html) { const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:12px;margin-top:8px;font-size:12.5px;line-height:1.7"; d.innerHTML = html; return d; },
+  btn(label, grad, fn) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.style.cssText = "padding:9px 14px;border:none;border-radius:9px;font-weight:800;font-size:12.5px;cursor:pointer;margin:4px 6px 4px 0;background:" + (grad || "linear-gradient(135deg,#E1306C,#F77737)") + ";color:#fff";
+    b.onclick = async () => { const o = b.textContent; b.disabled = true; b.textContent = "…"; try { await fn(b); } catch (e) { toast(String(e.message || e), "err"); } b.disabled = false; b.textContent = o; };
+    return b;
+  },
+  input(ph, val, w) { const i = document.createElement("input"); i.placeholder = ph; i.value = val == null ? "" : val; i.style.cssText = "width:" + (w || "100%") + ";padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2,#111);color:var(--ink);font-size:12.5px;margin:3px 0"; return i; },
+  sel(opts, val) { const s = document.createElement("select"); s.style.cssText = "padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2,#111);color:var(--ink);font-size:12.5px;margin:3px 0"; opts.forEach(o => { const op = document.createElement("option"); op.value = o[0]; op.textContent = o[1]; if (o[0] === val) op.selected = true; s.appendChild(op); }); return s; },
+  fmt(iso) { if (!iso) return "—"; const d = new Date(iso); return (d.getMonth() + 1) + "/" + d.getDate() + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); },
+  stBadge(st) {
+    const C = { published: "#3DFFA8", review: "#F2C14E", approved: "#7cc7ff", failed: "#ff8080", rejected: "#999", planned: "#aaa", writing: "#aaa", rendering: "#aaa", publishing: "#7cc7ff", pending: "#aaa", processing: "#7cc7ff", completed: "#3DFFA8", retry_wait: "#F2C14E", cancelled: "#777" };
+    return '<span style="color:' + (C[st] || "#aaa") + ';font-weight:700">' + esc(st || "?") + '</span>';
+  },
+  async accounts() { const j = await igFetch_("igAccounts"); return j.rows || []; },
+};
+
+BUILDERS.ig_dashboard = async (el) => {
+  const b = IG.shell(el, "Instagram Dashboard", "ジャンル特化メディア自動運営(X機能とは完全分離)");
+  const c = IG.card('<div class="muted">読み込み中…</div>'); b.appendChild(c);
+  const row = document.createElement("div"); b.appendChild(row);
+  row.appendChild(IG.btn("▶ 今すぐジョブ実行", "linear-gradient(135deg,#3DFFA8,#00e5ff)", async () => { const r = await igFetch_("igRunJobs"); toast("処理 " + r.processed + "件", "ok"); BUILDERS.ig_dashboard(el.parentNode ? (el.innerHTML = "", el) : el); }));
+  row.appendChild(IG.btn("＋ 今すぐ1本企画", null, async () => {
+    const accts = await IG.accounts();
+    if (!accts.length) { toast("先にAccountsタブでアカウント登録", "err"); return; }
+    const r = await igFetch_("igPlanNow", { account_id: accts[0].id });
+    toast("run開始: " + r.run_id + "(Queueタブで進捗)", "ok");
+  }));
+  try {
+    const d = await igFetch_("igDashboard");
+    c.innerHTML = '<div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px">'
+      + '<div>アカウント <b>' + d.accounts + '</b></div>'
+      + '<div>レビュー待ち <b style="color:#F2C14E">' + d.review + '</b></div>'
+      + '<div>制作中/予約 <b>' + d.scheduled + '</b></div>'
+      + '<div>7日間の公開 <b style="color:#3DFFA8">' + d.published7d + '</b></div>'
+      + '<div>実行待ちジョブ <b>' + d.pendingJobs + '</b></div>'
+      + '<div>失敗ジョブ <b style="color:#ff8080">' + d.failed + '</b></div>'
+      + '<div>新着記事 <b>' + d.newsNew + '</b></div></div>'
+      + '<div class="muted" style="font-size:11px;margin-top:8px">工程: DISCOVER→PLAN→VERIFY→WRITE→IMAGE→RENDER→QA→COMPLIANCE→PUBLISH→METRICS→LEARN。Cron(5分ごと)か上の▶で進む。</div>';
+  } catch (e) { c.innerHTML = '<div class="err">' + esc(e.message) + '<br><span class="muted" style="font-size:11px">instagram-worker未デプロイ、またはSQL未実行の可能性。</span></div>'; }
+};
+
+BUILDERS.ig_accounts = async (el) => {
+  const b = IG.shell(el, "Accounts", "複数アカウント・各自 genre/mode/schedule 独立(§12)");
+  try {
+    const [accts, genres] = await Promise.all([IG.accounts(), igFetch_("igGenres").then(j => j.rows || [])]);
+    accts.forEach(a => {
+      const g = genres.find(x => x.id === a.genre_id);
+      const c = IG.card('<b>@' + esc(a.ig_username) + '</b> <span class="muted">' + esc(g ? g.name : "ジャンル未設定") + '</span>'
+        + ' / モード <b style="color:' + (a.posting_mode === "AUTO" ? "#3DFFA8" : a.posting_mode === "OFF" ? "#999" : "#F2C14E") + '">' + esc(a.posting_mode) + '</b>'
+        + ' / ' + a.posts_per_day + '投稿/日 ' + esc(JSON.stringify(a.posting_times || []))
+        + '<br><span class="muted" style="font-size:11px">IGユーザーID: ' + esc(a.ig_user_id || "未設定") + ' / トークン: ' + (a.access_token ? "設定済み" : "<b style=\'color:#ff8080\'>未設定</b>") + '</span>');
+      const mode = IG.sel([["REVIEW", "REVIEW(承認待ち)"], ["AUTO", "AUTO(全自動)"], ["OFF", "OFF(停止)"]], a.posting_mode);
+      mode.onchange = async () => { await igFetch_("igAccountSave", { account: { id: a.id, posting_mode: mode.value } }); toast("モード変更: " + mode.value, "ok"); };
+      c.appendChild(mode);
+      const api = IG.sel([["auto", "API: 自動判定"], ["iglogin", "API: Instagramログイン方式(FBページ不要)"], ["fblogin", "API: Facebookログイン方式(旧Graph)"]], (a.settings && a.settings.api_mode) || "auto");
+      api.onchange = async () => { await igFetch_("igAccountSave", { account: { id: a.id, settings: Object.assign({}, a.settings || {}, { api_mode: api.value }) } }); toast("API方式: " + api.value, "ok"); };
+      c.appendChild(api);
+      c.appendChild(IG.btn("🔌 接続テスト", "linear-gradient(135deg,#00e5ff,#3DFFA8)", async () => {
+        const r = await igFetch_("igConnTest", { account_id: a.id });
+        toast(r.ok ? ("✅ 接続OK(" + (r.api || "") + ") @" + ((r.me && r.me.username) || "") + (r.ig_user_id_saved ? " / IGユーザーID自動保存" : "")) : ("❌ " + JSON.stringify(r.me && r.me.error ? r.me.error.message : r.error).slice(0, 120)), r.ok ? "ok" : "err");
+      }));
+      c.appendChild(IG.btn("♻ トークン更新(60日期限)", null, async () => {
+        const r = await igFetch_("igTokenRefresh", { account_id: a.id });
+        const x = (r.results || [])[0] || {};
+        toast(x.refreshed ? ("更新した(残り" + x.expires_in_days + "日)") : (x.skipped || x.error || "?"), x.refreshed ? "ok" : "err");
+      }));
+      c.appendChild(IG.btn("🗑 削除", "linear-gradient(135deg,#666,#444)", async () => { if (!confirm("@" + a.ig_username + " を削除?")) return; await igFetch_("igAccountDelete", { id: a.id }); el.innerHTML = ""; BUILDERS.ig_accounts(el); }));
+      b.appendChild(c);
+    });
+    const f = IG.card("<b>＋ アカウント追加</b>");
+    const u = IG.input("Instagramユーザー名(@なし)"), uid2 = IG.input("MetaのIGユーザーID(数字)"), tk = IG.input("長期アクセストークン"), pg = IG.input("FacebookページID(任意)");
+    const gs = IG.sel([["", "ジャンルを選択"]].concat(genres.map(g => [g.id, g.name])), "");
+    const ppd = IG.sel([["1", "1投稿/日"], ["2", "2投稿/日"], ["3", "3投稿/日"]], "1");
+    const tm = IG.input("投稿時刻(カンマ区切り 例 12:00,19:00)", "19:00");
+    [u, uid2, tk, pg, gs, ppd, tm].forEach(x => f.appendChild(x));
+    f.appendChild(IG.btn("保存(初期モード=REVIEW)", null, async () => {
+      if (!u.value.trim()) throw new Error("ユーザー名必須");
+      await igFetch_("igAccountSave", { account: { ig_username: u.value.trim().replace(/^@/, ""), ig_user_id: uid2.value.trim() || null, access_token: tk.value.trim() || null, fb_page_id: pg.value.trim() || null, genre_id: gs.value || null, posts_per_day: parseInt(ppd.value) || 1, posting_times: tm.value.split(",").map(s => s.trim()).filter(Boolean) } });
+      toast("追加した(REVIEWモード)", "ok"); el.innerHTML = ""; BUILDERS.ig_accounts(el);
+    }));
+    b.appendChild(f);
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_genres = async (el) => {
+  const b = IG.shell(el, "Genres", "Genre Profile方式。コード変更なしでジャンル追加(§10,11)");
+  try {
+    const genres = (await igFetch_("igGenres")).rows || [];
+    genres.forEach(g => {
+      b.appendChild(IG.card('<b>' + esc(g.name) + '</b> <span class="muted">' + esc(g.target || "") + '</span>'
+        + '<br><span class="muted" style="font-size:11px">人物特集:' + (g.racer_feature_enabled ? "ON" : "OFF") + ' / ニュース:' + (g.news_enabled ? "ON" : "OFF") + ' / ' + esc(g.tone || "") + '</span>'
+        + (g.profile && g.profile.positioning ? '<br><span style="font-size:11.5px">' + esc(g.profile.positioning) + '</span>' : '')));
+    });
+    const f = IG.card("<b>＋ ジャンル追加</b><br><span class='muted' style='font-size:11px'>保存するとAIがGenre Profile(柱・トーン・フック型・NG)を自動生成</span>");
+    const nm = IG.input("ジャンル名(例: 筋トレ)"), tg = IG.input("ターゲット"), pp = IG.input("目的"), th = IG.input("主要テーマ(カンマ区切り)"), tn = IG.input("投稿トーン"), av = IG.input("避けたいテーマ(カンマ区切り)"), im = IG.input("画像イメージ"), ct = IG.input("CTA方針");
+    const pf = IG.sel([["0", "人物特集: なし"], ["1", "人物特集: あり"]], "0"), nw = IG.sel([["0", "ニュース利用: なし"], ["1", "ニュース利用: あり"]], "0");
+    [nm, tg, pp, th, tn, av, pf, nw, im, ct].forEach(x => f.appendChild(x));
+    f.appendChild(IG.btn("AIでProfile生成して追加", null, async () => {
+      if (!nm.value.trim()) throw new Error("ジャンル名必須");
+      const r = await igFetch_("igGenreSave", { genre: { name: nm.value.trim(), target: tg.value, purpose: pp.value, themes: th.value.split(",").map(s => s.trim()).filter(Boolean), tone: tn.value, avoid: av.value.split(",").map(s => s.trim()).filter(Boolean), racer_feature_enabled: pf.value === "1", news_enabled: nw.value === "1", image_style: im.value, cta_policy: ct.value } });
+      toast("追加した" + (r.profile && r.profile.positioning ? ": " + r.profile.positioning : ""), "ok");
+      el.innerHTML = ""; BUILDERS.ig_genres(el);
+    }));
+    b.appendChild(f);
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_content = async (el) => {
+  const b = IG.shell(el, "Content", "企画・制作の状況。X転用は一方向READ ONLY(§7,8)");
+  try {
+    const accts = await IG.accounts();
+    if (!accts.length) { b.appendChild(IG.card("先にAccountsでアカウント登録")); return; }
+    const acct = accts[0];
+    const row = document.createElement("div"); b.appendChild(row);
+    [["education", "教育"], ["racer", "選手特集"], ["news", "ニュース"], ["data", "データ分析"], ["history", "歴史雑学"], ["debate", "議論"]].forEach(([k, lab]) => {
+      row.appendChild(IG.btn("＋" + lab, "linear-gradient(135deg,#833AB4,#E1306C)", async () => {
+        const r = await igFetch_("igPlanNow", { account_id: acct.id, content_type: k });
+        toast("企画run開始: " + r.run_id, "ok");
+      }));
+    });
+    const posts = (await igFetch_("igPosts", { limit: 30 })).rows || [];
+    posts.forEach(p => {
+      b.appendChild(IG.card('[' + esc(p.content_type || "?") + '] <b>' + esc(p.topic || "(企画中)") + '</b> × ' + esc(p.angle || "") + ' — ' + IG.stBadge(p.status)
+        + '<br><span class="muted" style="font-size:11px">' + esc(p.core_claim || "") + (p.source_platform ? " / X転用(" + esc(String(p.source_post_id || "")) + ")" : "") + " / " + IG.fmt(p.created_at) + '</span>'));
+    });
+    const fx = IG.card("<b>🔁 X→Instagram転用</b><br><span class='muted' style='font-size:11px'>Xで伸びた投稿を読み取り専用で参照し、topic/core_claimだけ抽出して再企画(コピペ禁止)</span>");
+    fx.appendChild(IG.btn("Xの候補を見る", "linear-gradient(135deg,#00e5ff,#3DFFA8)", async (btn) => {
+      const r = await igFetch_("igFromXCandidates");
+      const box = document.createElement("div");
+      (r.rows || []).slice(0, 10).forEach(x => {
+        const d = document.createElement("div"); d.style.cssText = "border-top:1px solid var(--border);padding:6px 0;font-size:11.5px";
+        d.innerHTML = esc(x.text) + ' <span class="muted">' + (x.perf && x.perf.imp ? "imp " + x.perf.imp : "") + '</span>';
+        d.appendChild(IG.btn("この題材で企画", null, async () => { const rr = await igFetch_("igFromX", { x_post_id: x.x_post_id, account_id: acct.id }); toast("転用run開始: " + rr.run_id, "ok"); }));
+        box.appendChild(d);
+      });
+      fx.appendChild(box);
+    }));
+    b.appendChild(fx);
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_racers = async (el) => {
+  const b = IG.shell(el, "Racer Features", "選手特集の履歴。同じ選手でも別角度なら再特集可(§25)");
+  try {
+    const rows = (await igFetch_("igRacers")).rows || [];
+    if (!rows.length) b.appendChild(IG.card('<span class="muted">まだ特集なし。Contentタブの「＋選手特集」で開始</span>'));
+    rows.forEach(r => b.appendChild(IG.card('<b>' + esc(r.racer_name) + '</b> 特集' + (r.feature_count || 0) + '回 / 最終 ' + IG.fmt(r.last_featured_at)
+      + '<br><span class="muted" style="font-size:11px">使った切り口: ' + esc(JSON.stringify(r.angles_used || [])) + '</span>')));
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_news = async (el) => {
+  const b = IG.shell(el, "News", "Source Registry(§27)。記事→本文解析→メイン写真候補(ロゴ/広告除外 §31)");
+  try {
+    const srcs = (await igFetch_("igSources")).rows || [];
+    const sc = IG.card("<b>情報源</b><br>" + srcs.map(s => "・" + esc(s.name) + (s.enabled ? "" : "(無効)") + ' <span class="muted" style="font-size:10.5px">' + esc(s.list_url) + "</span>").join("<br>"));
+    const su = IG.input("追加する一覧ページURL"), sn = IG.input("情報源の名前");
+    sc.appendChild(sn); sc.appendChild(su);
+    sc.appendChild(IG.btn("＋ Source追加", null, async () => { if (!su.value || !sn.value) throw new Error("名前とURL必須"); await igFetch_("igSourceSave", { source: { name: sn.value, list_url: su.value } }); toast("追加した", "ok"); el.innerHTML = ""; BUILDERS.ig_news(el); }));
+    b.appendChild(sc);
+    const arts = (await igFetch_("igNews")).rows || [];
+    arts.forEach(a => b.appendChild(IG.card('<b>' + esc(a.article_title || "") + '</b> ' + IG.stBadge(a.status)
+      + '<br><span class="muted" style="font-size:11px">' + esc(a.source_name || "") + ' / ' + IG.fmt(a.published_at || a.fetched_at) + ' / 選手: ' + esc((a.racer_names || []).join("、") || "—") + ' / 写真候補' + ((a.main_image_candidates || []).length) + '枚</span>')));
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_images = async (el) => {
+  const b = IG.shell(el, "Images", "画像メモリ。SHA-256+pHashで使い回し防止(§35,36)");
+  try {
+    const rows = (await igFetch_("igImages")).rows || [];
+    if (!rows.length) b.appendChild(IG.card('<span class="muted">まだ画像なし(記事企画が走ると自動で貯まる)</span>'));
+    rows.forEach(r => b.appendChild(IG.card('[' + esc(r.source || "?") + '] ' + r.width + '×' + r.height + ' 使用' + (r.usage_count || 0) + '回 / ' + IG.fmt(r.first_seen_at)
+      + '<br><span class="muted" style="font-size:10.5px">' + esc(r.source_page || r.storage_path || "") + '</span>')));
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_templates = async (el) => {
+  const b = IG.shell(el, "Templates", "IG-T01〜T10。直近使用を避けて自動ローテ(§43,44)");
+  try {
+    const rows = (await igFetch_("igTemplates")).rows || [];
+    rows.forEach(t => b.appendChild(IG.card('<b>' + esc(t.template_id) + '</b> ' + esc(t.name) + ' <span class="muted">最終使用 ' + IG.fmt(t.last_used_at) + '</span>')));
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_schedule = async (el) => {
+  const b = IG.shell(el, "Schedule", "予約・制作中の投稿");
+  try {
+    const posts = (await igFetch_("igPosts", { limit: 40 })).rows || [];
+    posts.filter(p => ["planned", "writing", "imaging", "rendering", "approved", "publishing"].indexOf(p.status) >= 0).forEach(p => {
+      b.appendChild(IG.card('[' + esc(p.content_type || "?") + '] <b>' + esc(p.topic || "(企画中)") + '</b> — ' + IG.stBadge(p.status) + ' / 予定 ' + IG.fmt(p.scheduled_at)));
+    });
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_review = async (el) => {
+  const b = IG.shell(el, "Review", "承認待ち。プレビュー確認→承認で公開キューへ(§13)");
+  try {
+    const posts = (await igFetch_("igPosts", { status: "review" })).rows || [];
+    if (!posts.length) b.appendChild(IG.card('<span class="muted">レビュー待ちなし</span>'));
+    for (const p of posts) {
+      const c = IG.card('[' + esc(p.content_type || "?") + '] <b>' + esc(p.topic || "") + '</b>' + (p.review_note ? '<br><span style="color:#F2C14E;font-size:11px">' + esc(p.review_note) + '</span>' : '')
+        + '<br><span class="muted" style="font-size:11px">キャプション: ' + esc(String(p.caption || "").slice(0, 160)) + '…</span>');
+      const pv = document.createElement("div"); pv.style.cssText = "display:flex;gap:6px;overflow-x:auto;margin-top:8px"; c.appendChild(pv);
+      try {
+        const sl = (await igFetch_("igSlides", { post_id: p.id })).rows || [];
+        sl.forEach(s => { if (s.preview_url) { const im = document.createElement("img"); im.src = s.preview_url; im.style.cssText = "width:120px;border-radius:8px;border:1px solid var(--border)"; pv.appendChild(im); } });
+      } catch (e2) { /* プレビュー無しでも承認は可能 */ }
+      c.appendChild(IG.btn("✅ 承認して公開キューへ", "linear-gradient(135deg,#3DFFA8,#00e5ff)", async () => { await igFetch_("igApprove", { post_id: p.id }); toast("承認→公開キュー投入", "ok"); el.innerHTML = ""; BUILDERS.ig_review(el); }));
+      c.appendChild(IG.btn("❌ リジェクト", "linear-gradient(135deg,#666,#444)", async () => { await igFetch_("igReject", { post_id: p.id }); toast("リジェクトした", "ok"); el.innerHTML = ""; BUILDERS.ig_review(el); }));
+      b.appendChild(c);
+    }
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_published = async (el) => {
+  const b = IG.shell(el, "Published", "公開済み");
+  try {
+    const posts = (await igFetch_("igPosts", { status: "published" })).rows || [];
+    if (!posts.length) b.appendChild(IG.card('<span class="muted">まだ公開なし</span>'));
+    posts.forEach(p => b.appendChild(IG.card('[' + esc(p.content_type || "?") + '] <b>' + esc(p.topic || "") + '</b> / ' + IG.fmt(p.published_at) + ' <span class="muted" style="font-size:10.5px">media_id: ' + esc(p.ig_media_id || "") + '</span>')));
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_analytics = async (el) => {
+  const b = IG.shell(el, "Analytics", "24h後にMETRICSジョブが自動取得");
+  try {
+    const j = await igFetch_("igAnalytics");
+    const posts = j.posts || [], ms = j.metrics || [];
+    if (!posts.length) b.appendChild(IG.card('<span class="muted">公開後にここへ実績が並ぶ</span>'));
+    posts.forEach(p => {
+      const m = ms.find(x => x.post_id === p.id);
+      b.appendChild(IG.card('<b>' + esc(p.topic || "") + '</b> [' + esc(p.content_type || "") + '] / ' + IG.fmt(p.published_at)
+        + (m ? '<br>imp <b>' + (m.impressions ?? "—") + '</b> / reach ' + (m.reach ?? "—") + ' / ❤ ' + (m.likes ?? "—") + ' / 💬 ' + (m.comments ?? "—") + ' / 🔖 <b>' + (m.saves ?? "—") + '</b>' : '<br><span class="muted" style="font-size:11px">実績待ち(公開24h後)</span>')));
+    });
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_queue = async (el) => {
+  const b = IG.shell(el, "Queue", "工程キュー。失敗した工程からだけ再開できる(§16)");
+  const row = document.createElement("div"); b.appendChild(row);
+  row.appendChild(IG.btn("▶ 今すぐ実行", "linear-gradient(135deg,#3DFFA8,#00e5ff)", async () => { const r = await igFetch_("igRunJobs"); toast("処理 " + r.processed + "件", "ok"); el.innerHTML = ""; BUILDERS.ig_queue(el); }));
+  try {
+    const rows = (await igFetch_("igQueue")).rows || [];
+    rows.forEach(jb => {
+      const c = IG.card('<b>' + esc(jb.job_type) + '</b> ' + IG.stBadge(jb.status) + ' <span class="muted">試行' + (jb.attempt || 0) + '/' + (jb.max_attempts || 3) + ' / ' + IG.fmt(jb.created_at) + ' / ' + esc(jb.run_id || "") + '</span>'
+        + (jb.last_error ? '<br><span style="color:#ff8080;font-size:11px">' + esc(String(jb.last_error).slice(0, 180)) + '</span>' : ''));
+      if (jb.status === "failed" || jb.status === "retry_wait") c.appendChild(IG.btn("↻ この工程から再開", null, async () => { await igFetch_("igRetryJob", { job_id: jb.job_id }); toast("再投入した", "ok"); el.innerHTML = ""; BUILDERS.ig_queue(el); }));
+      b.appendChild(c);
+    });
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_logs = async (el) => {
+  const b = IG.shell(el, "Logs", "生成ログ・コンプラログ");
+  try {
+    const [gl, cl] = await Promise.all([igFetch_("igLogs"), igFetch_("igComplianceLogs")]);
+    (cl.rows || []).slice(0, 10).forEach(r => b.appendChild(IG.card('🛡 コンプラ ' + (r.passed ? '<b style="color:#3DFFA8">PASS</b>' : '<b style="color:#ff8080">NG</b>') + ' / ' + IG.fmt(r.created_at) + '<br><span class="muted" style="font-size:10.5px">' + esc(JSON.stringify(r.checks || {})) + '</span>')));
+    (gl.rows || []).forEach(r => b.appendChild(IG.card(esc(r.stage || "") + " " + (r.ok ? "✅" : "❌") + ' <span class="muted">' + IG.fmt(r.created_at) + '</span>' + (r.error ? '<br><span style="color:#ff8080;font-size:11px">' + esc(String(r.error).slice(0, 150)) + '</span>' : ''))));
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
+
+BUILDERS.ig_settings = async (el) => {
+  const b = IG.shell(el, "Settings", "アカウント別 Content Mix / 投稿時刻(X設定とは完全分離 §4)");
+  try {
+    const accts = await IG.accounts();
+    for (const a of accts) {
+      const c = IG.card("<b>@" + esc(a.ig_username) + "</b>");
+      const mixDef = { education: 25, racer: 25, news: 15, data: 15, history: 10, debate: 10 };
+      const mix = Object.assign({}, mixDef, a.content_mix || {});
+      const LABEL = { education: "教育・ノウハウ", racer: "選手特集", news: "ニュース", data: "データ・分析", history: "歴史・雑学", debate: "議論・意見" };
+      const inputs = {};
+      Object.keys(mixDef).forEach(k => {
+        const row = document.createElement("div"); row.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px";
+        const i = IG.input("", mix[k], "70px"); inputs[k] = i;
+        row.innerHTML = '<span style="width:110px">' + LABEL[k] + '</span>';
+        row.appendChild(i); row.insertAdjacentHTML("beforeend", "<span class='muted'>%</span>");
+        c.appendChild(row);
+      });
+      const tm = IG.input("投稿時刻(カンマ区切り)", (a.posting_times || []).join(","));
+      const ppd = IG.sel([["1", "1投稿/日"], ["2", "2投稿/日"], ["3", "3投稿/日"]], String(a.posts_per_day || 1));
+      c.appendChild(tm); c.appendChild(ppd);
+      c.appendChild(IG.btn("保存", null, async () => {
+        const nm = {}; Object.keys(inputs).forEach(k => nm[k] = parseInt(inputs[k].value) || 0);
+        await igFetch_("igAccountSave", { account: { id: a.id, content_mix: nm, posting_times: tm.value.split(",").map(s => s.trim()).filter(Boolean), posts_per_day: parseInt(ppd.value) || 1 } });
+        toast("保存した", "ok");
+      }));
+      b.appendChild(c);
+    }
+    if (!accts.length) b.appendChild(IG.card("先にAccountsでアカウント登録"));
+  } catch (e) { b.appendChild(IG.card('<div class="err">' + esc(e.message) + '</div>')); }
+};
 
 /* ---- ホーム(店運用ダッシュボード・競艇は出さない) ---- */
 BUILDERS.home = (el) => {
