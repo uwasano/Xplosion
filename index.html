@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "302";
+const APP_VERSION = "303";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11766,12 +11766,21 @@ const TALK = {
       const PST = { pending: "未作成", rendered: "画像OK", queued: "予約済み", posted: "投稿済み", error: "エラー" };
       const fmtJ = (iso) => new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
       box.innerHTML = "";
-      for (const job of jobs) {
+      /* ★v303 画面に出すのは「いま作業中のもの」だけ。
+         予約が入ったもの・見送りにしたものは、下の「済んだ分」に畳む */
+      const liveBox = document.createElement("div"); box.appendChild(liveBox);
+      const pastWrap = document.createElement("div"); pastWrap.style.marginTop = "6px"; box.appendChild(pastWrap);
+      const pastBox = document.createElement("div"); pastBox.style.display = "none";
+      let pastCount = 0, openedReview = false;
+
+      const renderCard = (job, host) => {
         const ps = parts.filter(p => p.job_id === job.id).sort((a, b) => a.part - b.part);
         const queued = ps.filter(p => p.post_id && schedMap[String(p.post_id)]);
         const key = String(job.theme_label || job.id);
         const shelved = job.status === "dropped"
           || (job.status === "generated" && adopted[key] && !queued.length);
+        /* 同じテーマの案が複数あるとき、確認パネルを開くのは最初の1件だけ */
+        const autoOpen = !openedReview;
         const card = document.createElement("div");
         card.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"
           + (shelved ? ";opacity:.45" : "");
@@ -11803,8 +11812,8 @@ const TALK = {
             catch (e) { alert("戻せませんでした。" + e.message); bk.disabled = false; }
           };
           card.appendChild(bk);
-          box.appendChild(card);
-          continue;
+          host.appendChild(card);
+          return;
         }
 
         card.appendChild(row);
@@ -11813,8 +11822,19 @@ const TALK = {
         if (job.status === "generated" && ps.length) {
           const rev = document.createElement("div");
           rev.style.cssText = "margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px";
-          card.appendChild(rev);
-          TALK.buildReview(el, rev, job, ps, sibsOf(job));
+          if (autoOpen) {
+            openedReview = true;
+            card.appendChild(rev);
+            TALK.buildReview(el, rev, job, ps, sibsOf(job));
+          } else {
+            const bo = document.createElement("button");
+            bo.textContent = "この案を見る";
+            bo.style.cssText = "display:block;margin-top:8px;background:none;border:none;color:var(--muted);"
+              + "font-size:11.5px;text-decoration:underline;padding:4px 2px;cursor:pointer;font-family:inherit";
+            bo.onclick = () => { bo.style.display = "none"; card.appendChild(rev);
+              TALK.buildReview(el, rev, job, ps, sibsOf(job)); };
+            card.appendChild(bo);
+          }
           const bd = document.createElement("button");
           bd.textContent = "この案は使わない";
           bd.style.cssText = "display:block;margin-top:8px;background:none;border:none;color:var(--muted);"
@@ -11876,7 +11896,7 @@ const TALK = {
           });
           const note2 = document.createElement("div");
           note2.style.cssText = "font-size:10.5px;color:var(--muted);margin:6px 0 8px;opacity:.85";
-          note2.textContent = "この予約は「予約管理」の予約確定タブにも並びます。どちらから取り消しても構いません。";
+          note2.textContent = "予約済みの分は「予約管理」の予約確定タブで管理できます。取り消しはどちらからでも構いません。";
           q.appendChild(note2);
           const bc = document.createElement("button"); bc.className = "btn";
           bc.textContent = "予約をすべて取り消す";
@@ -11898,7 +11918,30 @@ const TALK = {
           q.appendChild(bc);
           card.appendChild(q);
         }
-        box.appendChild(card);
+        host.appendChild(card);
+      };
+
+      for (const job of jobs) {
+        const ps2 = parts.filter(p => p.job_id === job.id);
+        const booked = ps2.some(p => p.post_id && schedMap[String(p.post_id)]);
+        if (booked || job.status === "dropped") { pastCount++; renderCard(job, pastBox); }
+        else renderCard(job, liveBox);
+      }
+      if (!liveBox.children.length) {
+        liveBox.innerHTML = '<div style="color:var(--muted);font-size:13px">'
+          + '作業中の話はありません。上の「＋ 新しい話をつくる」から始めてください。</div>';
+      }
+      if (pastCount) {
+        const pb = document.createElement("button");
+        pb.textContent = "済んだ分を見る（" + pastCount + "件）";
+        pb.style.cssText = "background:none;border:none;color:var(--muted);font-size:11.5px;"
+          + "text-decoration:underline;padding:6px 2px;cursor:pointer;font-family:inherit";
+        pb.onclick = () => {
+          const open = pastBox.style.display !== "none";
+          pastBox.style.display = open ? "none" : "block";
+          pb.textContent = (open ? "済んだ分を見る（" : "閉じる（") + pastCount + "件）";
+        };
+        pastWrap.appendChild(pb); pastWrap.appendChild(pastBox);
       }
     } catch (e) { box.innerHTML = '<div style="color:#c00;font-size:13px">読み込みに失敗しました。' + e.message + '</div>'; }
   }
