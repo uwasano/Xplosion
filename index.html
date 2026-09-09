@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "294";
+const APP_VERSION = "295";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -9697,8 +9697,17 @@ BUILDERS.schedule = (el) => {
   }
 
   async function load() {
-    const { data, error } = await sb.from("scheduled_posts").select("*").order("scheduled_at");
+    /* ★v295 未投稿と履歴を分けて取る。
+       以前は全件を古い順に取っていたため、テーブルが1000件を超えると
+       PostgRESTの上限で古い分だけが返り、新しい予約(Talkなど)が画面から消えていた。 */
+    const [liveRes, histRes] = await Promise.all([
+      sb.from("scheduled_posts").select("*").in("status", ["draft", "pending"]).order("scheduled_at"),
+      sb.from("scheduled_posts").select("*").not("status", "in", "(draft,pending)")
+        .order("posted_at", { ascending: false, nullsFirst: false }).limit(40),
+    ]);
+    const error = liveRes.error || histRes.error;
     if (error) { out.err(error.message); return; }
+    const data = (liveRes.data || []).concat(histRes.data || []);
     const byTime = (a,b) => a.scheduled_at.localeCompare(b.scheduled_at);
     const drafts = data.filter((p)=>p.status==="draft").sort(byTime);
     const pending = data.filter((p)=>p.status==="pending").sort(byTime);
