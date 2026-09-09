@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "296";
+const APP_VERSION = "298";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -10681,6 +10681,7 @@ function pick(list, tags, rnd) {
  *   allowHeavy   重い札を許可（既定 false）
  *   allowKo      子どもを登場させる（既定 false。false なら子ども関連の札を一切引かない）
  *   protectMe    投稿主（受け手）が叩かれる札を引かない（既定 false。画面からは既定 true）
+ *   sameSex      同性同士（結婚・夫婦・婚約を前提にした札を引かない）
  *   kaneRatio    金銭ネタの出現率（既定 0.2）
  *   offenderSide "boyfriend" | "girlfriend"（既定はランダム）
  */
@@ -10693,14 +10694,22 @@ function pickCombo(opt = {}) {
   /* ★v291 子どもは既定で出さない。
      allowKo が true の時だけ、子ども持ちの関係と "ko" を要求する札を使う */
   const allowKo = opt.allowKo === true;
-  const noKo = (list) => allowKo ? list
+  const noKo0 = (list) => allowKo ? list
     : list.filter(c => !((c.requires || []).indexOf("ko") >= 0) && !((c.gives || []).indexOf("ko") >= 0));
+  const noKo = (list) => noKo0(list);
 
   /* ★v293 投稿主を守る時に引いてはいけない札。
      賛否両論型は「受け手にも一理ない」形にできず、
      養う側・客側の関係は受け手自身が叩かれる材料になる */
   const BAD_FOR_ME = { sanpi: 1, himo: 1, host_kyaku: 1 };
-  const noBad = (list) => opt.protectMe === true ? list.filter(c => !BAD_FOR_ME[c.id]) : list;
+  const noBad0 = (list) => opt.protectMe === true ? list.filter(c => !BAD_FOR_ME[c.id]) : list;
+  /* ★v298 同性同士のときに「新婚半年」「婚約中・式場予約済み」などを引くと、
+     会話が夫婦前提になって設定と矛盾する。婚姻を前提にした札は最初から除外する */
+  const MARRY = /結婚|婚約|式場|入籍|新婚|再婚|夫|妻|嫁|旦那|奥さん/;
+  const noBad = (list) => {
+    const l = noBad0(list);
+    return opt.sameSex === true ? l.filter(c => !MARRY.test(c.label || "")) : l;
+  };
 
   const engPool  = noBad(ENGINES);
   const engine   = get(ENGINES, "engine")     || engPool[Math.floor(rnd() * engPool.length)];
@@ -10718,7 +10727,7 @@ function pickCombo(opt = {}) {
   (offender.gives || []).forEach(t => tags.add(t));
 
   // ヘイトの頂点。金の話を出す回は金の札から選ぶので、kaneRatio がそのまま出現率になる
-  let peakPool = noKo(PEAKS).filter(p => opt.allowHeavy || !p.heavy);
+  let peakPool = noBad(noKo(PEAKS)).filter(p => opt.allowHeavy || !p.heavy);
   if (wantKane) {
     const kanePeaks = peakPool.filter(p => p.cat === "kane" && usable(p, tags));
     if (kanePeaks.length) peakPool = kanePeaks;
@@ -10729,11 +10738,11 @@ function pickCombo(opt = {}) {
 
   const combo = {
     engine, relation, offender, peak,
-    trigger:    get(TRIGGERS, "trigger")         || pick(noKo(TRIGGERS), tags, rnd),
-    demand:     get(DEMANDS, "demand")           || pick(noKo(DEMANDS), tags, rnd),
-    deflection: get(DEFLECTIONS, "deflection")   || pick(noKo(DEFLECTIONS), tags, rnd),
-    thirdParty: get(THIRD_PARTIES, "thirdParty") || pick(noKo(THIRD_PARTIES), tags, rnd),
-    closer:     get(CLOSERS, "closer")           || pick(noKo(CLOSERS), tags, rnd),
+    trigger:    get(TRIGGERS, "trigger")         || pick(noBad(noKo(TRIGGERS)), tags, rnd),
+    demand:     get(DEMANDS, "demand")           || pick(noBad(noKo(DEMANDS)), tags, rnd),
+    deflection: get(DEFLECTIONS, "deflection")   || pick(noBad(noKo(DEFLECTIONS)), tags, rnd),
+    thirdParty: get(THIRD_PARTIES, "thirdParty") || pick(noBad(noKo(THIRD_PARTIES)), tags, rnd),
+    closer:     get(CLOSERS, "closer")           || pick(noBad(noKo(CLOSERS)), tags, rnd),
     offenderSide: opt.offenderSide || (rnd() < 0.5 ? "boyfriend" : "girlfriend")
   };
   combo.key = [engine.id, relation.id, offender.id, combo.trigger.id, combo.demand.id,
@@ -10742,9 +10751,13 @@ function pickCombo(opt = {}) {
   return combo;
 }
 
-function comboToBrief(c) {
-  const off = c.offenderSide === "boyfriend" ? "彼氏" : "彼女";
-  const vic = c.offenderSide === "boyfriend" ? "彼女" : "彼氏";
+function comboToBrief(c, cast) {
+  /* ★v298 「彼氏／彼女」で書くと同性設定のときに矛盾する。性別そのもので書く */
+  const jp = (x) => (x === "male" ? "男性" : "女性");
+  const off = cast ? ("相手（" + jp(cast.partner.gender) + "）")
+                   : (c.offenderSide === "boyfriend" ? "彼氏" : "彼女");
+  const vic = cast ? ("自分（" + jp(cast.me.gender) + "）")
+                   : (c.offenderSide === "boyfriend" ? "彼女" : "彼氏");
   return `炎上の型：${c.engine.label}（${c.engine.note}）
 関係：${c.relation.label}
 加害側は${off}、受け手は${vic}
@@ -11227,14 +11240,18 @@ const TALK = {
     /* 相手（＝加害側）の性別が決まっているなら、題材文の言い回しもそれに合わせる */
     if (ptG) opt.offenderSide = (ptG === "male") ? "boyfriend" : "girlfriend";
 
+    /* ★v298 両方の性別が指定されていて同じなら、婚姻前提の札を引かせない */
+    if (myG && ptG && myG === ptG) opt.sameSex = true;
+
     const out = [];
     for (let i = 0; i < n; i++) {
       const c = C.pickCombo(opt);
-      const coin = () => (Math.random() < 0.5 ? "female" : "male");
       /* 指定が無い側は、もう片方と自然な組み合わせになるように埋める */
       const pg = ptG || (c.offenderSide === "boyfriend" ? "male" : "female");
       const mg = myG || (pg === "male" ? "female" : (Math.random() < 0.7 ? "male" : "female"));
       const jp = (x) => (x === "male" ? "男性" : "女性");
+      const cast = { me: { gender: mg }, partner: { gender: pg } };
+      const same = mg === pg;
       out.push({
         peakId: c.peak.id,
         label: theme || c.peak.label,
@@ -11242,11 +11259,25 @@ const TALK = {
         /* 受け手＝スクショを撮る側（画面右・緑） */
         cast: { me: { gender: mg }, partner: { gender: pg },
                 stance: opt.protectMe ? "protect" : "both",
-                hook: opt.hookOne ? "one" : "long" },
-        brief: (theme ? "【今回の題材（これを必ず使う）】\n" + theme + "\n\n" : "") + C.comboToBrief(c)
-               + "\n【登場人物の性別（厳守・上の彼氏彼女の表記より優先）】"
+                hook: opt.hookOne ? "one" : "long",
+                sameSex: same },
+        /* ★v298 テーマが入力されている時は、札の細目（始まり・要求・逃げ方・頂点・締め）を
+           brief に出さない。9軸を並べるとAIがそちらを筋にしてしまい、テーマが飾りになるため。 */
+        brief: (theme
+                 ? "【今回の題材】★最優先。他のどの指定と矛盾しても、必ずこれを話の中心にする\n"
+                   + theme + "\n"
+                   + "※第5段のヘイトの頂点も、この題材そのものにする。別のネタに差し替えない。\n\n"
+                   + "炎上の型：" + c.engine.label + "（" + c.engine.note + "）\n"
+                   + "関係：" + c.relation.label + "\n"
+                   + "加害側は相手（" + jp(pg) + "）、受け手は自分（" + jp(mg) + "）\n"
+                 : C.comboToBrief(c, cast) + "\n")
+               + "【登場人物の性別】厳守"
                + "\n自分＝スクショを撮って晒す側（画面右・緑）：" + jp(mg)
                + "\n相手＝加害側（画面左・白）：" + jp(pg)
+               + (same
+                   ? "\n【同性同士】二人は結婚していない。夫・妻・嫁・旦那・奥さん・夫婦という語を使わない。"
+                     + "結婚・入籍・式場・婚約の話にしない。厳守。"
+                   : "")
                + (opt.allowKo
                    ? "\n【子ども】この話には二人の子どもが登場する。"
                    : "\n【子ども】この話に子どもは登場しない。妊娠・出産・育児の話も出さない。厳守。")
@@ -11269,7 +11300,9 @@ const TALK = {
     const n = parseInt((el.querySelector("#axCount") || {}).value || "1", 10);
     const parts = ((el.querySelector("#axParts") || {}).value || "");
     const partTxt = parts ? parts + "本のスレッド" : "おまかせの本数";
-    if (!confirm("@" + acct + " 向けに、" + partTxt + "の話を" + n + "話つくります。よろしいですか？")) return;
+    if (!confirm("@" + acct + " 向けに、" + partTxt + "の話を" + n + "話つくります。\n"
+      + (n > 1 ? "※同じテーマで" + n + "本のカードが並びます。1つだけで良い場合は「その他の設定 → まとめて作る数」を1話ずつにしてください。\n" : "")
+      + "\nよろしいですか？")) return;
     try {
       const combos = TALK.makeCombos(el, n);
       const extra = { account: acct, count: n, combos: combos };
@@ -11297,8 +11330,7 @@ const TALK = {
     h1.textContent = "内容の確認";
     const h2 = document.createElement("div");
     h2.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.7";
-    h2.textContent = "画像を作る前に、会話と投稿文をすべてご確認ください。投稿文はこの場で直せます。"
-      + "内容が気に入らない場合は、会話ごと作り直せます。";
+    h2.textContent = "この内容で画像をつくります。投稿文はこの場で直せます（直した分は自動で保存されます）。";
     box.appendChild(h1); box.appendChild(h2);
 
     /* ---- ボタン（下の会話と投稿文を確認したうえで押す） ---- */
@@ -11310,10 +11342,14 @@ const TALK = {
       if (primary) b.style.fontWeight = "600";
       act.appendChild(b); return b;
     };
-    const bGo = mkb("この内容でOK → 画像をつくる（" + ps.length + "枚）", true);
-    const bSave = mkb("投稿文だけ保存する");
-    const bShuf = mkb("↻ 会話ごと作り直す（シャッフル）");
-    const lock = (on, msg) => { [bGo, bSave, bShuf].forEach((b) => { b.disabled = on; }); if (msg) bGo.textContent = msg; };
+    const bGo = mkb("画像をつくって投稿予定へ（" + ps.length + "枚）", true);
+    /* ★v297 押すボタンは1つに見せる。作り直しは地味なリンクにする */
+    const bShuf = document.createElement("button");
+    bShuf.textContent = "↻ 作り直す";
+    bShuf.style.cssText = "background:none;border:none;color:var(--muted);font-size:11.5px;"
+      + "text-decoration:underline;padding:6px 4px;cursor:pointer;font-family:inherit";
+    act.appendChild(bShuf);
+    const lock = (on, msg) => { [bGo, bShuf].forEach((b) => { b.disabled = on; }); if (msg) bGo.textContent = msg; };
 
     /* ---- 会話の全文（どこで画像が切れるかも表示） ---- */
     const cvWrap = document.createElement("div");
@@ -11379,23 +11415,17 @@ const TALK = {
           const o = await talkRenderPart_(job.talk_json, [p.range_from, p.range_to], p.part, ps.length);
           await talkFetch_("talkSave", { jobId: job.id, part: p.part, pngBase64: o.b64, height: o.height });
         }
-        alert("画像ができました。続けて投稿予定をお決めください。");
-        await TALK.load(el);
+        /* ★v297 画像ができたら、同じカードで投稿予定パネルまで自動で開く */
+        await TALK.load(el, job.id);
       } catch (e) {
         alert("失敗しました。" + e.message);
-        lock(false, "この内容でOK → 画像をつくる（" + ps.length + "枚）");
+        lock(false, "画像をつくって投稿予定へ（" + ps.length + "枚）");
       }
-    };
-
-    bSave.onclick = async () => {
-      lock(true);
-      try { await saveTexts(); alert("投稿文を保存しました。"); await TALK.load(el); }
-      catch (e) { alert("保存に失敗しました。" + e.message); lock(false); }
     };
 
     bShuf.onclick = async () => {
       if (!confirm("会話と投稿文を最初から作り直します。今の内容は消えます。よろしいですか？")) return;
-      lock(true); bShuf.textContent = "作り直しています…";
+      lock(true); bGo.textContent = "作り直しています…";
       try {
         const extra = { jobId: job.id };
         /* 画面の設定（テーマ・性別・子ども・本数など）で新しい組み合わせを引き直す */
@@ -11406,7 +11436,7 @@ const TALK = {
         await TALK.load(el);
       } catch (e) {
         alert("作り直せませんでした。" + e.message);
-        lock(false); bShuf.textContent = "↻ 会話ごと作り直す（シャッフル）";
+        lock(false); bGo.textContent = "画像をつくって投稿予定へ（" + ps.length + "枚）";
       }
     };
   },
@@ -11418,7 +11448,7 @@ const TALK = {
      ・1本ずつ個別に時刻を直すこともできます。
      ・「この予定で確定する」を押すまで、予約は入りません。
      ============================================================ */
-  buildSchedule(el, box, ps, onClose) {
+  buildSchedule(el, box, ps) {
     const pad = (n) => String(n).padStart(2, "0");
     const toInput = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
       + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
@@ -11523,16 +11553,13 @@ const TALK = {
         await TALK.load(el);
       } catch (e) { alert("予約に失敗しました。" + e.message); ok.disabled = false; ok.textContent = "この予定で確定する"; }
     };
-    const cancel = document.createElement("button"); cancel.className = "btn";
-    cancel.textContent = "やめる";
-    cancel.onclick = () => { box.style.display = "none"; if (typeof onClose === "function") onClose(); };
-    act.appendChild(ok); act.appendChild(cancel); box.appendChild(act);
+    act.appendChild(ok); box.appendChild(act);
   },
 
-  async load(el) {
+  async load(el, openJobId) {
     const box = el.querySelector("#talkList");
     try {
-      const j = await talkFetch_("talkList", { limit: 20 });
+      const j = await talkFetch_("talkList", { limit: 8 });
       const parts = j.parts || [], jobs = j.jobs || [], sched = j.sched || [];
       const schedMap = {}; sched.forEach((x) => { schedMap[String(x.id)] = x; });
       if (!jobs.length) { box.innerHTML = '<div style="color:var(--muted);font-size:13px">まだありません。上の「この内容でつくる」から始めてください。</div>'; return; }
@@ -11548,7 +11575,8 @@ const TALK = {
         card.innerHTML = '<div style="font-size:13px;font-weight:600"></div>'
           + '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px"></div>';
         card.children[0].textContent = job.theme_label || job.id.slice(0, 8);
-        card.children[1].textContent = (JST[job.status] || job.status) + (job.error ? " / " + job.error : "");
+        card.children[1].textContent = (job.created_at ? fmtJ(job.created_at) + "　" : "")
+          + (JST[job.status] || job.status) + (job.error ? " / " + job.error : "");
 
         const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
         ps.forEach(p => {
@@ -11569,31 +11597,33 @@ const TALK = {
         }
 
         /* ============ ② 画像ができたら投稿予定を決める ============ */
+        /* ★v297 画像ができた話は「投稿を確定する」1つだけ。
+           押すとその場に投稿予定が開き、閉じるボタンは置かない（迷わせない） */
         if (job.status === "rendered" && !queued.length) {
-          const b2 = document.createElement("button"); b2.className = "btn"; b2.style.marginTop = "10px";
-          b2.textContent = "投稿予定を決める";
           const sc2 = document.createElement("div");
           sc2.style.cssText = "display:none;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px";
-          b2.onclick = () => {
-            const open = sc2.style.display !== "none";
-            sc2.style.display = open ? "none" : "block";
-            b2.textContent = open ? "投稿予定を決める" : "閉じる";
-            if (!open && !sc2.dataset.built) {
-              TALK.buildSchedule(el, sc2, ps, () => { b2.textContent = "投稿予定を決める"; });
-              sc2.dataset.built = "1";
-            }
+          const b2 = document.createElement("button"); b2.className = "btn"; b2.style.marginTop = "10px";
+          b2.textContent = "投稿を確定する";
+          const openSched = () => {
+            b2.style.display = "none";
+            sc2.style.display = "block";
+            if (!sc2.dataset.built) { TALK.buildSchedule(el, sc2, ps); sc2.dataset.built = "1"; }
           };
-          const b3 = document.createElement("button"); b3.className = "btn"; b3.style.cssText = "margin-top:10px;margin-left:8px";
-          b3.textContent = "内容をもう一度見る";
+          b2.onclick = openSched;
+
           const rv2 = document.createElement("div");
           rv2.style.cssText = "display:none;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px";
+          const b3 = document.createElement("button");
+          b3.textContent = "内容を直す・画像を作り直す";
+          b3.style.cssText = "display:block;margin-top:8px;background:none;border:none;color:var(--muted);"
+            + "font-size:11.5px;text-decoration:underline;padding:4px 2px;cursor:pointer;font-family:inherit";
           b3.onclick = () => {
-            const open = rv2.style.display !== "none";
-            rv2.style.display = open ? "none" : "block";
-            b3.textContent = open ? "内容をもう一度見る" : "閉じる";
-            if (!open && !rv2.dataset.built) { TALK.buildReview(el, rv2, job, ps); rv2.dataset.built = "1"; }
+            b3.style.display = "none";
+            rv2.style.display = "block";
+            if (!rv2.dataset.built) { TALK.buildReview(el, rv2, job, ps); rv2.dataset.built = "1"; }
           };
-          card.appendChild(b2); card.appendChild(b3); card.appendChild(sc2); card.appendChild(rv2);
+          card.appendChild(b2); card.appendChild(sc2); card.appendChild(b3); card.appendChild(rv2);
+          if (openJobId && String(openJobId) === String(job.id)) openSched();
         }
 
         /* ============ ③ 予約済み：予約管理と同じものをここからも取り消せる ============ */
