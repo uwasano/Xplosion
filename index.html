@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "298";
+const APP_VERSION = "302";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -10874,6 +10874,11 @@ body{
 /* しっぽ：実機トレース。吹き出し左上角の外側に付く爪。上には飛び出さない
    ★v296 clip-path は画像化(html2canvas)で無視されて四角い塊になるため、SVGで描く */
 .bubble > .tl{position:absolute;top:0;width:20px;height:19px;display:block;}
+
+/* 名前をペンで消す（手書き風の塗りつぶし） */
+.msk{position:relative;display:inline-block;color:transparent!important;}
+.msk > .ink{position:absolute;left:-4px;right:-4px;top:-3px;bottom:-3px;pointer-events:none;}
+.msk > .ink > svg{width:100%;height:100%;display:block;}
 .you .bubble > .tl{left:-2.7px;}
 .me  .bubble > .tl{right:-2.7px;}
 .bubble.unsend{background:transparent;border:1px solid var(--unsend-border);color:var(--unsend-text);font-size:13.5px;padding:8px 14px;}
@@ -10954,10 +10959,134 @@ body{
 window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
 
 (function render(D){
-  document.getElementById("headerName").textContent = D.partnerName;
+  (function(){ var hn = document.getElementById("headerName"); hn.textContent = "";
+    putText(hn, D.partnerName, D.mask, 7); })();
   document.getElementById("statusClock").textContent = D.statusTime;
   document.getElementById("unreadCount").textContent = D.unreadCount ?? "99+";
   document.getElementById("battLevel").textContent = D.battery ?? 75;
+
+  /* ============================================================
+     ★v300 名前を手書きペンで消す。
+     seed(1〜200)から決まった形が出る。同じ番号なら毎回同じ絵になる。
+     ============================================================ */
+  function mulb(a){ return function(){ a|=0; a=a+0x6D2B79F5|0;
+    var t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296; }; }
+
+  function penInk(seed){
+    var r = mulb((((seed|0)*2654435761)>>>0) || 12345);
+    var COL = ["#151a21","#1c2634","#232a33","#101720","#2b2118","#0d1218"];
+    var col = COL[Math.floor(r()*COL.length)];
+    var rot = (r()-0.5)*9;
+    var kind = Math.floor(r()*3);            /* 0:ぐしゃぐしゃ 1:ぐるぐる 2:塗りつぶし */
+    var passes = 2 + Math.floor(r()*2);
+
+    /* うねり。周期の違う波を重ねるので、同じ形が二度と続かない */
+    function wave(){
+      var a1=1.2+r()*2.6, f1=1.2+r()*3.4, p1=r()*6.283;
+      var a2=0.5+r()*1.5, f2=5+r()*9,     p2=r()*6.283;
+      var a3=0.2+r()*0.7, f3=13+r()*16,   p3=r()*6.283;
+      return function(t){ return a1*Math.sin(f1*t+p1)+a2*Math.sin(f2*t+p2)+a3*Math.sin(f3*t+p3); };
+    }
+
+    /* 折り返しの位置も高さも毎回バラバラにする。等間隔・等振幅を作らない */
+    function anchors(){
+      var pts=[], ov=5+r()*12, i, n, x, y;
+      if (kind === 0) {
+        n = 5 + Math.floor(r()*4);
+        var dir = r()<0.5 ? 1 : -1;
+        pts.push([dir>0 ? -ov-r()*8 : 100+ov+r()*8, 20+r()*60]);
+        for (i=0;i<n;i++){
+          dir = -dir;
+          x = dir>0 ? (100+ov) - r()*26 : (-ov) + r()*26;
+          y = 8 + r()*84;
+          pts.push([x, y]);
+          if (r()<0.28) pts.push([x + (dir>0?-1:1)*(12+r()*30), 8 + r()*84]);
+        }
+      } else if (kind === 1) {
+        n = 14 + Math.floor(r()*16);
+        var laps = 1.8 + r()*2.4, sk = (r()-0.5)*40;
+        var ax = 18 + r()*22, ay = 22 + r()*20, ph = r()*6.283;
+        for (i=0;i<=n;i++){
+          var t = i/n, a = ph + t*6.283*laps;
+          x = -ov + (100+2*ov)*t + Math.cos(a)*ax*(0.55+0.6*r());
+          y = 50 + sk*(t-0.5) + Math.sin(a)*ay*(0.55+0.6*r());
+          pts.push([x, y]);
+        }
+      } else {
+        n = 4 + Math.floor(r()*3);
+        var dir2 = 1, yy = 14 + r()*22;
+        for (i=0;i<n;i++){
+          x = dir2>0 ? (100+ov) - r()*24 : (-ov) + r()*24;
+          pts.push([x, yy]);
+          yy += (52/n) * (0.5 + r()*1.3);
+          pts.push([x + (dir2>0?-1:1)*(4+r()*16), yy]);
+          dir2 = -dir2;
+        }
+      }
+      return pts;
+    }
+
+    /* 通過点を滑らかな曲線で結ぶ。直線は一本も引かない */
+    function smooth(pts){
+      if (pts.length < 3) return "M" + pts[0][0].toFixed(1) + " " + pts[0][1].toFixed(1)
+        + " L" + pts[1][0].toFixed(1) + " " + pts[1][1].toFixed(1);
+      var d = "M" + pts[0][0].toFixed(1) + " " + pts[0][1].toFixed(1), i;
+      for (i=0;i<pts.length-1;i++){
+        var p0 = pts[i-1] || pts[i], p1 = pts[i], p2 = pts[i+1], p3 = pts[i+2] || pts[i+1];
+        d += " C" + (p1[0]+(p2[0]-p0[0])/6).toFixed(1) + " " + (p1[1]+(p2[1]-p0[1])/6).toFixed(1)
+          +  " " + (p2[0]-(p3[0]-p1[0])/6).toFixed(1) + " " + (p2[1]-(p3[1]-p1[1])/6).toFixed(1)
+          +  " " + p2[0].toFixed(1) + " " + p2[1].toFixed(1);
+      }
+      return d;
+    }
+
+    /* 通過点の間を不揃いな刻みで拾い直し、うねりを乗せる */
+    function shake(pts){
+      var wx = wave(), wy = wave(), out=[], i, k;
+      var total = pts.length - 1;
+      for (i=0;i<total;i++){
+        var a = pts[i], b = pts[i+1];
+        var dx = b[0]-a[0], dy = b[1]-a[1];
+        var len = Math.sqrt(dx*dx+dy*dy);
+        var steps = Math.max(2, Math.round(len / (7 + r()*7)));
+        for (k=0;k<steps;k++){
+          var t = (k + r()*0.45) / steps;
+          var g = (i + t) / total;
+          out.push([a[0]+dx*t + wx(g), a[1]+dy*t + wy(g)]);
+        }
+      }
+      out.push([pts[total][0]+wx(1), pts[total][1]+wy(1)]);
+      return out;
+    }
+
+    var out = "", p2;
+    for (p2=0;p2<passes;p2++){
+      var an = anchors();
+      if (p2) for (var q=0;q<an.length;q++){ an[q][0]+=(r()-0.5)*9; an[q][1]+=(r()-0.5)*9; }
+      out += '<path d="' + smooth(shake(an)) + '" fill="none" stroke="' + col
+        + '" stroke-width="' + (2.6 + r()*2.2).toFixed(1) + '" vector-effect="non-scaling-stroke"'
+        + ' stroke-linecap="round" stroke-linejoin="round" opacity="' + (0.55 + r()*0.4).toFixed(2) + '"/>';
+    }
+    return '<svg viewBox="0 0 100 100" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">'
+      + '<g transform="rotate(' + rot.toFixed(1) + ' 50 50)">' + out + '</g></svg>';
+  }
+
+  /* 〈名前〉を、消す／そのまま出す に振り分けて吹き出しに流し込む */
+  function putText(node, text, mask, seedBase){
+    var s = String(text == null ? "" : text);
+    var parts = s.split(/〈([^〉]*)〉/);
+    var k = 0;
+    for (var i=0;i<parts.length;i++){
+      if (i % 2 === 0) { if (parts[i]) node.appendChild(document.createTextNode(parts[i])); continue; }
+      var name = parts[i];
+      if (!mask || !mask.on) { node.appendChild(document.createTextNode(name)); continue; }
+      var sp = document.createElement("span"); sp.className = "msk"; sp.textContent = name;
+      var ink = document.createElement("span"); ink.className = "ink";
+      ink.innerHTML = penInk((mask.seed || 1) + (k++) * 37 + name.length);
+      sp.appendChild(ink); node.appendChild(sp);
+    }
+  }
 
   const TAIL_SVG = (color, mirror) =>
     '<svg viewBox="0 0 20 19" width="20" height="19" xmlns="http://www.w3.org/2000/svg">'
@@ -11010,7 +11139,7 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
       b.textContent = "メッセージの送信を取り消しました";
     }else{
       b.className = "bubble";
-      b.textContent = msg.text;
+      putText(b, msg.text, D.mask, 1);
     }
     if(head && msg.type !== "unsend"){
       const tl = document.createElement("span");
@@ -11052,9 +11181,10 @@ async function talkFetch_(action, extra) {
 
 /* 会話JSONの1区間を描画してPNG(dataURL)を返す。
    ★置換は必ず「関数」で渡す。文字列だと $& が置換記号として解釈されて壊れます。 */
-function talkRenderPart_(talk, range, part, partTotal) {
+function talkRenderPart_(talk, range, part, partTotal, mask) {
   return new Promise((resolve, reject) => {
-    const shot = Object.assign({}, talk, { range: range, part: part, partTotal: partTotal });
+    const shot = Object.assign({}, talk, { range: range, part: part, partTotal: partTotal,
+      mask: mask || { on: false, seed: 1 } });
     const boot = '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>'
       + '<script>(async function(){try{'
       + 'await document.fonts.ready;'
@@ -11134,6 +11264,9 @@ const TALK = {
       { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
     field(main, "相手（画面左・白の吹き出し）", mkSel("axPartnerGender", [
       { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
+    field(main, "名前の伏せ方", mkSel("axMask", [
+      { v: "", t: "そのまま出す（既定）" }, { v: "pen", t: "手書きペンで消す" }]),
+      "会話に出る人名を、手書きで塗りつぶしたように隠します。柄は200種類から自動で選ばれます。");
     field(main, "投稿文の型", mkSel("axHook", [
       { v: "", t: "一言フック（既定・バズ特化）" }, { v: "long", t: "説明入り（従来）" }]),
       "2本目以降を10〜20文字の一言だけにします。前提をひっくり返す・知らない名前を出すなど、次を開かせる型で書かせます。");
@@ -11204,7 +11337,7 @@ const TALK = {
       if (primary) b.style.cssText = "font-weight:600";
       b.onclick = fn; btns.appendChild(b); return b;
     };
-    mk("＋ 新しい話をつくる", () => TALK.batch(el), true);
+    const bMake = mk("＋ 新しい話をつくる", () => TALK.batch(el, bMake), true);
     const moreBtn = mk("⚙ その他の設定", () => {
       const open = more.style.display !== "none";
       more.style.display = open ? "none" : "block";
@@ -11234,6 +11367,7 @@ const TALK = {
       allowKo: g("axKo") === "1",
       protectMe: g("axStance") !== "both",
       hookOne: g("axHook") !== "long",
+      maskPen: g("axMask") === "pen",
     };
     const myG = g("axMyGender");        /* "" | female | male */
     const ptG = g("axPartnerGender");
@@ -11260,7 +11394,9 @@ const TALK = {
         cast: { me: { gender: mg }, partner: { gender: pg },
                 stance: opt.protectMe ? "protect" : "both",
                 hook: opt.hookOne ? "one" : "long",
-                sameSex: same },
+                sameSex: same,
+                mask: opt.maskPen ? "pen" : "none",
+                maskSeed: 1 + Math.floor(Math.random() * 200) },
         /* ★v298 テーマが入力されている時は、札の細目（始まり・要求・逃げ方・頂点・締め）を
            brief に出さない。9軸を並べるとAIがそちらを筋にしてしまい、テーマが飾りになるため。 */
         brief: (theme
@@ -11294,7 +11430,7 @@ const TALK = {
     return out;
   },
 
-  async batch(el) {
+  async batch(el, btn) {
     const acct = (el.querySelector("#talkAcct") || {}).value || "";
     if (!acct) { alert("投稿先のXアカウントを選んでください。"); return; }
     const n = parseInt((el.querySelector("#axCount") || {}).value || "1", 10);
@@ -11303,6 +11439,8 @@ const TALK = {
     if (!confirm("@" + acct + " 向けに、" + partTxt + "の話を" + n + "話つくります。\n"
       + (n > 1 ? "※同じテーマで" + n + "本のカードが並びます。1つだけで良い場合は「その他の設定 → まとめて作る数」を1話ずつにしてください。\n" : "")
       + "\nよろしいですか？")) return;
+    /* ★v301 二度押しで同じ話が2組できないように、処理中はボタンを止める */
+    if (btn) { btn.disabled = true; btn.textContent = "つくっています…"; }
     try {
       const combos = TALK.makeCombos(el, n);
       const extra = { account: acct, count: n, combos: combos };
@@ -11312,6 +11450,7 @@ const TALK = {
       alert("追加しました。数分おきに1本ずつ生成されます。");
       await TALK.load(el);
     } catch (e) { alert("失敗しました。" + e.message); }
+    if (btn) { btn.disabled = false; btn.textContent = "＋ 新しい話をつくる"; }
   },
 
   /* ============================================================
@@ -11319,7 +11458,7 @@ const TALK = {
      ・画像を作る前に、会話の全文と各本の投稿文をそのまま見せます。
      ・投稿文はその場で直せます。気に入らなければ会話ごと作り直せます。
      ============================================================ */
-  buildReview(el, box, job, ps) {
+  buildReview(el, box, job, ps, siblings) {
     const tj = job.talk_json || {};
     const msgs = Array.isArray(tj.messages) ? tj.messages : [];
     const mySide = tj.mySide || "girlfriend";
@@ -11351,9 +11490,50 @@ const TALK = {
     act.appendChild(bShuf);
     const lock = (on, msg) => { [bGo, bShuf].forEach((b) => { b.disabled = on; }); if (msg) bGo.textContent = msg; };
 
+    /* ---- ★v300 名前をペンで消すかどうか（画像を作る直前に切り替えられる） ---- */
+    const cj = job.cast_json || {};
+    const maskState = { on: cj.mask === "pen", seed: Number(cj.maskSeed) || 1 };
+    const mrow = document.createElement("label");
+    mrow.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;flex-wrap:wrap";
+    const mck = document.createElement("input"); mck.type = "checkbox"; mck.checked = maskState.on;
+    const mtx = document.createElement("span"); mtx.textContent = "名前を手書きペンで消す";
+    const mnum = document.createElement("input"); mnum.type = "number"; mnum.min = "1"; mnum.max = "200";
+    mnum.value = String(maskState.seed);
+    mnum.style.cssText = "width:64px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;"
+      + "font-size:12px;background:transparent;color:inherit";
+    const mlb = document.createElement("span"); mlb.textContent = "柄"; mlb.style.color = "var(--muted)";
+    const mrnd = document.createElement("button"); mrnd.textContent = "↻ 別の柄";
+    mrnd.style.cssText = "background:none;border:none;color:var(--muted);font-size:11.5px;"
+      + "text-decoration:underline;padding:4px;cursor:pointer;font-family:inherit";
+    mrow.appendChild(mck); mrow.appendChild(mtx); mrow.appendChild(mlb); mrow.appendChild(mnum); mrow.appendChild(mrnd);
+    box.appendChild(mrow);
+    const syncMask = () => {
+      maskState.on = mck.checked;
+      maskState.seed = Math.min(200, Math.max(1, Number(mnum.value) || 1));
+      mnum.value = String(maskState.seed);
+      mnum.disabled = !maskState.on; mrnd.disabled = !maskState.on;
+      drawConv();
+    };
+    mck.onchange = syncMask; mnum.onchange = syncMask;
+    mrnd.onclick = (ev) => { ev.preventDefault(); mnum.value = String(1 + Math.floor(Math.random() * 200)); syncMask(); };
+
     /* ---- 会話の全文（どこで画像が切れるかも表示） ---- */
     const cvWrap = document.createElement("div");
     cvWrap.style.cssText = "max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px";
+    const putPv = (node, text) => {
+      String(text == null ? "" : text).split(/〈([^〉]*)〉/).forEach((seg, k) => {
+        if (!seg) return;
+        if (k % 2 === 0) { node.appendChild(document.createTextNode(seg)); return; }
+        const sp = document.createElement("span");
+        sp.textContent = seg;
+        sp.style.cssText = maskState.on
+          ? "background:#1b2330;color:transparent;border-radius:3px;padding:0 2px"
+          : "border-bottom:1px dotted var(--muted)";
+        node.appendChild(sp);
+      });
+    };
+    const drawConv = () => {
+    cvWrap.innerHTML = "";
     if (!msgs.length) {
       cvWrap.textContent = "会話データが読み込めませんでした。";
       cvWrap.style.fontSize = "12px";
@@ -11375,11 +11555,15 @@ const TALK = {
           + (m.type === "unsend"
               ? "color:var(--muted);border:1px dashed var(--line);background:transparent"
               : me ? "background:#8de055;color:#111" : "background:var(--chip)");
-        b.textContent = m.type === "unsend" ? "メッセージの送信を取り消しました" : String(m.text || "");
+        if (m.type === "unsend") b.textContent = "メッセージの送信を取り消しました";
+        else putPv(b, m.text);
         r.appendChild(b); cvWrap.appendChild(r);
       });
     }
+    };
     box.appendChild(cvWrap);
+    mnum.disabled = !maskState.on; mrnd.disabled = !maskState.on;
+    drawConv();
 
     /* ---- 投稿文（編集できる） ---- */
     const pt = document.createElement("div");
@@ -11393,7 +11577,7 @@ const TALK = {
       l.style.cssText = "font-size:10.5px;color:var(--muted);margin-bottom:3px";
       l.textContent = (i + 1) + "本目";
       const t = document.createElement("textarea");
-      t.rows = 2; t.value = String(p.post_text || "");
+      t.rows = 2; t.value = String(p.post_text || "").replace(/[〈〉]/g, "");
       t.style.cssText = "width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:12.5px;"
         + "background:transparent;color:inherit;font-family:inherit;line-height:1.6;resize:vertical";
       w.appendChild(l); w.appendChild(t); box.appendChild(w);
@@ -11412,8 +11596,13 @@ const TALK = {
         await saveTexts();
         for (const p of ps) {
           bGo.textContent = p.part + "枚目を作成中…";
-          const o = await talkRenderPart_(job.talk_json, [p.range_from, p.range_to], p.part, ps.length);
+          const o = await talkRenderPart_(job.talk_json, [p.range_from, p.range_to], p.part, ps.length,
+            { on: maskState.on, seed: maskState.seed });
           await talkFetch_("talkSave", { jobId: job.id, part: p.part, pngBase64: o.b64, height: o.height });
+        }
+        /* ★v299 同じテーマの他の案は、もう使わないので自動で見送りにする */
+        for (const sid of (siblings || [])) {
+          try { await talkFetch_("talkDrop", { jobId: sid }); } catch (e2) { /* 失敗しても続行 */ }
         }
         /* ★v297 画像ができたら、同じカードで投稿予定パネルまで自動で開く */
         await TALK.load(el, job.id);
@@ -11563,18 +11752,33 @@ const TALK = {
       const parts = j.parts || [], jobs = j.jobs || [], sched = j.sched || [];
       const schedMap = {}; sched.forEach((x) => { schedMap[String(x.id)] = x; });
       if (!jobs.length) { box.innerHTML = '<div style="color:var(--muted);font-size:13px">まだありません。上の「この内容でつくる」から始めてください。</div>'; return; }
-      const JST = { queued: "会話を作っています…", generated: "内容の確認待ち", rendered: "画像OK・予約待ち", error: "エラー" };
+      const JST = { queued: "会話を作っています…", generated: "内容の確認待ち", rendered: "画像OK・予約待ち",
+                    error: "エラー", dropped: "見送り" };
+      /* ★v299 同じテーマで複数の案を作った時、1つ採用したら残りは打ち消して畳む */
+      const adopted = {};
+      jobs.forEach((j2) => {
+        const k = String(j2.theme_label || j2.id);
+        if (j2.status === "rendered" || j2.status === "posted") adopted[k] = true;
+      });
+      const sibsOf = (job) => jobs.filter((j2) => j2.id !== job.id
+        && String(j2.theme_label || "") === String(job.theme_label || "")
+        && j2.status === "generated").map((j2) => j2.id);
       const PST = { pending: "未作成", rendered: "画像OK", queued: "予約済み", posted: "投稿済み", error: "エラー" };
       const fmtJ = (iso) => new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
       box.innerHTML = "";
       for (const job of jobs) {
         const ps = parts.filter(p => p.job_id === job.id).sort((a, b) => a.part - b.part);
         const queued = ps.filter(p => p.post_id && schedMap[String(p.post_id)]);
+        const key = String(job.theme_label || job.id);
+        const shelved = job.status === "dropped"
+          || (job.status === "generated" && adopted[key] && !queued.length);
         const card = document.createElement("div");
-        card.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px";
+        card.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px"
+          + (shelved ? ";opacity:.45" : "");
         card.innerHTML = '<div style="font-size:13px;font-weight:600"></div>'
           + '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px"></div>';
         card.children[0].textContent = job.theme_label || job.id.slice(0, 8);
+        if (shelved) card.children[0].style.textDecoration = "line-through";
         card.children[1].textContent = (job.created_at ? fmtJ(job.created_at) + "　" : "")
           + (JST[job.status] || job.status) + (job.error ? " / " + job.error : "");
 
@@ -11586,6 +11790,23 @@ const TALK = {
           s2.textContent = p.part + "本目: " + (PST[p.status] || p.status) + (sc ? "（" + fmtJ(sc.scheduled_at) + "）" : "");
           row.appendChild(s2);
         });
+        if (shelved) {
+          card.children[1].textContent = (job.created_at ? fmtJ(job.created_at) + "　" : "")
+            + (job.status === "dropped" ? "見送り" : "別の案を採用済み");
+          const bk = document.createElement("button");
+          bk.textContent = "この案を使う";
+          bk.style.cssText = "display:block;margin-top:6px;background:none;border:none;color:var(--muted);"
+            + "font-size:11.5px;text-decoration:underline;padding:4px 2px;cursor:pointer;font-family:inherit";
+          bk.onclick = async () => {
+            bk.disabled = true;
+            try { await talkFetch_("talkDrop", { jobId: job.id, undo: true }); await TALK.load(el); }
+            catch (e) { alert("戻せませんでした。" + e.message); bk.disabled = false; }
+          };
+          card.appendChild(bk);
+          box.appendChild(card);
+          continue;
+        }
+
         card.appendChild(row);
 
         /* ============ ① 画像を作る前に、会話と投稿文を全部見せる ============ */
@@ -11593,7 +11814,17 @@ const TALK = {
           const rev = document.createElement("div");
           rev.style.cssText = "margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px";
           card.appendChild(rev);
-          TALK.buildReview(el, rev, job, ps);
+          TALK.buildReview(el, rev, job, ps, sibsOf(job));
+          const bd = document.createElement("button");
+          bd.textContent = "この案は使わない";
+          bd.style.cssText = "display:block;margin-top:8px;background:none;border:none;color:var(--muted);"
+            + "font-size:11.5px;text-decoration:underline;padding:4px 2px;cursor:pointer;font-family:inherit";
+          bd.onclick = async () => {
+            bd.disabled = true;
+            try { await talkFetch_("talkDrop", { jobId: job.id }); await TALK.load(el); }
+            catch (e) { alert("見送りにできませんでした。" + e.message); bd.disabled = false; }
+          };
+          card.appendChild(bd);
         }
 
         /* ============ ② 画像ができたら投稿予定を決める ============ */
