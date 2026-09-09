@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "306";
+const APP_VERSION = "307";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11791,6 +11791,9 @@ const TALK = {
         && j2.status === "generated").map((j2) => j2.id);
       const PST = { pending: "未作成", rendered: "画像OK", queued: "予約済み", posted: "投稿済み", error: "エラー" };
       const fmtJ = (iso) => new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      /* ★v307 できあがった画像を見られるようにする。作り直した分が古いまま出ないよう毎回読み直す */
+      const IMGBASE = String(SUPABASE_URL).replace(/\/+$/, "") + "/storage/v1/object/public/talkimages/";
+      const bust = "?t=" + Date.now();
       box.innerHTML = "";
       /* ★v303 画面に出すのは「いま作業中のもの」だけ。
          予約が入ったもの・見送りにしたものは、下の「済んだ分」に畳む */
@@ -11843,6 +11846,31 @@ const TALK = {
         }
 
         card.appendChild(row);
+
+        /* ---- できあがった画像（タップで大きく表示） ---- */
+        const shots = ps.filter((p) => p.image_path);
+        if (shots.length) {
+          const gal = document.createElement("div");
+          gal.style.cssText = "display:flex;gap:8px;overflow-x:auto;margin-top:10px;padding-bottom:4px;-webkit-overflow-scrolling:touch";
+          shots.forEach((p) => {
+            const w = document.createElement("div"); w.style.cssText = "flex:none;text-align:center";
+            const im = document.createElement("img");
+            im.src = IMGBASE + p.image_path + bust;
+            im.alt = p.part + "本目";
+            im.style.cssText = "height:200px;border-radius:10px;border:1px solid var(--line);display:block;"
+              + "cursor:zoom-in;background:#dbe6f5";
+            im.onclick = () => window.open(im.src, "_blank");
+            const cap = document.createElement("div");
+            cap.style.cssText = "font-size:10.5px;color:var(--muted);margin-top:3px";
+            cap.textContent = p.part + "本目";
+            w.appendChild(im); w.appendChild(cap); gal.appendChild(w);
+          });
+          card.appendChild(gal);
+          const hint = document.createElement("div");
+          hint.style.cssText = "font-size:10.5px;color:var(--muted);margin:2px 0 4px;opacity:.8";
+          hint.textContent = "画像をタップすると大きく表示されます。横にスワイプで全部見られます。";
+          card.appendChild(hint);
+        }
 
         /* ============ ① 画像を作る前に、会話と投稿文を全部見せる ============ */
         if (job.status === "generated" && ps.length) {
