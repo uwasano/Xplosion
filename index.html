@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "284";
+const APP_VERSION = "286";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11006,7 +11006,7 @@ function talkRenderPart_(talk, range, part, partTotal) {
 const TALK = {
   async build(el) {
     el.innerHTML = '<div style="padding:14px"><div style="font-size:18px;font-weight:700;margin-bottom:4px">💬 Talk</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">トークの内容をここで決めてから生成します。指定しない項目は「おまかせ」になります。</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">トークの内容をここで決めてから生成します。テーマを書くとその題材で作られます。指定しない項目は「おまかせ」になります。</div>'
       + '<div id="talkCtl" style="margin-bottom:14px"></div>'
       + '<div id="talkList">読み込み中…</div></div>';
     const ctl = el.querySelector("#talkCtl");
@@ -11040,6 +11040,14 @@ const TALK = {
     } catch (e) {}
     acct.onchange = () => { try { localStorage.setItem("talkAcct", acct.value); } catch (e) {} };
 
+    /* ★v285 テーマ（自由入力）。書けばそれが題材になります。
+       空欄のままなら、下の指定と「おまかせ」から自動で題材が決まります。 */
+    const theme = document.createElement("input");
+    theme.id = "talkTheme"; theme.type = "text";
+    theme.placeholder = "例：誕生日の店を当日キャンセルされた";
+    theme.style.cssText = "flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px";
+    ctl.appendChild(row("テーマ（任意）", theme));
+
     if (!C) {
       ctl.appendChild(Object.assign(document.createElement("div"),
         { style: "font-size:12px;color:#c00", textContent: "combos.js が読み込まれていません。index.html の読み込み順をご確認ください。" }));
@@ -11054,8 +11062,11 @@ const TALK = {
       axis("axThird",      "巻き込む第三者",   C.THIRD_PARTIES);
       axis("axPeak",       "ヘイトの頂点",     C.PEAKS);
       axis("axCloser",     "締めの追い討ち",   C.CLOSERS);
-      ctl.appendChild(row("加害側", sel("axSide", [
-        { v: "", t: "おまかせ" }, { v: "boyfriend", t: "彼氏（受け手は彼女）" }, { v: "girlfriend", t: "彼女（受け手は彼氏）" }])));
+      /* ★v286 自分と相手の性別を独立して指定できる（男女・女女・男男どれでも組めます） */
+      ctl.appendChild(row("自分（画面右・緑）", sel("axMyGender", [
+        { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }])));
+      ctl.appendChild(row("相手（画面左）", sel("axPartnerGender", [
+        { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }])));
       ctl.appendChild(row("金銭ネタの割合", sel("axKane", [
         { v: "0.3", t: "3割（既定）" }, { v: "0", t: "出さない" }, { v: "0.5", t: "5割" }, { v: "1", t: "毎回" }])));
       ctl.appendChild(row("本数", sel("axCount", [
@@ -11090,6 +11101,7 @@ const TALK = {
   makeCombos(el, n) {
     const C = window.TALK_COMBOS;
     const g = (id) => (el.querySelector("#" + id) || {}).value || "";
+    const theme = (g("talkTheme") || "").trim();
     const fix = {};
     const map = { engine: "axEngine", relation: "axRelation", offender: "axOffender", trigger: "axTrigger",
       demand: "axDemand", deflection: "axDeflection", thirdParty: "axThird", peak: "axPeak", closer: "axCloser" };
@@ -11099,19 +11111,29 @@ const TALK = {
       allowHeavy: !!(el.querySelector("#axHeavy") || {}).checked,
       kaneRatio: parseFloat(g("axKane") || "0.3"),
     };
-    const side = g("axSide"); if (side) opt.offenderSide = side;
+    const myG = g("axMyGender");        /* "" | female | male */
+    const ptG = g("axPartnerGender");
+    /* 相手（＝加害側）の性別が決まっているなら、題材文の言い回しもそれに合わせる */
+    if (ptG) opt.offenderSide = (ptG === "male") ? "boyfriend" : "girlfriend";
 
     const out = [];
     for (let i = 0; i < n; i++) {
       const c = C.pickCombo(opt);
-      const offMale = c.offenderSide === "boyfriend";
+      const coin = () => (Math.random() < 0.5 ? "female" : "male");
+      /* 指定が無い側は、もう片方と自然な組み合わせになるように埋める */
+      const pg = ptG || (c.offenderSide === "boyfriend" ? "male" : "female");
+      const mg = myG || (pg === "male" ? "female" : (Math.random() < 0.7 ? "male" : "female"));
+      const jp = (x) => (x === "male" ? "男性" : "女性");
       out.push({
         peakId: c.peak.id,
-        label: c.peak.label,
+        label: theme || c.peak.label,
         key: c.key,
         /* 受け手＝スクショを撮る側（画面右・緑） */
-        cast: { me: { gender: offMale ? "female" : "male" }, partner: { gender: offMale ? "male" : "female" } },
-        brief: C.comboToBrief(c),
+        cast: { me: { gender: mg }, partner: { gender: pg } },
+        brief: (theme ? "【今回の題材（これを必ず使う）】\n" + theme + "\n\n" : "") + C.comboToBrief(c)
+               + "\n【登場人物の性別（厳守・上の彼氏彼女の表記より優先）】"
+               + "\n自分＝スクショを撮って晒す側（画面右・緑）：" + jp(mg)
+               + "\n相手＝加害側（画面左・白）：" + jp(pg),
       });
     }
     return out;
