@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "286";
+const APP_VERSION = "289";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2646,7 +2646,7 @@ function renderTop() {
     } else if (s === "Video") {
       b.onclick = () => window.snsSwitchFx(b, () => window.openVideoStudio());
     } else {
-      b.onclick = () => window.snsSwitchFx(b, () => { S.sns = s; renderTop(); showTab(S.tab); });
+      b.onclick = () => window.snsSwitchFx(b, () => { S.sns = s; ensureTabForSns(); renderTop(); renderNav(); showTab(S.tab); });
     }
     $("snsw").appendChild(b);
   });
@@ -2709,24 +2709,40 @@ const NAV_GROUPS = [
   { id: "post", icon: "✍️", label: "投稿", tabs: ["dailytask", "calendar", "gapcheck", "talk"] },
   { id: "analyze", icon: "📈", label: "分析", tabs: ["competitor", "radar", "unfollow", "outreach", "quote", "followers", "report"] },
   { id: "config", icon: "⚙️", label: "設定", tabs: ["settings", "schedule", "autoqueue", "clients"] },
-  { id: "instagram", icon: "📸", label: "Instagram", tabs: ["ig_dashboard", "ig_accounts", "ig_genres", "ig_content", "ig_racers", "ig_news", "ig_images", "ig_templates", "ig_schedule", "ig_review", "ig_published", "ig_analytics", "ig_queue", "ig_logs", "ig_settings"] },
+]; /* ★v287 Instagramはここから外し、上のSNS切替(📷アイコン)に連動させる */
+
+/* ★v287 Instagram用のナビ。15タブを4グループに整理して選びやすくする */
+const NAV_GROUPS_IG = [
+  { id: "ig_home",   icon: "📊", label: "概要", tabs: ["ig_dashboard", "ig_analytics", "ig_published"] },
+  { id: "ig_make",   icon: "📝", label: "制作", tabs: ["ig_content", "ig_news", "ig_images", "ig_templates", "ig_racers"] },
+  { id: "ig_ops",    icon: "⏰", label: "運用", tabs: ["ig_schedule", "ig_review", "ig_queue", "ig_logs"] },
+  { id: "ig_config", icon: "⚙️", label: "設定", tabs: ["ig_accounts", "ig_genres", "ig_settings"] },
 ];
+/* いま表示すべきナビ（SNS切替に追従） */
+function navGroups() { return S.sns === "Instagram" ? NAV_GROUPS_IG : NAV_GROUPS; }
+function tabsOfSns() { return navGroups().reduce((a, g) => a.concat(g.tabs), []); }
+function defaultTabOfSns() { return S.sns === "Instagram" ? "ig_dashboard" : "calendar"; }
+/* SNSを切り替えた時、そのSNSに属さないタブが選ばれたままにならないようにする */
+function ensureTabForSns() {
+  if (S.tab !== "home" && tabsOfSns().indexOf(S.tab) < 0) S.tab = defaultTabOfSns();
+}
 function currentGroup() {
   if (S.tab === "home") return "home";
-  const g = NAV_GROUPS.find((g) => g.tabs.indexOf(S.tab) >= 0);
-  return g ? g.id : "post";
+  const gs = navGroups();
+  const g = gs.find((g) => g.tabs.indexOf(S.tab) >= 0);
+  return g ? g.id : gs[0].id;
 }
 function renderNav() {
   const nav = $("nav"); nav.innerHTML = "";
   const row1 = document.createElement("div"); row1.className = "navrow"; nav.appendChild(row1);
-  NAV_GROUPS.forEach((g) => {
+  navGroups().forEach((g) => {
     const b = document.createElement("button");
     b.className = "navbtn grp" + (currentGroup() === g.id ? " on" : "");
     b.innerHTML = g.icon + " " + g.label;
     b.onclick = () => { showTab(g.id === "home" ? "home" : g.tabs[0]); renderNav(); };
     row1.appendChild(b);
   });
-  const cg = NAV_GROUPS.find((g) => g.id === currentGroup());
+  const cg = navGroups().find((g) => g.id === currentGroup());
   if (cg && cg.tabs.length) {
     const row2 = document.createElement("div"); row2.className = "navrow"; nav.appendChild(row2);
     cg.tabs.forEach((tid) => {
@@ -2740,7 +2756,7 @@ function renderNav() {
     });
   }
 }
-function showTab(id) { if (!BUILDERS[id]) id = "calendar"; S.tab = id; $("content").innerHTML = ""; BUILDERS[id]($("content")); }
+function showTab(id) { if (!BUILDERS[id]) id = (typeof defaultTabOfSns === "function" ? defaultTabOfSns() : "calendar"); S.tab = id; $("content").innerHTML = ""; BUILDERS[id]($("content")); }
 /* 成長プランの[機能名]タップでその機能の場所へ直ジャンプ(投稿タブに切替→該当ボタンをクリック&スクロール) */
 function xplGoFeature(label) {
   try {
@@ -11005,94 +11021,129 @@ function talkRenderPart_(talk, range, part, partTotal) {
 
 const TALK = {
   async build(el) {
-    el.innerHTML = '<div style="padding:14px"><div style="font-size:18px;font-weight:700;margin-bottom:4px">💬 Talk</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">トークの内容をここで決めてから生成します。テーマを書くとその題材で作られます。指定しない項目は「おまかせ」になります。</div>'
-      + '<div id="talkCtl" style="margin-bottom:14px"></div>'
-      + '<div id="talkList">読み込み中…</div></div>';
-    const ctl = el.querySelector("#talkCtl");
+    el.innerHTML = '<div style="padding:14px">'
+      + '<div style="font-size:18px;font-weight:700;margin-bottom:2px">💬 Talk</div>'
+      + '<div id="talkAcctLine" style="font-size:11px;color:var(--muted);margin-bottom:16px"></div>'
+      + '<div id="talkMain"></div>'
+      + '<div id="talkMore" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"></div>'
+      + '<div id="talkBtns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px"></div>'
+      + '<pre id="talkPv" style="display:none;white-space:pre-wrap;font-size:12px;line-height:1.75;background:var(--chip);border-radius:10px;padding:12px;margin-top:12px"></pre>'
+      + '<div id="talkList" style="margin-top:20px">読み込み中…</div></div>';
+
+    const main = el.querySelector("#talkMain");
+    const more = el.querySelector("#talkMore");
     const C = window.TALK_COMBOS;
-    const row = (label, node) => {
-      const w = document.createElement("label");
-      w.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px";
-      const t = document.createElement("span"); t.textContent = label;
-      t.style.cssText = "min-width:132px;color:var(--muted)";
-      w.appendChild(t); w.appendChild(node); return w;
-    };
-    const sel = (id, opts, width) => {
+
+    const mkSel = (id, opts) => {
       const e = document.createElement("select"); e.id = id;
-      e.style.cssText = "flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px" + (width ? ";max-width:" + width : "");
+      e.style.cssText = "width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:transparent;color:inherit";
       for (const o of opts) { const x = document.createElement("option"); x.value = o.v; x.textContent = o.t; e.appendChild(x); }
       return e;
     };
+    /* ラベルを上、コントロールを下いっぱいに置く（スマホで押しやすい） */
+    const field = (parent, label, node, hint) => {
+      const w = document.createElement("div"); w.style.cssText = "margin-bottom:12px";
+      const l = document.createElement("div");
+      l.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:.02em";
+      l.textContent = label; w.appendChild(l); w.appendChild(node);
+      if (hint) { const h = document.createElement("div");
+        h.style.cssText = "font-size:10.5px;color:var(--muted);margin-top:4px;opacity:.8"; h.textContent = hint; w.appendChild(h); }
+      parent.appendChild(w); return node;
+    };
+    /* その他の中の軸セレクト（省スペースな横並び） */
     const axis = (id, label, list) => {
       const opts = [{ v: "", t: "おまかせ" }].concat((list || []).map(c => ({ v: c.id, t: c.label })));
-      ctl.appendChild(row(label, sel(id, opts)));
+      const w = document.createElement("label");
+      w.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px";
+      const t = document.createElement("span"); t.textContent = label;
+      t.style.cssText = "min-width:118px;color:var(--muted);flex:none";
+      const e = mkSel(id, opts); e.style.fontSize = "12px"; e.style.padding = "6px 8px";
+      w.appendChild(t); w.appendChild(e); more.appendChild(w); return e;
     };
 
-    /* 投稿先アカウント（連携済みのみ） */
-    const acct = sel("talkAcct", [{ v: "", t: "選択してください" }]);
-    ctl.appendChild(row("投稿先アカウント", acct));
+    /* ================= メイン（よく使うものだけ） ================= */
+    const theme = document.createElement("input");
+    theme.id = "talkTheme"; theme.type = "text";
+    theme.placeholder = "例：誕生日の店を当日キャンセルされた";
+    theme.style.cssText = "width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:transparent;color:inherit";
+    field(main, "テーマ", theme, "空欄のままにすると、題材が自動で選ばれます。");
+
+    field(main, "自分（画面右・緑の吹き出し）", mkSel("axMyGender", [
+      { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
+    field(main, "相手（画面左・白の吹き出し）", mkSel("axPartnerGender", [
+      { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
+    field(main, "スレッドの本数", mkSel("axParts", [
+      { v: "", t: "おまかせ" }, { v: "3", t: "3本（続く感じ）" }, { v: "4", t: "4本" }, { v: "5", t: "5本構成" }]),
+      "この本数でひとつながりの物語になるように投稿文が作られます。");
+
+    /* ================= その他の設定（折りたたみ） ================= */
+    const acct = mkSel("talkAcct", [{ v: "", t: "選択してください" }]);
+    acct.style.fontSize = "12px"; acct.style.padding = "6px 8px";
+    const aw = document.createElement("label");
+    aw.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px";
+    const at = document.createElement("span"); at.textContent = "投稿先アカウント";
+    at.style.cssText = "min-width:118px;color:var(--muted);flex:none";
+    aw.appendChild(at); aw.appendChild(acct); more.appendChild(aw);
+
+    const updAcctLine = () => {
+      const v = acct.value;
+      el.querySelector("#talkAcctLine").textContent = v
+        ? ("投稿先： @" + v + "（変更は「その他の設定」から）")
+        : "投稿先アカウントが未選択です。「その他の設定」からお選びください。";
+    };
     try {
       const a2 = await talkFetch_("talkAccounts");
       for (const s2 of (a2.accounts || [])) { const o = document.createElement("option"); o.value = s2; o.textContent = "@" + s2; acct.appendChild(o); }
       const saved = localStorage.getItem("talkAcct");
       if (saved && (a2.accounts || []).includes(saved)) acct.value = saved;
-    } catch (e) {}
-    acct.onchange = () => { try { localStorage.setItem("talkAcct", acct.value); } catch (e) {} };
+    } catch (e) { /* 一覧が取れなくても画面は出す */ }
+    acct.onchange = () => { try { localStorage.setItem("talkAcct", acct.value); } catch (e) {} updAcctLine(); };
+    updAcctLine();
 
-    /* ★v285 テーマ（自由入力）。書けばそれが題材になります。
-       空欄のままなら、下の指定と「おまかせ」から自動で題材が決まります。 */
-    const theme = document.createElement("input");
-    theme.id = "talkTheme"; theme.type = "text";
-    theme.placeholder = "例：誕生日の店を当日キャンセルされた";
-    theme.style.cssText = "flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px";
-    ctl.appendChild(row("テーマ（任意）", theme));
-
-    if (!C) {
-      ctl.appendChild(Object.assign(document.createElement("div"),
-        { style: "font-size:12px;color:#c00", textContent: "combos.js が読み込まれていません。index.html の読み込み順をご確認ください。" }));
-    } else {
-      /* ★内容の指定：9軸すべてアプリ内で選べる */
-      axis("axEngine",     "炎上の型",         C.ENGINES);
-      axis("axRelation",   "関係",             C.RELATIONS);
-      axis("axOffender",   "加害側の性質",     C.OFFENDERS);
-      axis("axTrigger",    "会話の始まり",     C.TRIGGERS);
-      axis("axDemand",     "押し付ける要求",   C.DEMANDS);
-      axis("axDeflection", "正論への逃げ方",   C.DEFLECTIONS);
-      axis("axThird",      "巻き込む第三者",   C.THIRD_PARTIES);
-      axis("axPeak",       "ヘイトの頂点",     C.PEAKS);
-      axis("axCloser",     "締めの追い討ち",   C.CLOSERS);
-      /* ★v286 自分と相手の性別を独立して指定できる（男女・女女・男男どれでも組めます） */
-      ctl.appendChild(row("自分（画面右・緑）", sel("axMyGender", [
-        { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }])));
-      ctl.appendChild(row("相手（画面左）", sel("axPartnerGender", [
-        { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }])));
-      ctl.appendChild(row("金銭ネタの割合", sel("axKane", [
-        { v: "0.3", t: "3割（既定）" }, { v: "0", t: "出さない" }, { v: "0.5", t: "5割" }, { v: "1", t: "毎回" }])));
-      ctl.appendChild(row("本数", sel("axCount", [
-        { v: "1", t: "1本" }, { v: "3", t: "3本" }, { v: "5", t: "5本（既定）" }])));
-      el.querySelector("#axCount").value = "5";
-
-      const heavyWrap = document.createElement("label");
-      heavyWrap.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px";
-      const heavy = document.createElement("input"); heavy.type = "checkbox"; heavy.id = "axHeavy";
-      heavyWrap.appendChild(heavy);
-      heavyWrap.appendChild(Object.assign(document.createElement("span"),
+    if (C) {
+      axis("axEngine",     "炎上の型",       C.ENGINES);
+      axis("axRelation",   "関係",           C.RELATIONS);
+      axis("axOffender",   "加害側の性質",   C.OFFENDERS);
+      axis("axTrigger",    "会話の始まり",   C.TRIGGERS);
+      axis("axDemand",     "押し付ける要求", C.DEMANDS);
+      axis("axDeflection", "正論への逃げ方", C.DEFLECTIONS);
+      axis("axThird",      "巻き込む第三者", C.THIRD_PARTIES);
+      axis("axPeak",       "ヘイトの頂点",   C.PEAKS);
+      axis("axCloser",     "締めの追い討ち", C.CLOSERS);
+      axis("axKane",       "金銭ネタの割合", [{ id: "0.3", label: "3割（既定）" }, { id: "0", label: "出さない" }, { id: "0.5", label: "5割" }, { id: "1", label: "毎回" }]);
+      more.querySelector("#axKane").value = "0.3";
+      axis("axCount",      "まとめて作る数", [{ id: "1", label: "1話ずつ" }, { id: "3", label: "3話" }, { id: "5", label: "5話" }]);
+      more.querySelector("#axCount").value = "1";
+      const hw = document.createElement("label");
+      hw.style.cssText = "display:flex;align-items:center;gap:8px;margin-top:4px;font-size:12px";
+      const hv = document.createElement("input"); hv.type = "checkbox"; hv.id = "axHeavy";
+      hw.appendChild(hv);
+      hw.appendChild(Object.assign(document.createElement("span"),
         { textContent: "重い題材（妊娠など）も使う", style: "color:var(--muted)" }));
-      ctl.appendChild(heavyWrap);
+      more.appendChild(hw);
+    } else {
+      more.appendChild(Object.assign(document.createElement("div"),
+        { style: "font-size:12px;color:#c00", textContent: "combos.js が読み込まれていません。" }));
     }
 
-    const btns = document.createElement("div");
-    btns.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:6px";
-    const mk = (t, fn) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = t; b.onclick = fn; btns.appendChild(b); return b; };
+    /* ================= ボタン ================= */
+    const btns = el.querySelector("#talkBtns");
+    const mk = (t, fn, primary) => {
+      const b = document.createElement("button"); b.className = "btn"; b.textContent = t;
+      if (primary) b.style.cssText = "font-weight:600";
+      b.onclick = fn; btns.appendChild(b); return b;
+    };
+    mk("この内容でつくる", () => TALK.batch(el), true);
     mk("内容を確認する", () => TALK.preview(el));
-    mk("この内容でつくる", () => TALK.batch(el));
+    const moreBtn = mk("⚙ その他の設定", () => {
+      const open = more.style.display !== "none";
+      more.style.display = open ? "none" : "block";
+      moreBtn.textContent = open ? "⚙ その他の設定" : "⚙ 閉じる";
+    });
     mk("↻ 更新", () => TALK.load(el));
-    ctl.appendChild(btns);
 
-    const pv = document.createElement("pre"); pv.id = "talkPv";
-    pv.style.cssText = "display:none;white-space:pre-wrap;font-size:12px;line-height:1.7;background:var(--chip);border-radius:10px;padding:12px;margin-top:10px";
-    ctl.appendChild(pv);
+    /* アカウント未選択なら、その他を開いて気づけるようにする */
+    if (!acct.value) { more.style.display = "block"; moreBtn.textContent = "⚙ 閉じる"; }
 
     await TALK.load(el);
   },
@@ -11151,11 +11202,16 @@ const TALK = {
   async batch(el) {
     const acct = (el.querySelector("#talkAcct") || {}).value || "";
     if (!acct) { alert("投稿先のXアカウントを選んでください。"); return; }
-    const n = parseInt((el.querySelector("#axCount") || {}).value || "5", 10);
-    if (!confirm("@" + acct + " 向けに、指定した内容で" + n + "本つくります。よろしいですか？")) return;
+    const n = parseInt((el.querySelector("#axCount") || {}).value || "1", 10);
+    const parts = ((el.querySelector("#axParts") || {}).value || "");
+    const partTxt = parts ? parts + "本のスレッド" : "おまかせの本数";
+    if (!confirm("@" + acct + " 向けに、" + partTxt + "の話を" + n + "話つくります。よろしいですか？")) return;
     try {
       const combos = TALK.makeCombos(el, n);
-      await talkFetch_("talkBatch", { account: acct, count: n, combos: combos });
+      const extra = { account: acct, count: n, combos: combos };
+      /* 会話の長さで枚数が決まる（1枚22通まで）。本数×21通にすると狙った本数ちょうどになる */
+      if (parts) extra.messageCount = Number(parts) * 21;
+      await talkFetch_("talkBatch", extra);
       alert("追加しました。数分おきに1本ずつ生成されます。");
       await TALK.load(el);
     } catch (e) { alert("失敗しました。" + e.message); }
