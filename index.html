@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "289";
+const APP_VERSION = "291";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -9654,14 +9654,30 @@ BUILDERS.schedule = (el) => {
   function hhmm(iso) { const d = new Date(iso); return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"); }
   function fmtD(iso) { const d = new Date(iso); return (d.getMonth()+1)+"/"+d.getDate()+" "+hhmm(iso); }
 
+  /* ★v291 ぶら下がっているスレッドごと取り消す。
+     親だけ消すと子が返信先を失って、いつまでも投稿されないまま残るため。 */
+  async function cancelPost(p, all) {
+    const kids = (all || []).filter((x) => x.reply_to_post_id === p.id && x.status !== "posted");
+    if (kids.length && !confirm("この投稿には続き" + kids.length + "本がぶら下がっています。まとめて取り消します。よろしいですか？")) return false;
+    if (kids.length || p.reply_to_post_id || (p.media_url && String(p.media_url).indexOf("/talkimages/") >= 0)) {
+      try { await talkFetch_("talkCancel", { postId: p.id }); return true; } catch (e) { /* 下で通常削除にする */ }
+    }
+    await sb.from("scheduled_posts").delete().eq("id", p.id);
+    return true;
+  }
+
   function postRow(p, actions) {
     const d = document.createElement("div"); d.className = "row";
     const threadCount = (p.thread && p.thread.length) ? p.thread.length : 0;
     const isPast = p.status === "draft" && new Date(p.scheduled_at).getTime() <= Date.now();
+    /* ★v291 Talk(LINEトーク画像)の予約はここからも分かるようにする */
+    const isTalk = !!(p.media_url && String(p.media_url).indexOf("/talkimages/") >= 0);
     d.innerHTML = '<div class="meta"><span class="pill time">'+hhmm(p.scheduled_at)+'</span><span class="pill acct">@'+esc(p.screen_name)+"</span>" +
       (isPast?'<span class="pill" style="background:rgba(239,68,68,.18);color:#f87171;border:1px solid rgba(239,68,68,.4)">⏰ 時間切れ</span>':"") +
-      (p.media_url?'<span class="pill genre">🖼 画像</span>':"") +
+      (isTalk?'<span class="pill genre">💬 Talk</span>':(p.media_url?'<span class="pill genre">🖼 画像</span>':"")) +
+      (p.reply_to_post_id?'<span class="pill genre">🧵 スレッドの続き</span>':"") +
       (threadCount?'<span class="pill genre">🧵 '+(threadCount+1)+'連投</span>':"") + "</div>" +
+      (isTalk?'<img src="'+esc(p.media_url)+'" style="max-width:120px;border-radius:8px;border:1px solid var(--border);margin:0 0 6px;display:block">':"") +
       "<pre style='white-space:pre-wrap;margin:0;font-family:inherit'></pre>" +
       (threadCount ? '<div style="font-size:12px;color:var(--muted);border-left:2px solid var(--border);padding-left:8px;margin-top:6px"></div>' : "") +
       '<div class="acts">' + actions.map((a,i)=>'<button class="mini '+(a.primary?'primary':'')+'" data-i="'+i+'">'+a.label+'</button>').join("") + '</div>';
@@ -9761,7 +9777,7 @@ BUILDERS.schedule = (el) => {
           await sb.from("scheduled_posts").update({ status: "pending" }).eq("id", p.id); load();
         } },
         { label: "編集", fn: () => editPost(p) },
-        { label: "キャンセル", fn: async () => { await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
+        { label: "キャンセル", fn: async () => { if (await cancelPost(p, data)) load(); } },
       ]);
     }
 
@@ -9770,7 +9786,7 @@ BUILDERS.schedule = (el) => {
     if (!pending.length) pendingEl.innerHTML = '<div class="muted" style="text-align:center;margin-top:20px">予約確定なし。予約待ちでGOを出すとここに入る。</div>';
     else renderList(pendingEl, pending, (p) => [
       { label: "編集", fn: () => editPost(p) },
-      { label: "予約キャンセル", fn: async () => { if (!confirm("この予約をキャンセルする?")) return; await sb.from("scheduled_posts").delete().eq("id", p.id); load(); } },
+      { label: "予約キャンセル", fn: async () => { if (!confirm("この予約をキャンセルする?")) return; if (await cancelPost(p, data)) load(); } },
     ]);
 
     /* === 履歴タブ === */
@@ -10654,6 +10670,7 @@ function pick(list, tags, rnd) {
  *   rnd          乱数関数
  *   fix          軸を固定する { peak:"taikei", engine:"sanpi" }
  *   allowHeavy   重い札を許可（既定 false）
+ *   allowKo      子どもを登場させる（既定 false。false なら子ども関連の札を一切引かない）
  *   kaneRatio    金銭ネタの出現率（既定 0.2）
  *   offenderSide "boyfriend" | "girlfriend"（既定はランダム）
  */
@@ -10663,20 +10680,28 @@ function pickCombo(opt = {}) {
   const kaneRatio = opt.kaneRatio ?? 0.3;
   const get = (list, key) => fix[key] ? list.find(c => c.id === fix[key]) : null;
 
+  /* ★v291 子どもは既定で出さない。
+     allowKo が true の時だけ、子ども持ちの関係と "ko" を要求する札を使う */
+  const allowKo = opt.allowKo === true;
+  const noKo = (list) => allowKo ? list
+    : list.filter(c => !((c.requires || []).indexOf("ko") >= 0) && !((c.gives || []).indexOf("ko") >= 0));
+
   const engine   = get(ENGINES, "engine")     || ENGINES[Math.floor(rnd() * ENGINES.length)];
-  const relation = get(RELATIONS, "relation") || RELATIONS[Math.floor(rnd() * RELATIONS.length)];
+  const relPool  = noKo(RELATIONS);
+  const relation = get(RELATIONS, "relation") || relPool[Math.floor(rnd() * relPool.length)];
   const tags = new Set(relation.gives || []);
+  if (!allowKo) tags.delete("ko");
 
   // 金の話を出す回は、関係が金のタグを持っていなくても成立するので足しておく
   // （立て替え・借金・生活費はどの関係でも起きる）
   const wantKane = rnd() < kaneRatio;
   if (wantKane) tags.add("kane");
-  const offPool  = OFFENDERS.filter(o => wantKane || o.cat !== "kane");
+  const offPool  = noKo(OFFENDERS).filter(o => wantKane || o.cat !== "kane");
   const offender = get(OFFENDERS, "offender") || pick(offPool, tags, rnd);
   (offender.gives || []).forEach(t => tags.add(t));
 
   // ヘイトの頂点。金の話を出す回は金の札から選ぶので、kaneRatio がそのまま出現率になる
-  let peakPool = PEAKS.filter(p => opt.allowHeavy || !p.heavy);
+  let peakPool = noKo(PEAKS).filter(p => opt.allowHeavy || !p.heavy);
   if (wantKane) {
     const kanePeaks = peakPool.filter(p => p.cat === "kane" && usable(p, tags));
     if (kanePeaks.length) peakPool = kanePeaks;
@@ -10687,11 +10712,11 @@ function pickCombo(opt = {}) {
 
   const combo = {
     engine, relation, offender, peak,
-    trigger:    get(TRIGGERS, "trigger")         || pick(TRIGGERS, tags, rnd),
-    demand:     get(DEMANDS, "demand")           || pick(DEMANDS, tags, rnd),
-    deflection: get(DEFLECTIONS, "deflection")   || pick(DEFLECTIONS, tags, rnd),
-    thirdParty: get(THIRD_PARTIES, "thirdParty") || pick(THIRD_PARTIES, tags, rnd),
-    closer:     get(CLOSERS, "closer")           || pick(CLOSERS, tags, rnd),
+    trigger:    get(TRIGGERS, "trigger")         || pick(noKo(TRIGGERS), tags, rnd),
+    demand:     get(DEMANDS, "demand")           || pick(noKo(DEMANDS), tags, rnd),
+    deflection: get(DEFLECTIONS, "deflection")   || pick(noKo(DEFLECTIONS), tags, rnd),
+    thirdParty: get(THIRD_PARTIES, "thirdParty") || pick(noKo(THIRD_PARTIES), tags, rnd),
+    closer:     get(CLOSERS, "closer")           || pick(noKo(CLOSERS), tags, rnd),
     offenderSide: opt.offenderSide || (rnd() < 0.5 ? "boyfriend" : "girlfriend")
   };
   combo.key = [engine.id, relation.id, offender.id, combo.trigger.id, combo.demand.id,
@@ -11072,6 +11097,9 @@ const TALK = {
       { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
     field(main, "相手（画面左・白の吹き出し）", mkSel("axPartnerGender", [
       { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
+    field(main, "子ども", mkSel("axKo", [
+      { v: "", t: "登場させない（既定）" }, { v: "1", t: "登場させる" }]),
+      "既定では、子どもが出てくる話は一切つくられません。");
     field(main, "スレッドの本数", mkSel("axParts", [
       { v: "", t: "おまかせ" }, { v: "3", t: "3本（続く感じ）" }, { v: "4", t: "4本" }, { v: "5", t: "5本構成" }]),
       "この本数でひとつながりの物語になるように投稿文が作られます。");
@@ -11161,6 +11189,7 @@ const TALK = {
       fix: fix,
       allowHeavy: !!(el.querySelector("#axHeavy") || {}).checked,
       kaneRatio: parseFloat(g("axKane") || "0.3"),
+      allowKo: g("axKo") === "1",
     };
     const myG = g("axMyGender");        /* "" | female | male */
     const ptG = g("axPartnerGender");
@@ -11184,7 +11213,10 @@ const TALK = {
         brief: (theme ? "【今回の題材（これを必ず使う）】\n" + theme + "\n\n" : "") + C.comboToBrief(c)
                + "\n【登場人物の性別（厳守・上の彼氏彼女の表記より優先）】"
                + "\n自分＝スクショを撮って晒す側（画面右・緑）：" + jp(mg)
-               + "\n相手＝加害側（画面左・白）：" + jp(pg),
+               + "\n相手＝加害側（画面左・白）：" + jp(pg)
+               + (opt.allowKo
+                   ? "\n【子ども】この話には二人の子どもが登場する。"
+                   : "\n【子ども】この話に子どもは登場しない。妊娠・出産・育児の話も出さない。厳守。"),
       });
     }
     return out;
@@ -11217,54 +11249,361 @@ const TALK = {
     } catch (e) { alert("失敗しました。" + e.message); }
   },
 
+  /* ============================================================
+     ★v291 内容の確認パネル
+     ・画像を作る前に、会話の全文と各本の投稿文をそのまま見せます。
+     ・投稿文はその場で直せます。気に入らなければ会話ごと作り直せます。
+     ============================================================ */
+  buildReview(el, box, job, ps) {
+    const tj = job.talk_json || {};
+    const msgs = Array.isArray(tj.messages) ? tj.messages : [];
+    const mySide = tj.mySide || "girlfriend";
+
+    box.innerHTML = "";
+    const h1 = document.createElement("div");
+    h1.style.cssText = "font-size:13px;font-weight:600;margin-bottom:2px";
+    h1.textContent = "内容の確認";
+    const h2 = document.createElement("div");
+    h2.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.7";
+    h2.textContent = "画像を作る前に、会話と投稿文をすべてご確認ください。投稿文はこの場で直せます。"
+      + "内容が気に入らない場合は、会話ごと作り直せます。";
+    box.appendChild(h1); box.appendChild(h2);
+
+    /* ---- 会話の全文（どこで画像が切れるかも表示） ---- */
+    const cvWrap = document.createElement("div");
+    cvWrap.style.cssText = "max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px;margin-bottom:12px";
+    if (!msgs.length) {
+      cvWrap.textContent = "会話データが読み込めませんでした。";
+      cvWrap.style.fontSize = "12px";
+    } else {
+      const cutAt = {};
+      ps.forEach((p) => { cutAt[Number(p.range_from)] = p.part; });
+      msgs.forEach((m, i) => {
+        if (cutAt[i]) {
+          const sep = document.createElement("div");
+          sep.style.cssText = "font-size:10.5px;color:var(--accent);text-align:center;margin:8px 0 6px;letter-spacing:.08em";
+          sep.textContent = "── " + cutAt[i] + "本目の画像 ここから ──";
+          cvWrap.appendChild(sep);
+        }
+        const me = m.speaker === mySide;
+        const r = document.createElement("div");
+        r.style.cssText = "display:flex;margin-bottom:4px;" + (me ? "justify-content:flex-end" : "justify-content:flex-start");
+        const b = document.createElement("div");
+        b.style.cssText = "max-width:78%;font-size:12px;line-height:1.6;padding:6px 10px;border-radius:12px;white-space:pre-wrap;"
+          + (m.type === "unsend"
+              ? "color:var(--muted);border:1px dashed var(--line);background:transparent"
+              : me ? "background:#8de055;color:#111" : "background:var(--chip)");
+        b.textContent = m.type === "unsend" ? "メッセージの送信を取り消しました" : String(m.text || "");
+        r.appendChild(b); cvWrap.appendChild(r);
+      });
+    }
+    box.appendChild(cvWrap);
+
+    /* ---- 投稿文（編集できる） ---- */
+    const pt = document.createElement("div");
+    pt.style.cssText = "font-size:12px;font-weight:600;margin-bottom:6px";
+    pt.textContent = "投稿文（" + ps.length + "本／そのまま直せます）";
+    box.appendChild(pt);
+    const areas = [];
+    ps.forEach((p, i) => {
+      const w = document.createElement("div"); w.style.cssText = "margin-bottom:8px";
+      const l = document.createElement("div");
+      l.style.cssText = "font-size:10.5px;color:var(--muted);margin-bottom:3px";
+      l.textContent = (i + 1) + "本目";
+      const t = document.createElement("textarea");
+      t.rows = 2; t.value = String(p.post_text || "");
+      t.style.cssText = "width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:12.5px;"
+        + "background:transparent;color:inherit;font-family:inherit;line-height:1.6;resize:vertical";
+      w.appendChild(l); w.appendChild(t); box.appendChild(w);
+      areas.push({ id: p.id, ta: t });
+    });
+
+    /* ---- ボタン ---- */
+    const act = document.createElement("div");
+    act.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px";
+    box.appendChild(act);
+    const mkb = (t, primary) => {
+      const b = document.createElement("button"); b.className = "btn"; b.textContent = t;
+      if (primary) b.style.fontWeight = "600";
+      act.appendChild(b); return b;
+    };
+    const saveTexts = async () => {
+      const list = areas.map((a) => ({ id: a.id, post_text: a.ta.value.trim() }));
+      if (list.some((x) => !x.post_text)) throw new Error("空の投稿文があります。");
+      await talkFetch_("talkPartsUpdate", { jobId: job.id, parts: list });
+    };
+
+    const bGo = mkb("この内容でOK → 画像をつくる（" + ps.length + "枚）", true);
+    const bSave = mkb("投稿文だけ保存する");
+    const bShuf = mkb("↻ 会話ごと作り直す（シャッフル）");
+    const lock = (on, msg) => { [bGo, bSave, bShuf].forEach((b) => { b.disabled = on; }); if (msg) bGo.textContent = msg; };
+
+    bGo.onclick = async () => {
+      lock(true, "保存しています…");
+      try {
+        await saveTexts();
+        for (const p of ps) {
+          bGo.textContent = p.part + "枚目を作成中…";
+          const o = await talkRenderPart_(job.talk_json, [p.range_from, p.range_to], p.part, ps.length);
+          await talkFetch_("talkSave", { jobId: job.id, part: p.part, pngBase64: o.b64, height: o.height });
+        }
+        alert("画像ができました。続けて投稿予定をお決めください。");
+        await TALK.load(el);
+      } catch (e) {
+        alert("失敗しました。" + e.message);
+        lock(false, "この内容でOK → 画像をつくる（" + ps.length + "枚）");
+      }
+    };
+
+    bSave.onclick = async () => {
+      lock(true);
+      try { await saveTexts(); alert("投稿文を保存しました。"); await TALK.load(el); }
+      catch (e) { alert("保存に失敗しました。" + e.message); lock(false); }
+    };
+
+    bShuf.onclick = async () => {
+      if (!confirm("会話と投稿文を最初から作り直します。今の内容は消えます。よろしいですか？")) return;
+      lock(true); bShuf.textContent = "作り直しています…";
+      try {
+        const extra = { jobId: job.id };
+        /* 画面の設定（テーマ・性別・子ども・本数など）で新しい組み合わせを引き直す */
+        try { extra.combo = TALK.makeCombos(el, 1)[0]; } catch (e2) { /* 前回の題材のまま作り直す */ }
+        const parts = ((el.querySelector("#axParts") || {}).value || "");
+        if (parts) extra.messageCount = Number(parts) * 21;
+        await talkFetch_("talkRegen", extra);
+        await TALK.load(el);
+      } catch (e) {
+        alert("作り直せませんでした。" + e.message);
+        lock(false); bShuf.textContent = "↻ 会話ごと作り直す（シャッフル）";
+      }
+    };
+  },
+
+  /* ============================================================
+     投稿予定パネル
+     ・伸びる時間帯（夜20〜22時が最も強い／競合を避けるならその1〜2時間前）を
+       プリセットとして用意し、開始時刻と間隔から各本の時刻を自動計算します。
+     ・1本ずつ個別に時刻を直すこともできます。
+     ・「この予定で確定する」を押すまで、予約は入りません。
+     ============================================================ */
+  buildSchedule(el, box, ps, onClose) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const toInput = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
+      + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    const nextAt = (h, m) => { const d = new Date(); d.setHours(h, m, 0, 0); if (d <= new Date()) d.setDate(d.getDate() + 1); return d; };
+
+    box.innerHTML = '<div style="font-size:13px;font-weight:600;margin-bottom:2px">投稿予定</div>'
+      + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">'
+      + '2本目以降は、前の投稿にぶら下がるスレッドとして自動で予約されます。<br>'
+      + 'Xで最も伸びるのは夜20〜22時です。競合を避けたい場合は、その1〜2時間前も有効とされています。</div>';
+
+    /* --- プリセット --- */
+    const chips = document.createElement("div");
+    chips.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px";
+    box.appendChild(chips);
+
+    /* --- 開始時刻 --- */
+    const rowW = (label, node) => {
+      const w = document.createElement("label");
+      w.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px";
+      const t = document.createElement("span"); t.textContent = label;
+      t.style.cssText = "min-width:74px;color:var(--muted);flex:none";
+      w.appendChild(t); w.appendChild(node); box.appendChild(w); return node;
+    };
+    const start = document.createElement("input");
+    start.type = "datetime-local";
+    start.style.cssText = "flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12px;background:transparent;color:inherit";
+    start.value = toInput(nextAt(21, 0));
+    rowW("開始時刻", start);
+
+    const gap = document.createElement("select");
+    gap.style.cssText = "flex:1;padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12px;background:transparent;color:inherit";
+    /* ★v291 日をまたぐ「連載」を既定にする。値は分。1440分＝1日 */
+    [["1440","1日ごと（連載・既定）"],["2880","2日ごと"],["720","12時間ごと"],
+     ["180","3時間ごと"],["60","1時間ごと"],["30","30分"],["10","10分"],
+     ["3","3分（一気読み）"],["1","1分"]]
+      .forEach(([v,t]) => { const o=document.createElement("option"); o.value=v; o.textContent=t; gap.appendChild(o); });
+    gap.value = "1440";
+    rowW("投稿間隔", gap);
+
+    const note = document.createElement("div");
+    note.style.cssText = "font-size:10.5px;color:var(--muted);margin:2px 0 10px;opacity:.85;line-height:1.7";
+    note.textContent = "1日ごと＝毎日同じ時刻に続きが出る「連載」になります。1本ごとに新しい人の目に触れ、"
+      + "続きを待つ人がフォローしてくれます。数分間隔は、来た人にその場で全部読ませる形です。"
+      + "スレッドのリプは元の投稿より伸びにくいので、両方試して伸びた方を残してください。";
+    box.appendChild(note);
+
+    /* --- 各本の時刻 --- */
+    const list = document.createElement("div"); box.appendChild(list);
+    const rows = [];
+    ps.forEach((p, i) => {
+      const r = document.createElement("div");
+      r.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:12px";
+      const lab = document.createElement("span");
+      lab.textContent = (i + 1) + "本目"; lab.style.cssText = "min-width:44px;color:var(--muted);flex:none";
+      const ti = document.createElement("input"); ti.type = "datetime-local";
+      ti.style.cssText = "padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px;background:transparent;color:inherit;flex:none";
+      const tx = document.createElement("span");
+      tx.textContent = String(p.post_text || "").slice(0, 18);
+      tx.style.cssText = "color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1";
+      r.appendChild(lab); r.appendChild(ti); r.appendChild(tx); list.appendChild(r);
+      rows.push(ti);
+    });
+
+    const recalc = () => {
+      const base = new Date(start.value);
+      if (isNaN(base.getTime())) return;
+      const g = Number(gap.value) * 60000;
+      rows.forEach((ti, i) => { ti.value = toInput(new Date(base.getTime() + g * i)); });
+    };
+    start.onchange = recalc; gap.onchange = recalc; recalc();
+
+    [["今夜 21:00", () => nextAt(21, 0)], ["18:30（競合回避）", () => nextAt(18, 30)],
+     ["朝 8:00（通勤）", () => nextAt(8, 0)], ["昼 12:15", () => nextAt(12, 15)]]
+      .forEach(([t, f]) => {
+        const c = document.createElement("button"); c.className = "chip"; c.textContent = t;
+        c.style.cssText = "font-size:11px;padding:5px 10px";
+        c.onclick = () => { start.value = toInput(f()); recalc(); };
+        chips.appendChild(c);
+      });
+
+    /* --- 確定 --- */
+    const act = document.createElement("div");
+    act.style.cssText = "display:flex;gap:8px;margin-top:12px;flex-wrap:wrap";
+    const ok = document.createElement("button"); ok.className = "btn"; ok.style.fontWeight = "600";
+    ok.textContent = "この予定で確定する";
+    ok.onclick = async () => {
+      const times = rows.map((r) => new Date(r.value));
+      if (times.some((d) => isNaN(d.getTime()))) { alert("時刻が正しく入力されていない行があります。"); return; }
+      for (let i = 1; i < times.length; i++) {
+        if (times[i] <= times[i - 1]) { alert((i + 1) + "本目の時刻が、前の本より後になるようにしてください。"); return; }
+      }
+      const fmtJ = (d) => d.toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      if (!confirm(ps.length + "本のスレッドを予約します。\n\n1本目： " + fmtJ(times[0])
+        + "\n最後：　 " + fmtJ(times[times.length - 1])
+        + "\n\n2本目以降は前の投稿へのリプとして自動で繋がります。よろしいですか？")) return;
+      ok.disabled = true; ok.textContent = "予約しています…";
+      try {
+        for (let i = 0; i < ps.length; i++) {
+          await talkFetch_("talkQueuePost", { partId: ps[i].id, scheduledAt: times[i].toISOString() });
+        }
+        alert("予約しました。1本目から順に自動投稿されます。");
+        await TALK.load(el);
+      } catch (e) { alert("予約に失敗しました。" + e.message); ok.disabled = false; ok.textContent = "この予定で確定する"; }
+    };
+    const cancel = document.createElement("button"); cancel.className = "btn";
+    cancel.textContent = "やめる";
+    cancel.onclick = () => { box.style.display = "none"; if (typeof onClose === "function") onClose(); };
+    act.appendChild(ok); act.appendChild(cancel); box.appendChild(act);
+  },
+
   async load(el) {
     const box = el.querySelector("#talkList");
     try {
       const j = await talkFetch_("talkList", { limit: 20 });
-      const parts = j.parts || [], jobs = j.jobs || [];
-      if (!jobs.length) { box.innerHTML = '<div style="color:var(--muted);font-size:13px">まだありません。「＋ 5本つくる」から始めてください。</div>'; return; }
+      const parts = j.parts || [], jobs = j.jobs || [], sched = j.sched || [];
+      const schedMap = {}; sched.forEach((x) => { schedMap[String(x.id)] = x; });
+      if (!jobs.length) { box.innerHTML = '<div style="color:var(--muted);font-size:13px">まだありません。上の「この内容でつくる」から始めてください。</div>'; return; }
+      const JST = { queued: "会話を作っています…", generated: "内容の確認待ち", rendered: "画像OK・予約待ち", error: "エラー" };
+      const PST = { pending: "未作成", rendered: "画像OK", queued: "予約済み", posted: "投稿済み", error: "エラー" };
+      const fmtJ = (iso) => new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
       box.innerHTML = "";
       for (const job of jobs) {
         const ps = parts.filter(p => p.job_id === job.id).sort((a, b) => a.part - b.part);
+        const queued = ps.filter(p => p.post_id && schedMap[String(p.post_id)]);
         const card = document.createElement("div");
         card.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px";
-        card.innerHTML = '<div style="font-size:13px;font-weight:600">' + (job.theme_label || job.id.slice(0, 8)) + '</div>'
-          + '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px">' + job.status + (job.error ? ' / ' + job.error : '') + '</div>';
+        card.innerHTML = '<div style="font-size:13px;font-weight:600"></div>'
+          + '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px"></div>';
+        card.children[0].textContent = job.theme_label || job.id.slice(0, 8);
+        card.children[1].textContent = (JST[job.status] || job.status) + (job.error ? " / " + job.error : "");
+
         const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
-        ps.forEach(p => { const s = document.createElement("span"); s.style.cssText = "font-size:11px;padding:3px 8px;border-radius:999px;background:var(--chip)"; s.textContent = p.part + "枚目: " + p.status; row.appendChild(s); });
+        ps.forEach(p => {
+          const s2 = document.createElement("span");
+          s2.style.cssText = "font-size:11px;padding:3px 8px;border-radius:999px;background:var(--chip)";
+          const sc = p.post_id ? schedMap[String(p.post_id)] : null;
+          s2.textContent = p.part + "本目: " + (PST[p.status] || p.status) + (sc ? "（" + fmtJ(sc.scheduled_at) + "）" : "");
+          row.appendChild(s2);
+        });
         card.appendChild(row);
 
+        /* ============ ① 画像を作る前に、会話と投稿文を全部見せる ============ */
         if (job.status === "generated" && ps.length) {
-          const b = document.createElement("button"); b.className = "btn"; b.style.marginTop = "10px";
-          b.textContent = "画像をつくる（" + ps.length + "枚）";
-          b.onclick = async () => {
-            b.disabled = true;
-            try {
-              for (const p of ps) {
-                b.textContent = p.part + "枚目を作成中…";
-                const o = await talkRenderPart_(job.talk_json, [p.range_from, p.range_to], p.part, ps.length);
-                await talkFetch_("talkSave", { jobId: job.id, part: p.part, pngBase64: o.b64, height: o.height });
-              }
-              alert("画像ができました。");
-              await TALK.load(el);
-            } catch (e) { alert("画像の作成に失敗しました。" + e.message); b.disabled = false; }
-          };
-          card.appendChild(b);
+          const rev = document.createElement("div");
+          rev.style.cssText = "margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px";
+          card.appendChild(rev);
+          TALK.buildReview(el, rev, job, ps);
         }
 
-        if (job.status === "rendered") {
+        /* ============ ② 画像ができたら投稿予定を決める ============ */
+        if (job.status === "rendered" && !queued.length) {
           const b2 = document.createElement("button"); b2.className = "btn"; b2.style.marginTop = "10px";
-          b2.textContent = "スレッドで予約する";
-          b2.onclick = async () => {
-            if (!confirm("この" + ps.length + "枚をスレッドとして投稿予約します。よろしいですか？")) return;
-            b2.disabled = true;
-            try {
-              for (const p of ps) await talkFetch_("talkQueuePost", { partId: p.id });
-              alert("予約しました。1枚目から順に自動投稿されます。");
-              await TALK.load(el);
-            } catch (e) { alert("予約に失敗しました。" + e.message); b2.disabled = false; }
+          b2.textContent = "投稿予定を決める";
+          const sc2 = document.createElement("div");
+          sc2.style.cssText = "display:none;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px";
+          b2.onclick = () => {
+            const open = sc2.style.display !== "none";
+            sc2.style.display = open ? "none" : "block";
+            b2.textContent = open ? "投稿予定を決める" : "閉じる";
+            if (!open && !sc2.dataset.built) {
+              TALK.buildSchedule(el, sc2, ps, () => { b2.textContent = "投稿予定を決める"; });
+              sc2.dataset.built = "1";
+            }
           };
-          card.appendChild(b2);
+          const b3 = document.createElement("button"); b3.className = "btn"; b3.style.cssText = "margin-top:10px;margin-left:8px";
+          b3.textContent = "内容をもう一度見る";
+          const rv2 = document.createElement("div");
+          rv2.style.cssText = "display:none;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:10px";
+          b3.onclick = () => {
+            const open = rv2.style.display !== "none";
+            rv2.style.display = open ? "none" : "block";
+            b3.textContent = open ? "内容をもう一度見る" : "閉じる";
+            if (!open && !rv2.dataset.built) { TALK.buildReview(el, rv2, job, ps); rv2.dataset.built = "1"; }
+          };
+          card.appendChild(b2); card.appendChild(b3); card.appendChild(sc2); card.appendChild(rv2);
+        }
+
+        /* ============ ③ 予約済み：予約管理と同じものをここからも取り消せる ============ */
+        if (queued.length) {
+          const q = document.createElement("div");
+          q.style.cssText = "margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--chip)";
+          const t1 = document.createElement("div");
+          t1.style.cssText = "font-size:12px;font-weight:600;margin-bottom:6px";
+          t1.textContent = "予約済み（" + queued.length + "本のスレッド）";
+          q.appendChild(t1);
+          queued.forEach((p) => {
+            const sc = schedMap[String(p.post_id)];
+            const r2 = document.createElement("div");
+            r2.style.cssText = "font-size:11.5px;color:var(--muted);margin-bottom:3px";
+            r2.textContent = p.part + "本目　" + fmtJ(sc.scheduled_at)
+              + (sc.status === "posted" ? "　投稿済み" : sc.status === "error" ? "　エラー" : "")
+              + "　" + String(p.post_text || "").slice(0, 16);
+            q.appendChild(r2);
+          });
+          const note2 = document.createElement("div");
+          note2.style.cssText = "font-size:10.5px;color:var(--muted);margin:6px 0 8px;opacity:.85";
+          note2.textContent = "この予約は「予約管理」の予約確定タブにも並びます。どちらから取り消しても構いません。";
+          q.appendChild(note2);
+          const bc = document.createElement("button"); bc.className = "btn";
+          bc.textContent = "予約をすべて取り消す";
+          bc.onclick = async () => {
+            if (!confirm("この話の予約をすべて取り消します。よろしいですか？\n（投稿済みのものは残ります）")) return;
+            bc.disabled = true; bc.textContent = "取り消しています…";
+            try {
+              const head2 = queued[0];
+              await talkFetch_("talkCancel", { postId: head2.post_id });
+              for (const p of queued.slice(1)) {
+                if (schedMap[String(p.post_id)] && schedMap[String(p.post_id)].status !== "posted") {
+                  try { await talkFetch_("talkCancel", { postId: p.post_id }); } catch (e2) { /* 既に消えていれば無視 */ }
+                }
+              }
+              alert("予約を取り消しました。");
+              await TALK.load(el);
+            } catch (e) { alert("取り消しに失敗しました。" + e.message); bc.disabled = false; bc.textContent = "予約をすべて取り消す"; }
+          };
+          q.appendChild(bc);
+          card.appendChild(q);
         }
         box.appendChild(card);
       }
