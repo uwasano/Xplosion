@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "305";
+const APP_VERSION = "306";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11191,10 +11191,25 @@ async function talkFetch_(action, extra) {
 
 /* 会話JSONの1区間を描画してPNG(dataURL)を返す。
    ★置換は必ず「関数」で渡す。文字列だと $& が置換記号として解釈されて壊れます。 */
-function talkRenderPart_(talk, range, part, partTotal, mask) {
+/* ★v306 日付・曜日・時刻はAIに書かせず、実際の日時から作る。
+   AIが書くと「9月6日(土)」のように曜日がズレる。 */
+function talkClock_(talk) {
+  const now = new Date();
+  const WD = ["日", "月", "火", "水", "木", "金", "土"];
+  const pad = (n) => String(n).padStart(2, "0");
+  const n = (talk && Array.isArray(talk.messages)) ? talk.messages.length : 20;
+  const start = new Date(now.getTime() - Math.max(8, Math.round(n * 0.8)) * 60000);
+  return {
+    dateLabel: (now.getMonth() + 1) + "月" + now.getDate() + "日（" + WD[now.getDay()] + "）",
+    startTime: start.getHours() + ":" + pad(start.getMinutes()),
+    statusTime: now.getHours() + ":" + pad(now.getMinutes()),
+  };
+}
+
+function talkRenderPart_(talk, range, part, partTotal, mask, clock) {
   return new Promise((resolve, reject) => {
     const shot = Object.assign({}, talk, { range: range, part: part, partTotal: partTotal,
-      mask: mask || { on: false, seed: 1 } });
+      mask: mask || { on: false, seed: 1 } }, clock || talkClock_(talk));
     const boot = '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>'
       + '<script>(async function(){try{'
       + 'await document.fonts.ready;'
@@ -11604,10 +11619,11 @@ const TALK = {
       lock(true, "保存しています…");
       try {
         await saveTexts();
+        const clock = talkClock_(job.talk_json);   /* 全部の画像で同じ日時にする */
         for (const p of ps) {
           bGo.textContent = p.part + "枚目を作成中…";
           const o = await talkRenderPart_(job.talk_json, [p.range_from, p.range_to], p.part, ps.length,
-            { on: maskState.on, seed: maskState.seed });
+            { on: maskState.on, seed: maskState.seed }, clock);
           await talkFetch_("talkSave", { jobId: job.id, part: p.part, pngBase64: o.b64, height: o.height });
         }
         /* ★v299 同じテーマの他の案は、もう使わないので自動で見送りにする */
