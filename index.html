@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "295";
+const APP_VERSION = "296";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -10858,14 +10858,11 @@ body{
 .you .bubble{background:var(--you-bubble);}
 .me  .bubble{background:var(--me-bubble);}
 
-/* しっぽ：実機トレース。吹き出し左上角の外側に付く爪。上には飛び出さない */
-.tail .bubble::before{
-  content:"";position:absolute;top:0;width:20px;height:19px;
-  clip-path:path("M20 0 C14 0.5 10.5 1.8 8.3 4 C5.5 2.3 2.5 1.5 0 1.3 C1.5 4 4 7 4.3 10.3 C4.4 13 3.4 15.5 2.7 17.5 L20 19 Z");
-}
-.you.tail .bubble::before{left:-2.7px;background:var(--you-bubble);}
-.me.tail  .bubble::before{right:-2.7px;background:var(--me-bubble);transform:scaleX(-1);}
-.unsendrow .bubble::before{display:none;}
+/* しっぽ：実機トレース。吹き出し左上角の外側に付く爪。上には飛び出さない
+   ★v296 clip-path は画像化(html2canvas)で無視されて四角い塊になるため、SVGで描く */
+.bubble > .tl{position:absolute;top:0;width:20px;height:19px;display:block;}
+.you .bubble > .tl{left:-2.7px;}
+.me  .bubble > .tl{right:-2.7px;}
 .bubble.unsend{background:transparent;border:1px solid var(--unsend-border);color:var(--unsend-text);font-size:13.5px;padding:8px 14px;}
 
 .meta{display:flex;flex-direction:column;justify-content:flex-end;
@@ -10949,6 +10946,11 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
   document.getElementById("unreadCount").textContent = D.unreadCount ?? "99+";
   document.getElementById("battLevel").textContent = D.battery ?? 75;
 
+  const TAIL_SVG = (color, mirror) =>
+    '<svg viewBox="0 0 20 19" width="20" height="19" xmlns="http://www.w3.org/2000/svg">'
+    + '<path d="M20 0 C14 .5 10.5 1.8 8.3 4 C5.5 2.3 2.5 1.5 0 1.3 C1.5 4 4 7 4.3 10.3 C4.4 13 3.4 15.5 2.7 17.5 L20 19 Z"'
+    + ' fill="' + color + '"' + (mirror ? ' transform="translate(20,0) scale(-1,1)"' : '') + '/></svg>';
+
   const defaultAvatar = \`<svg viewBox="0 0 30 30"><rect width="30" height="30" fill="#4A4F5A"/><circle cx="15" cy="11.4" r="5" fill="#D3D7DD"/><path d="M3.3 30c0-6.7 5.2-10.5 11.7-10.5S26.7 23.3 26.7 30z" fill="#D3D7DD"/></svg>\`;
 
   // 2枚組（前編/後編）対応：range=[開始index, 終了index]。省略時は全部。
@@ -10996,6 +10998,12 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
     }else{
       b.className = "bubble";
       b.textContent = msg.text;
+    }
+    if(head && msg.type !== "unsend"){
+      const tl = document.createElement("span");
+      tl.className = "tl";
+      tl.innerHTML = TAIL_SVG(me ? "#6DE67B" : "#FFFFFF", me);
+      b.appendChild(tl);
     }
     row.appendChild(b);
 
