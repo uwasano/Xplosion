@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "291";
+const APP_VERSION = "294";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -10671,6 +10671,7 @@ function pick(list, tags, rnd) {
  *   fix          軸を固定する { peak:"taikei", engine:"sanpi" }
  *   allowHeavy   重い札を許可（既定 false）
  *   allowKo      子どもを登場させる（既定 false。false なら子ども関連の札を一切引かない）
+ *   protectMe    投稿主（受け手）が叩かれる札を引かない（既定 false。画面からは既定 true）
  *   kaneRatio    金銭ネタの出現率（既定 0.2）
  *   offenderSide "boyfriend" | "girlfriend"（既定はランダム）
  */
@@ -10686,8 +10687,15 @@ function pickCombo(opt = {}) {
   const noKo = (list) => allowKo ? list
     : list.filter(c => !((c.requires || []).indexOf("ko") >= 0) && !((c.gives || []).indexOf("ko") >= 0));
 
-  const engine   = get(ENGINES, "engine")     || ENGINES[Math.floor(rnd() * ENGINES.length)];
-  const relPool  = noKo(RELATIONS);
+  /* ★v293 投稿主を守る時に引いてはいけない札。
+     賛否両論型は「受け手にも一理ない」形にできず、
+     養う側・客側の関係は受け手自身が叩かれる材料になる */
+  const BAD_FOR_ME = { sanpi: 1, himo: 1, host_kyaku: 1 };
+  const noBad = (list) => opt.protectMe === true ? list.filter(c => !BAD_FOR_ME[c.id]) : list;
+
+  const engPool  = noBad(ENGINES);
+  const engine   = get(ENGINES, "engine")     || engPool[Math.floor(rnd() * engPool.length)];
+  const relPool  = noBad(noKo(RELATIONS));
   const relation = get(RELATIONS, "relation") || relPool[Math.floor(rnd() * relPool.length)];
   const tags = new Set(relation.gives || []);
   if (!allowKo) tags.delete("ko");
@@ -11052,7 +11060,6 @@ const TALK = {
       + '<div id="talkMain"></div>'
       + '<div id="talkMore" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)"></div>'
       + '<div id="talkBtns" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px"></div>'
-      + '<pre id="talkPv" style="display:none;white-space:pre-wrap;font-size:12px;line-height:1.75;background:var(--chip);border-radius:10px;padding:12px;margin-top:12px"></pre>'
       + '<div id="talkList" style="margin-top:20px">読み込み中…</div></div>';
 
     const main = el.querySelector("#talkMain");
@@ -11097,6 +11104,12 @@ const TALK = {
       { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
     field(main, "相手（画面左・白の吹き出し）", mkSel("axPartnerGender", [
       { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
+    field(main, "投稿文の型", mkSel("axHook", [
+      { v: "", t: "一言フック（既定・バズ特化）" }, { v: "long", t: "説明入り（従来）" }]),
+      "2本目以降を10〜20文字の一言だけにします。前提をひっくり返す・知らない名前を出すなど、次を開かせる型で書かせます。");
+    field(main, "投稿主の立場", mkSel("axStance", [
+      { v: "", t: "守る（既定・投稿主に落ち度を作らない）" }, { v: "both", t: "賛否あり（どちらにも一理ある）" }]),
+      "「守る」では、投稿主は金を出さず、謝らず、落ち度も残りません。矛先が相手だけに向きます。");
     field(main, "子ども", mkSel("axKo", [
       { v: "", t: "登場させない（既定）" }, { v: "1", t: "登場させる" }]),
       "既定では、子どもが出てくる話は一切つくられません。");
@@ -11161,8 +11174,7 @@ const TALK = {
       if (primary) b.style.cssText = "font-weight:600";
       b.onclick = fn; btns.appendChild(b); return b;
     };
-    mk("この内容でつくる", () => TALK.batch(el), true);
-    mk("内容を確認する", () => TALK.preview(el));
+    mk("＋ 新しい話をつくる", () => TALK.batch(el), true);
     const moreBtn = mk("⚙ その他の設定", () => {
       const open = more.style.display !== "none";
       more.style.display = open ? "none" : "block";
@@ -11190,6 +11202,8 @@ const TALK = {
       allowHeavy: !!(el.querySelector("#axHeavy") || {}).checked,
       kaneRatio: parseFloat(g("axKane") || "0.3"),
       allowKo: g("axKo") === "1",
+      protectMe: g("axStance") !== "both",
+      hookOne: g("axHook") !== "long",
     };
     const myG = g("axMyGender");        /* "" | female | male */
     const ptG = g("axPartnerGender");
@@ -11209,26 +11223,27 @@ const TALK = {
         label: theme || c.peak.label,
         key: c.key,
         /* 受け手＝スクショを撮る側（画面右・緑） */
-        cast: { me: { gender: mg }, partner: { gender: pg } },
+        cast: { me: { gender: mg }, partner: { gender: pg },
+                stance: opt.protectMe ? "protect" : "both",
+                hook: opt.hookOne ? "one" : "long" },
         brief: (theme ? "【今回の題材（これを必ず使う）】\n" + theme + "\n\n" : "") + C.comboToBrief(c)
                + "\n【登場人物の性別（厳守・上の彼氏彼女の表記より優先）】"
                + "\n自分＝スクショを撮って晒す側（画面右・緑）：" + jp(mg)
                + "\n相手＝加害側（画面左・白）：" + jp(pg)
                + (opt.allowKo
                    ? "\n【子ども】この話には二人の子どもが登場する。"
-                   : "\n【子ども】この話に子どもは登場しない。妊娠・出産・育児の話も出さない。厳守。"),
+                   : "\n【子ども】この話に子どもは登場しない。妊娠・出産・育児の話も出さない。厳守。")
+               + (opt.protectMe
+                   ? "\n【立場】受け手（投稿主・" + jp(mg) + "）に落ち度を作らない。"
+                     + "受け手は金を出さない・貸さない・立て替えない・養わない。謝らない。取り乱さない。"
+                     + "読者が受け手を責められる材料を一切置かない。"
+                   : "\n【立場】どちらの言い分にも一理ある形にしてよい。")
+               + (opt.hookOne
+                   ? "\n【投稿文】2本目以降は10〜20文字の一言だけにする。説明・要約・引き延ばしは書かない。"
+                   : ""),
       });
     }
     return out;
-  },
-
-  preview(el) {
-    const pv = el.querySelector("#talkPv");
-    try {
-      const c = TALK.makeCombos(el, 1)[0];
-      pv.style.display = "block";
-      pv.textContent = c.brief + "\n\n（「おまかせ」の項目は生成のたびに変わります）";
-    } catch (e) { pv.style.display = "block"; pv.textContent = "内容を組み立てられませんでした。" + e.message; }
   },
 
   async batch(el) {
@@ -11268,6 +11283,20 @@ const TALK = {
     h2.textContent = "画像を作る前に、会話と投稿文をすべてご確認ください。投稿文はこの場で直せます。"
       + "内容が気に入らない場合は、会話ごと作り直せます。";
     box.appendChild(h1); box.appendChild(h2);
+
+    /* ---- ボタン（下の会話と投稿文を確認したうえで押す） ---- */
+    const act = document.createElement("div");
+    act.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px";
+    box.appendChild(act);
+    const mkb = (t, primary) => {
+      const b = document.createElement("button"); b.className = "btn"; b.textContent = t;
+      if (primary) b.style.fontWeight = "600";
+      act.appendChild(b); return b;
+    };
+    const bGo = mkb("この内容でOK → 画像をつくる（" + ps.length + "枚）", true);
+    const bSave = mkb("投稿文だけ保存する");
+    const bShuf = mkb("↻ 会話ごと作り直す（シャッフル）");
+    const lock = (on, msg) => { [bGo, bSave, bShuf].forEach((b) => { b.disabled = on; }); if (msg) bGo.textContent = msg; };
 
     /* ---- 会話の全文（どこで画像が切れるかも表示） ---- */
     const cvWrap = document.createElement("div");
@@ -11318,25 +11347,11 @@ const TALK = {
       areas.push({ id: p.id, ta: t });
     });
 
-    /* ---- ボタン ---- */
-    const act = document.createElement("div");
-    act.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px";
-    box.appendChild(act);
-    const mkb = (t, primary) => {
-      const b = document.createElement("button"); b.className = "btn"; b.textContent = t;
-      if (primary) b.style.fontWeight = "600";
-      act.appendChild(b); return b;
-    };
     const saveTexts = async () => {
       const list = areas.map((a) => ({ id: a.id, post_text: a.ta.value.trim() }));
       if (list.some((x) => !x.post_text)) throw new Error("空の投稿文があります。");
       await talkFetch_("talkPartsUpdate", { jobId: job.id, parts: list });
     };
-
-    const bGo = mkb("この内容でOK → 画像をつくる（" + ps.length + "枚）", true);
-    const bSave = mkb("投稿文だけ保存する");
-    const bShuf = mkb("↻ 会話ごと作り直す（シャッフル）");
-    const lock = (on, msg) => { [bGo, bSave, bShuf].forEach((b) => { b.disabled = on; }); if (msg) bGo.textContent = msg; };
 
     bGo.onclick = async () => {
       lock(true, "保存しています…");
