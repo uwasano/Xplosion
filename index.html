@@ -142,6 +142,7 @@
   .stat .v{font-size:17px;font-weight:800;margin:3px 0 1px;white-space:nowrap;font-family:var(--mono)}
   .stat .s{font-size:10.5px;font-weight:700;white-space:nowrap}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -1660,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "283";
+const APP_VERSION = "284";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -2700,10 +2701,12 @@ const TABS = [
   { id:"ig_queue", num:"", label:"⚙ Queue" },
   { id:"ig_logs", num:"", label:"🧾 Logs" },
   { id:"ig_settings", num:"", label:"🔧 Settings" },
+  /* ★v284 💬 Talk(LINEトーク画像生成) */
+  { id:"talk", num:"", label:"💬 Talk" },
 ];
 const NAV_GROUPS = [
   { id: "home", icon: "🏠", label: "ホーム", tabs: [] },
-  { id: "post", icon: "✍️", label: "投稿", tabs: ["dailytask", "calendar", "gapcheck"] },
+  { id: "post", icon: "✍️", label: "投稿", tabs: ["dailytask", "calendar", "gapcheck", "talk"] },
   { id: "analyze", icon: "📈", label: "分析", tabs: ["competitor", "radar", "unfollow", "outreach", "quote", "followers", "report"] },
   { id: "config", icon: "⚙️", label: "設定", tabs: ["settings", "schedule", "autoqueue", "clients"] },
   { id: "instagram", icon: "📸", label: "Instagram", tabs: ["ig_dashboard", "ig_accounts", "ig_genres", "ig_content", "ig_racers", "ig_news", "ig_images", "ig_templates", "ig_schedule", "ig_review", "ig_published", "ig_analytics", "ig_queue", "ig_logs", "ig_settings"] },
@@ -10355,5 +10358,844 @@ BUILDERS.clients = (el) => {
   rf.onclick = draw;
 };
 </script>
+<script>
+/* ★v284 combos.js（名前衝突を避けるため無名関数で包む。window.TALK_COMBOS だけ公開） */
+(function(){
+/**
+ * lib/combos.js  v2
+ *
+ * v1は「金をせびるクズ男」に偏っていて、どれも同じ話に見えた。
+ * v2は軸を増やし、金銭ネタを全体の2割に抑えてある（kaneRatio で調整可）。
+ *
+ * 加害側は男女どちらにもなる。札はすべて性別中立に書いてあるので
+ * offenderSide を切り替えるだけで成立する。
+ * 女性が加害側の回は反応する層が変わるので、交互に出すとインプレが伸びる。
+ *
+ * 重い札（妊娠など）は heavy:true。既定では出ない。切り札として温存する。
+ * ネタ切れしたら PEAKS にだけ足せばいい。
+ */
+
+/* ============================================================
+   0. 炎上の型　※読後感がこれで決まる
+   ============================================================ */
+const ENGINES = [
+  { id:"gaman",    label:"我慢型",
+    note:"受け手が最後まで折れ続ける。読者が代弁したくなって書き込む。最も伸びるが多用すると飽きられる" },
+  { id:"sanpi",    label:"賛否両論型",
+    note:"どちらの言い分にも一理ある。読者同士が言い合うのでコメント数が最も多くなる" },
+  { id:"muzikaku", label:"無自覚な善意型",
+    note:"良かれと思ってやったことが最悪。加害側に悪意がない。腹が立つのに責めきれない" },
+  { id:"jirai",    label:"地雷型",
+    note:"些細なことで態度が豹変する。前半の穏やかさとの落差で読ませる" },
+  { id:"zure",     label:"常識ズレ型",
+    note:"育ちや感覚が違いすぎて話が噛み合わない。どっちがおかしいかで割れる" },
+  { id:"shizuka",  label:"静かな嘘型",
+    note:"小さな嘘が積み重なる。声を荒げない。じわじわ気持ち悪くなる" }
+];
+
+/* ============================================================
+   1. 関係性
+   ============================================================ */
+const RELATIONS = [
+  { id:"doukyo",       label:"同棲2年",                   gives:["seikatsu","ie","jikan"] },
+  { id:"konyaku",      label:"婚約中・式場予約済み",       gives:["oya","shiki","kane"] },
+  { id:"fuufu_ko",     label:"結婚3年・子どもが1人",       gives:["oya","ko","seikatsu","ikuji"] },
+  { id:"fuufu_shinkon",label:"新婚半年",                  gives:["oya","ie","seikatsu"] },
+  { id:"tsukiatte1",   label:"付き合って1年",             gives:["jikan","renraku"] },
+  { id:"enkyori",      label:"遠距離1年",                 gives:["kyori","renraku"] },
+  { id:"shokuba",      label:"職場恋愛・社内には秘密",     gives:["shokuba","renraku","himitsu"] },
+  { id:"gakusei",      label:"大学から7年",               gives:["kako","jikan","tomo"] },
+  { id:"moto_yori",    label:"一度別れて復縁したばかり",   gives:["kako","renraku"] },
+  { id:"saikon",       label:"再婚・相手に連れ子がいる",   gives:["ko","oya","ikuji"] },
+  { id:"host_kyaku",   label:"店の相手と客",              gives:["yoru","kane","onna"] },
+  { id:"himo",         label:"片方が無職・もう片方が養う", gives:["kane","seikatsu"] }
+];
+
+/* ============================================================
+   2. 加害側の性質　※金銭系は6枚のみ。残り20枚は金と無関係
+   ============================================================ */
+const OFFENDERS = [
+  // 金銭系（少数）
+  { id:"gamble",    cat:"kane", label:"競艇やパチンコから離れられない", gives:["gamble","kane"] },
+  { id:"fx",        cat:"kane", label:"投資と儲け話に乗せられている",   gives:["kane","rikutsu"] },
+  { id:"yoru_tsuu", cat:"kane", label:"夜の店に通い詰めている",         gives:["yoru","kane","onna"] },
+  { id:"yume",      cat:"kane", label:"夢を追っていると言って働かない", gives:["kane","rikutsu"] },
+  { id:"kankaku",   cat:"kane", label:"金銭感覚が相手と噛み合わない",   gives:["kane"] },
+  { id:"kashi",     cat:"kane", label:"人に貸した金を取り返せない",     gives:["kane","tomo"] },
+  // 言葉・無神経
+  { id:"mushinkei", cat:"kotoba", label:"冗談のつもりで相手を削る",     gives:["kotoba"] },
+  { id:"maunto",    cat:"kotoba", label:"何かにつけて上から評価する",   gives:["kotoba"] },
+  { id:"seiron",    cat:"kotoba", label:"正しさで相手を追い詰める",     gives:["kotoba","rikutsu"] },
+  { id:"hikaku",    cat:"kotoba", label:"人と比べる癖がある",           gives:["kotoba"] },
+  { id:"sotozura",  cat:"kotoba", label:"人前でだけ優しい",             gives:["kotoba","tomo"] },
+  // 家族
+  { id:"jikka",     cat:"kazoku", label:"実家と親を最優先する",         gives:["oya"] },
+  { id:"iinari",    cat:"kazoku", label:"親の言い分を全部通してしまう", gives:["oya"] },
+  // 生活・家事育児
+  { id:"kaji_zero", cat:"seikatsu", label:"家事をやっているつもりでいる", gives:["seikatsu"] },
+  { id:"kijun",     cat:"seikatsu", label:"自分の基準を家の中で押し付ける", gives:["seikatsu","ie"] },
+  { id:"ikuji_nige",cat:"seikatsu", label:"育児を手伝いだと思っている",  gives:["ikuji","ko"] },
+  // 時間・約束
+  { id:"ruzu",      cat:"jikan", label:"時間を守らないのに悪びれない",  gives:["jikan"] },
+  { id:"jibunsuki", cat:"jikan", label:"自分の予定だけ絶対に譲らない",  gives:["jikan"] },
+  { id:"shigoto",   cat:"jikan", label:"仕事を理由にすれば通ると思っている", gives:["shokuba","jikan"] },
+  // SNS・交友
+  { id:"sns",       cat:"sns", label:"SNSでの見え方を優先する",         gives:["sns"] },
+  { id:"kako_hiki", cat:"sns", label:"過去の恋愛を引きずっている",       gives:["kako","onna"] },
+  { id:"tomodachi", cat:"sns", label:"友人といる時だけ人が変わる",       gives:["tomo"] },
+  // 嫉妬・束縛
+  { id:"sokubaku",  cat:"sokubaku", label:"相手の行動を把握したがる",   gives:["renraku"] },
+  { id:"shitto",    cat:"sokubaku", label:"嫉妬を愛情だと思っている",   gives:["renraku","onna"] },
+  // 嘘
+  { id:"kouso",     cat:"uso", label:"小さな嘘をつき続ける",            gives:["uso"] },
+  { id:"kakusu",    cat:"uso", label:"都合の悪いことを黙っている",      gives:["uso"] }
+];
+
+/* ============================================================
+   3. 火種
+   ============================================================ */
+const TRIGGERS = [
+  { id:"gobaku",   label:"別の相手へのメッセージを誤爆した" },
+  { id:"tsuuchi",  label:"ロック画面に通知が出た",            requires:["renraku","sns"] },
+  { id:"shashin",  label:"別の場所にいた写真が回ってきた" },
+  { id:"denwa",    label:"第三者から先に連絡が来た" },
+  { id:"kidoku",   label:"3日既読がつかない",                 requires:["renraku"] },
+  { id:"yotei",    label:"約束の日を当日にキャンセルされた",   requires:["jikan"] },
+  { id:"hitokoto", label:"言われた一言が引っかかって眠れない", requires:["kotoba"] },
+  { id:"nakunatta",label:"物がなくなっていることに気づいた",   requires:["ie","seikatsu"] },
+  { id:"oya_kara", label:"相手の親から直接連絡が来た",         requires:["oya"] },
+  { id:"meisai",   label:"通帳か明細を見てしまった",           requires:["kane"] },
+  { id:"seki",     label:"人前での態度が家と違いすぎた",       requires:["kotoba","tomo"] },
+  { id:"ko_kara",  label:"子どもが何気なく口にした",           requires:["ko"] },
+  { id:"nakama",   label:"共通の友人がうっかり漏らした",       requires:["tomo","kako"] },
+  { id:"yoteihyou",label:"予定表に知らない予定が入っていた",   requires:["jikan"] }
+];
+
+/* ============================================================
+   4. 押し付けてくる要求
+   ============================================================ */
+const DEMANDS = [
+  { id:"matte",     label:"予定を空けて待っていろ",          requires:["jikan"] },
+  { id:"kaji",      label:"家のことは全部やっておいて",      requires:["seikatsu"] },
+  { id:"oya_taiou", label:"親への説明はそっちでやって",      requires:["oya"] },
+  { id:"kuchiura",  label:"周りにはこう言っておいて",        requires:["himitsu","sns","tomo"] },
+  { id:"kimeta",    label:"もう決めたから合わせて" },
+  { id:"kikuna",    label:"何も聞かないでほしい" },
+  { id:"awasero",   label:"こっちの生活リズムに合わせて",    requires:["seikatsu","jikan"] },
+  { id:"tomo_kiru", label:"その友達とは距離を置いてほしい",  requires:["tomo","renraku"] },
+  { id:"sns_kesu",  label:"その投稿を消してほしい",          requires:["sns"] },
+  { id:"ikuji",     label:"子どものことは任せた",            requires:["ko","ikuji"] },
+  { id:"kane",      label:"今すぐ金を貸せ",                  requires:["kane"] },
+  { id:"meigi",     label:"名義を貸してほしい",              requires:["kane"] },
+  { id:"fukusou",   label:"その服はやめてほしい",            requires:["renraku","sns"] },
+  { id:"sugu",      label:"すぐ返事をしてほしい",            requires:["renraku"] }
+];
+
+/* ============================================================
+   5. 正論を返された時の逃げ方
+   ============================================================ */
+const DEFLECTIONS = [
+  { id:"jikan_aru",  label:"「時間あるでしょ」と決めつける" },
+  { id:"shigoto",    label:"「仕事だから」で押し切る",        requires:["shokuba","yoru","jikan"] },
+  { id:"omae_no_tame",label:"「お前のためにやってる」に持っていく" },
+  { id:"omoi",       label:"「そういうとこが重い」と言う" },
+  { id:"kizutsuita", label:"自分が傷ついた話にすり替える" },
+  { id:"rikutsu",    label:"数字と理屈を並べて煙に巻く",      requires:["rikutsu"] },
+  { id:"kazoku",     label:"「家族だろ」で押し通す",          requires:["oya"] },
+  { id:"mukashi",    label:"「前は良かったのに」と過去を持ち出す" },
+  { id:"soko",       label:"「そこ怒るとこ？」と逆に聞く" },
+  { id:"gomen_dake", label:"謝るだけ謝って何も変えない" },
+  { id:"tsukareta",  label:"「疲れてる」で会話を止める" },
+  { id:"minna",      label:"「みんなそうしてる」と一般化する" },
+  { id:"joudan",     label:"「冗談なのに」で片付ける",        requires:["kotoba"] },
+  { id:"itte_nai",   label:"「そんなこと言ってない」と記憶を否定する", requires:["uso","kotoba"] }
+];
+
+/* ============================================================
+   6. 勝手に巻き込まれる第三者
+   ============================================================ */
+const THIRD_PARTIES = [
+  { id:"aite_haha", label:"相手の母親",         requires:["oya"] },
+  { id:"jibun_haha",label:"加害側の母親",       requires:["oya"] },
+  { id:"shinyuu",   label:"共通の親友",         requires:["tomo"] },
+  { id:"kyoudai",   label:"相手のきょうだい" },
+  { id:"doryou",    label:"相手の職場の同僚",   requires:["shokuba"] },
+  { id:"ko",        label:"二人の子ども",       requires:["ko"] },
+  { id:"ooya",      label:"部屋の大家",         requires:["ie"] },
+  { id:"mise",      label:"店の相手",           requires:["yoru","onna"] },
+  { id:"moto",      label:"元恋人",             requires:["kako","onna"] },
+  { id:"shikijou",  label:"式場の担当者",       requires:["shiki"] },
+  { id:"sensei",    label:"子どもの担任",       requires:["ko","ikuji"] },
+  { id:"follower",  label:"SNSの共通フォロワー", requires:["sns"] }
+];
+
+/* ============================================================
+   7. ヘイトの頂点　※ここが弱いと絶対に燃えない
+   加害側はこれを善意か合理性として語る。悪意で語らせない。
+   全48枚。金銭は7枚だけ。切り札(heavy)は2枚で既定は出ない。
+   ============================================================ */
+const PEAKS = [
+  // 言葉・無神経（読者の実体験に刺さる。最も汎用性が高い）
+  { id:"taikei",     cat:"kotoba", label:"体型のことを冗談として何度も口にする" },
+  { id:"ryouri",     cat:"kotoba", label:"手料理を毎回「母のと違う」と評する" },
+  { id:"shigoto_sage",cat:"kotoba",label:"相手の仕事を人前で下に見る言い方をする" },
+  { id:"gakureki",   cat:"kotoba", label:"学歴の話を笑い話として持ち出す" },
+  { id:"jimoto",     cat:"kotoba", label:"相手の地元や訛りをネタにして周りに話す" },
+  { id:"tomo_hyouka",cat:"kotoba", label:"相手の友人を「レベルが違う」と言う", requires:["tomo"] },
+  { id:"kao",        cat:"kotoba", label:"「親に紹介できる感じじゃない」と言う", requires:["oya"] },
+  { id:"guchi",      cat:"kotoba", label:"相手の愚痴を友人に言っていたのが伝わる", requires:["tomo"] },
+  { id:"nakinei",    cat:"kotoba", label:"泣いている相手に「またそれ」と言う" },
+  // 家族
+  { id:"oya_mae",    cat:"kazoku", label:"相手の親の前でだけ人が変わる", requires:["oya"] },
+  { id:"yotei_katte",cat:"kazoku", label:"実家の予定を勝手に入れて事後報告する", requires:["oya"] },
+  { id:"okurimono",  cat:"kazoku", label:"相手の親からの贈り物を黙って処分していた", requires:["oya"] },
+  { id:"shougatsu",  cat:"kazoku", label:"盆と正月は必ず自分の実家と決めている", requires:["oya"] },
+  { id:"jikka_sumu", cat:"kazoku", label:"相談なく自分の親を家に住まわせようとする", requires:["oya","ie"] },
+  { id:"kaigo",      cat:"kazoku", label:"自分の親の世話を当然のように割り当てる", requires:["oya"] },
+  // 家事・育児・生活
+  { id:"tetsudau",   cat:"seikatsu", label:"家事を何年経っても「手伝う」と表現する", requires:["seikatsu"] },
+  { id:"gyouji",     cat:"seikatsu", label:"子どもの行事を毎回仕事で欠席する", requires:["ko"] },
+  { id:"mitete",     cat:"seikatsu", label:"育児を「見ててやった」と言う", requires:["ikuji"] },
+  { id:"okuri",      cat:"seikatsu", label:"送り迎えや付き添いを毎回押し付ける", requires:["ko","seikatsu"] },
+  { id:"suteta",     cat:"seikatsu", label:"相手の持ち物を相談なく捨てていた", requires:["ie","seikatsu"] },
+  { id:"souji",      cat:"seikatsu", label:"掃除の基準を押し付けて相手を責める", requires:["seikatsu"] },
+  { id:"pet",        cat:"seikatsu", label:"飼っていた動物を勝手に人に渡した" },
+  { id:"kaimono",    cat:"seikatsu", label:"頼んだ物を毎回忘れて笑って済ませる", requires:["seikatsu"] },
+  // SNS・交友
+  { id:"kakusu_sns", cat:"sns", label:"相手だけ載せず、他の相手とは写っている", requires:["sns"] },
+  { id:"katte_up",   cat:"sns", label:"二人の写真を相談なく上げる／黙って消す", requires:["sns"] },
+  { id:"kagi_aka",   cat:"sns", label:"鍵アカで相手のことを書いていた", requires:["sns"] },
+  { id:"moto_hannou",cat:"sns", label:"元恋人の投稿にだけ反応し続けている", requires:["kako"] },
+  { id:"tomo_tsubusu",cat:"sns",label:"相手の交友関係を一人ずつ遠ざけていく", requires:["tomo"] },
+  { id:"shoukai_shinai",cat:"sns",label:"何年経っても友人に紹介しない", requires:["tomo"] },
+  // 時間・約束
+  { id:"okureru",    cat:"jikan", label:"待ち合わせに毎回遅れて一度も謝らない", requires:["jikan"] },
+  { id:"kinenbi",    cat:"jikan", label:"記念日に毎年予定を入れてくる", requires:["jikan"] },
+  { id:"yasumi",     cat:"jikan", label:"相手の休みを自分の用事で埋める", requires:["jikan"] },
+  { id:"saegiru",    cat:"jikan", label:"相手の相談を遮って自分の話にすり替える", requires:["kotoba"] },
+  { id:"tsuya",      cat:"jikan", label:"相手の身内の通夜の日に自分の予定を優先した" },
+  { id:"nyuuin",     cat:"jikan", label:"相手が入院している最中に自分の用件を通す" },
+  { id:"muri_yotei", cat:"jikan", label:"相手の大事な日を知っていて別の予定を入れる", requires:["jikan"] },
+  // 嫉妬・束縛
+  { id:"ichi",       cat:"sokubaku", label:"位置情報を求めるが自分は切っている", requires:["renraku"] },
+  { id:"fukusou",    cat:"sokubaku", label:"服装に口を出して着替えさせる", requires:["renraku"] },
+  { id:"sumaho",     cat:"sokubaku", label:"相手のスマホを見た上で逆に怒る", requires:["renraku"] },
+  { id:"shokuba_de", cat:"sokubaku", label:"相手の職場に連絡して確認していた", requires:["shokuba"] },
+  // 嘘
+  { id:"taishoku",   cat:"uso", label:"仕事を辞めていたことを黙っていた", requires:["uso","shokuba"] },
+  { id:"shiken",     cat:"uso", label:"試験に落ちたことを一年隠していた", requires:["uso"] },
+  { id:"yametanai",  cat:"uso", label:"やめると約束したことを隠れて続けている", requires:["uso"] },
+  { id:"chiisana",   cat:"uso", label:"小さな嘘が全部露見しても謝らない", requires:["uso"] },
+  // 金銭（7枚のみ）
+  { id:"uso_shakkin",cat:"kane", label:"相手の親に嘘の名目で金を借りていた", requires:["oya","kane"] },
+  { id:"shiki_cancel",cat:"kane",label:"式場を無断でキャンセルして頭金を使っていた", requires:["shiki"] },
+  { id:"gakushi",    cat:"kane", label:"子どもの学資保険を解約していた", requires:["ko"] },
+  { id:"meigi_card", cat:"kane", label:"相手の名義でカードを作っていた", requires:["kane"] },
+  { id:"kuruma",     cat:"kane", label:"相手の車を黙って売っていた", requires:["kane"] },
+  { id:"yachin",     cat:"kane", label:"家賃を滞納し、大家から相手に連絡がいっていた", requires:["ie"] },
+  { id:"shokuhi",    cat:"kane", label:"生活費を渡さず「その範囲でやって」と言う", requires:["seikatsu","kane"] },
+  // 切り札（既定では出ない）
+  { id:"reset",      cat:"heavy", label:"妊娠を「一回リセット」と呼び、その費用も当てにしている", requires:["kane"], heavy:true },
+  { id:"namae",      cat:"heavy", label:"子どもの名前は前の恋人と決めたものだと言う", requires:["ko","kako"], heavy:true }
+];
+
+/* ============================================================
+   8. 締めの追い討ち
+   ============================================================ */
+const CLOSERS = [
+  { id:"aishiteru",   label:"愛情表現をして終わる" },
+  { id:"shashin",     label:"写真を送れと頼んで終わる" },
+  { id:"ashita",      label:"明日も同じことを頼んで終わる" },
+  { id:"oya_ni",      label:"親への説明を相手にやらせて終わる", requires:["oya"] },
+  { id:"kansha",      label:"「お前がいてよかった」と言って終わる" },
+  { id:"tsugi",       label:"次の要求を軽く足して終わる" },
+  { id:"shoukai",     label:"「今度みんなに紹介するわ」と言って終わる", requires:["tomo"] },
+  { id:"gohan",       label:"夕飯のリクエストをして終わる", requires:["seikatsu"] },
+  { id:"oyasumi",     label:"何事もなかったように就寝の挨拶をする" },
+  { id:"homeru",      label:"急に相手を褒めて終わる" },
+  { id:"yakusoku",    label:"守る気のない約束をして終わる" },
+  { id:"sutanpu",     label:"軽い一言だけ返して会話を切る" },
+  { id:"ko_no_hanashi",label:"子どもの話に切り替えて終わる", requires:["ko"] },
+  { id:"tanomu",      label:"買い物を頼んで終わる", requires:["seikatsu"] }
+];
+
+/* ============================================================
+   抽選
+   ============================================================ */
+const AXES = { ENGINES, RELATIONS, OFFENDERS, TRIGGERS, DEMANDS,
+               DEFLECTIONS, THIRD_PARTIES, PEAKS, CLOSERS };
+
+const usable = (card, tags) => !card.requires || card.requires.some(r => tags.has(r));
+
+function pick(list, tags, rnd) {
+  const ok = list.filter(c => usable(c, tags));
+  const pool = ok.length ? ok : list;
+  return pool[Math.floor(rnd() * pool.length)];
+}
+
+/**
+ * @param {object} opt
+ *   rnd          乱数関数
+ *   fix          軸を固定する { peak:"taikei", engine:"sanpi" }
+ *   allowHeavy   重い札を許可（既定 false）
+ *   kaneRatio    金銭ネタの出現率（既定 0.2）
+ *   offenderSide "boyfriend" | "girlfriend"（既定はランダム）
+ */
+function pickCombo(opt = {}) {
+  const rnd = opt.rnd || Math.random;
+  const fix = opt.fix || {};
+  const kaneRatio = opt.kaneRatio ?? 0.3;
+  const get = (list, key) => fix[key] ? list.find(c => c.id === fix[key]) : null;
+
+  const engine   = get(ENGINES, "engine")     || ENGINES[Math.floor(rnd() * ENGINES.length)];
+  const relation = get(RELATIONS, "relation") || RELATIONS[Math.floor(rnd() * RELATIONS.length)];
+  const tags = new Set(relation.gives || []);
+
+  // 金の話を出す回は、関係が金のタグを持っていなくても成立するので足しておく
+  // （立て替え・借金・生活費はどの関係でも起きる）
+  const wantKane = rnd() < kaneRatio;
+  if (wantKane) tags.add("kane");
+  const offPool  = OFFENDERS.filter(o => wantKane || o.cat !== "kane");
+  const offender = get(OFFENDERS, "offender") || pick(offPool, tags, rnd);
+  (offender.gives || []).forEach(t => tags.add(t));
+
+  // ヘイトの頂点。金の話を出す回は金の札から選ぶので、kaneRatio がそのまま出現率になる
+  let peakPool = PEAKS.filter(p => opt.allowHeavy || !p.heavy);
+  if (wantKane) {
+    const kanePeaks = peakPool.filter(p => p.cat === "kane" && usable(p, tags));
+    if (kanePeaks.length) peakPool = kanePeaks;
+  } else {
+    peakPool = peakPool.filter(p => p.cat !== "kane");
+  }
+  const peak = get(PEAKS, "peak") || pick(peakPool, tags, rnd);
+
+  const combo = {
+    engine, relation, offender, peak,
+    trigger:    get(TRIGGERS, "trigger")         || pick(TRIGGERS, tags, rnd),
+    demand:     get(DEMANDS, "demand")           || pick(DEMANDS, tags, rnd),
+    deflection: get(DEFLECTIONS, "deflection")   || pick(DEFLECTIONS, tags, rnd),
+    thirdParty: get(THIRD_PARTIES, "thirdParty") || pick(THIRD_PARTIES, tags, rnd),
+    closer:     get(CLOSERS, "closer")           || pick(CLOSERS, tags, rnd),
+    offenderSide: opt.offenderSide || (rnd() < 0.5 ? "boyfriend" : "girlfriend")
+  };
+  combo.key = [engine.id, relation.id, offender.id, combo.trigger.id, combo.demand.id,
+    combo.deflection.id, combo.thirdParty.id, peak.id, combo.closer.id,
+    combo.offenderSide].join("-");
+  return combo;
+}
+
+function comboToBrief(c) {
+  const off = c.offenderSide === "boyfriend" ? "彼氏" : "彼女";
+  const vic = c.offenderSide === "boyfriend" ? "彼女" : "彼氏";
+  return `炎上の型：${c.engine.label}（${c.engine.note}）
+関係：${c.relation.label}
+加害側は${off}、受け手は${vic}
+加害側の性質：${c.offender.label}
+会話の始まり：${c.trigger.label}
+押し付けてくる要求：${c.demand.label}
+正論を返された時の逃げ方：${c.deflection.label}
+勝手に巻き込まれる第三者：${c.thirdParty.label}
+ヘイトの頂点（第5段で必ず出す）：${c.peak.label}
+締めの追い討ち：${c.closer.label}`;
+}
+
+const totalCombinations = () =>
+  Object.values(AXES).reduce((n, a) => n * a.length, 1) * 2;
+
+/* ★ブラウザ / Node の両対応。
+   index.html から <script src> で読むと module が無く ReferenceError で
+   ページ全体が止まるため、必ず存在確認してから公開する。 */
+const TALK_COMBOS_API = { AXES, ENGINES, RELATIONS, OFFENDERS, TRIGGERS, DEMANDS,
+  DEFLECTIONS, THIRD_PARTIES, PEAKS, CLOSERS,
+  pickCombo, comboToBrief, totalCombinations };
+
+if (typeof module !== "undefined" && module.exports) module.exports = TALK_COMBOS_API;
+if (typeof window !== "undefined") window.TALK_COMBOS = TALK_COMBOS_API;
+
+})();
+</script>
+<script>
+
+/* ============================================================
+   💬 Talk : LINEトーク画像生成
+   通信は既存の worker のみ。専用Edge Functionは不要です。
+   描画は cloudrun/render_talk.js と同じ手順をブラウザで再現します：
+     幅390 → JSONを差し込み → document.fonts.ready を待つ → #capture を@3xで撮る
+   ============================================================ */
+const TALK_TEMPLATE = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390,initial-scale=1">
+<title>talk</title>
+<style>
+/* =========================================================
+   LINE iOS 風トーク画面テンプレート v4（実機スクショ実測ベース）
+   画像素材ゼロ。CSS + インラインSVGのみ＝生成コスト0
+   XPLOSION統合用：window.TALK にJSONを流すだけで描画
+   ========================================================= */
+:root{
+  --you-bubble:#FFFFFF;
+  --me-bubble:#6DE67B;
+  --text:#0D0D0D;
+  --meta:#5D718F;
+  --unsend-border:rgba(255,255,255,.62);
+  --unsend-text:#F2F5FA;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+body{
+  background:#dfe3e8;
+  font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN",-apple-system,"Noto Sans JP",sans-serif;
+  display:flex;justify-content:center;padding:22px 0;
+}
+#capture{width:390px;display:flex;flex-direction:column;position:relative;}
+
+/* ---------- 背景（青空＋雲。単色ではなくグラデ） ---------- */
+.sky{
+  position:absolute;inset:0;z-index:0;
+  background:
+    radial-gradient(115% 42% at 20% 58%, rgba(255,255,255,.20) 0%, rgba(255,255,255,0) 62%),
+    radial-gradient(85% 32% at 86% 26%, rgba(255,255,255,.13) 0%, rgba(255,255,255,0) 64%),
+    radial-gradient(130% 38% at 46% 98%, rgba(255,255,255,.17) 0%, rgba(255,255,255,0) 60%),
+    linear-gradient(180deg,#8AAED3 0%,#8CABD8 46%,#93B2DC 100%);
+}
+.layer{position:relative;z-index:1;}
+
+/* ---------- ステータスバー（47pt / 背景は透過） ---------- */
+.status{height:47px;display:flex;align-items:center;justify-content:space-between;padding:13px 26px 0;}
+.status .clock{font-size:16px;font-weight:600;color:#0D0D0D;font-family:-apple-system,"SF Pro Text",sans-serif;letter-spacing:.2px;}
+.status .right{display:flex;align-items:center;gap:6px;}
+.sig{display:flex;align-items:flex-end;gap:2px;height:11px;}
+.sig i{width:3.2px;background:#0D0D0D;border-radius:1px;display:block;}
+.sig i:nth-child(1){height:4px;opacity:.32}
+.sig i:nth-child(2){height:6.5px}.sig i:nth-child(3){height:9px}.sig i:nth-child(4){height:11px}
+.batt{width:27px;height:13.5px;background:#0D0D0D;border-radius:4px;display:flex;align-items:center;justify-content:center;position:relative;}
+.batt::after{content:"";position:absolute;right:-3px;top:4.5px;width:2px;height:4.5px;background:rgba(13,13,13,.45);border-radius:0 1.5px 1.5px 0;}
+.batt b{color:#fff;font-size:9.5px;font-weight:700;font-family:-apple-system,"SF Pro Text",sans-serif;letter-spacing:-.2px;}
+
+/* ---------- ヘッダー（左寄せ＋未読件数） ---------- */
+.header{height:46px;display:flex;align-items:center;padding:0 13px 0 10px;}
+.back{width:10px;height:10px;border-left:2.4px solid #0D0D0D;border-bottom:2.4px solid #0D0D0D;transform:rotate(45deg);border-radius:1px;}
+.unread{font-size:17px;font-weight:700;color:#0D0D0D;margin:0 12px 0 8px;letter-spacing:-.3px;}
+.title{font-size:17.5px;font-weight:600;color:#0D0D0D;letter-spacing:.2px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hicons{margin-left:auto;display:flex;align-items:center;gap:14px;}
+.hicons svg{display:block}
+
+/* ---------- トーク ---------- */
+.talk{padding:4px 6px 10px 8px;display:flex;flex-direction:column;}
+.date{align-self:center;background:#7791B8;color:#fff;font-size:12px;line-height:1;padding:6px 15px;border-radius:13px;margin:8px 0 10px;}
+
+.row{display:flex;align-items:flex-end;margin-top:7px;}
+.row.same{margin-top:7px;}
+.row.me{justify-content:flex-end;}
+.avatar{width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0;margin-right:6px;align-self:flex-start;margin-top:-4px;}
+.avatar svg,.avatar img{width:100%;height:100%;display:block;object-fit:cover;}
+.pad{width:36px;flex-shrink:0;}
+
+.bubble{
+  position:relative;max-width:258px;padding:7.5px 16px 8.8px;
+  font-size:16.5px;line-height:19.7px;letter-spacing:.1px;color:var(--text);
+  border-radius:19px;white-space:pre-wrap;word-break:break-word;
+}
+.you .bubble{background:var(--you-bubble);}
+.me  .bubble{background:var(--me-bubble);}
+
+/* しっぽ：実機トレース。吹き出し左上角の外側に付く爪。上には飛び出さない */
+.tail .bubble::before{
+  content:"";position:absolute;top:0;width:20px;height:19px;
+  clip-path:path("M20 0 C14 0.5 10.5 1.8 8.3 4 C5.5 2.3 2.5 1.5 0 1.3 C1.5 4 4 7 4.3 10.3 C4.4 13 3.4 15.5 2.7 17.5 L20 19 Z");
+}
+.you.tail .bubble::before{left:-2.7px;background:var(--you-bubble);}
+.me.tail  .bubble::before{right:-2.7px;background:var(--me-bubble);transform:scaleX(-1);}
+.unsendrow .bubble::before{display:none;}
+.bubble.unsend{background:transparent;border:1px solid var(--unsend-border);color:var(--unsend-text);font-size:13.5px;padding:8px 14px;}
+
+.meta{display:flex;flex-direction:column;justify-content:flex-end;
+  font-size:11px;line-height:13.7px;color:var(--meta);padding:0 6px 3.5px;white-space:nowrap;font-weight:500;}
+.row.me .meta{align-items:flex-end;order:-1;}
+.row.you .meta{align-items:flex-start;}
+
+/* ---------- 入力バー ---------- */
+.inputbar{background:#FFFFFF;padding:9px 14px 6px;display:flex;align-items:center;gap:15px;}
+.field{flex:1;height:36px;background:#F5F5F5;border-radius:18px;display:flex;align-items:center;justify-content:space-between;padding:0 12px 0 14px;}
+.field span{color:#A8A8AD;font-size:15.5px;}
+.suggests{background:#FFFFFF;padding:2px 0 8px 12px;display:flex;align-items:center;gap:8px;overflow:hidden;}
+.chip{border:1px solid #E2E3E6;border-radius:16px;padding:7px 14px;font-size:13px;color:#3C3C3C;white-space:nowrap;}
+.aiicon{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#7B5CF0,#4CC2F1);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.aiicon i{width:11px;height:11px;border-radius:50%;background:#fff;display:block;}
+.home{height:22px;background:#FFFFFF;display:flex;align-items:center;justify-content:center;}
+.home b{width:139px;height:5px;background:#0D0D0D;border-radius:3px;display:block;}
+</style>
+</head>
+<body>
+
+<div id="capture">
+  <div class="sky"></div>
+  <div class="layer">
+
+    <div class="status">
+      <div class="clock" id="statusClock">1:47</div>
+      <div class="right">
+        <div class="sig"><i></i><i></i><i></i><i></i></div>
+        <svg width="17" height="12" viewBox="0 0 17 12" fill="none"><path d="M1.5 4.4A9 9 0 0115.5 4.4" stroke="#0D0D0D" stroke-width="2.2" stroke-linecap="round"/><path d="M4.6 7.3A5.2 5.2 0 0112.4 7.3" stroke="#0D0D0D" stroke-width="2.2" stroke-linecap="round"/><path d="M7.3 10.2A1.5 1.5 0 019.7 10.2" stroke="#0D0D0D" stroke-width="2.2" stroke-linecap="round"/></svg>
+        <div class="batt"><b id="battLevel">75</b></div>
+      </div>
+    </div>
+
+    <div class="header">
+      <div class="back"></div>
+      <div class="unread" id="unreadCount">99+</div>
+      <div class="title" id="headerName">タクヤ</div>
+      <div class="hicons">
+        <svg width="23" height="23" viewBox="0 0 23 23" fill="none" stroke="#0D0D0D" stroke-width="1.7"><circle cx="10" cy="10" r="6.8"/><path d="M15.1 15.1L20.2 20.2" stroke-linecap="round"/></svg>
+        <svg width="23" height="23" viewBox="0 0 23 23" fill="none" stroke="#0D0D0D" stroke-width="1.7"><path d="M7.2 3.4c.7 0 1.2.4 1.4 1l.9 2.5c.2.7 0 1.4-.6 1.7l-1.2.8c1 2.1 2.8 3.9 4.9 4.9l.8-1.2c.4-.6 1-.8 1.7-.6l2.5.9c.6.2 1 .7 1 1.4v2.5c0 .9-.7 1.6-1.6 1.6C9.4 19 3.4 13 3.4 5c0-.9.7-1.6 1.6-1.6z" stroke-linejoin="round"/></svg>
+        <svg width="23" height="23" viewBox="0 0 23 23" fill="none" stroke="#0D0D0D" stroke-width="1.7"><rect x="3.2" y="4.6" width="16.6" height="15" rx="3"/><path d="M3.2 9h16.6M7.6 2.6v3.6M15.4 2.6v3.6" stroke-linecap="round"/><text x="11.5" y="16.6" font-size="6.6" font-family="-apple-system,sans-serif" font-weight="600" fill="#0D0D0D" stroke="none" text-anchor="middle">31</text></svg>
+        <svg width="23" height="23" viewBox="0 0 23 23" stroke="#0D0D0D" stroke-width="1.9" stroke-linecap="round"><path d="M3 6.4h17M3 11.5h17M3 16.6h17"/></svg>
+      </div>
+    </div>
+
+    <div class="talk" id="talk"></div>
+
+    <div class="inputbar">
+      <svg width="25" height="25" viewBox="0 0 25 25" stroke="#0D0D0D" stroke-width="1.7" stroke-linecap="round"><path d="M12.5 4.5v16M4.5 12.5h16"/></svg>
+      <svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="#0D0D0D" stroke-width="1.6"><rect x="2.4" y="6.4" width="20.2" height="14.2" rx="3.4"/><circle cx="12.5" cy="13.5" r="4"/><path d="M8.4 6.4l1.3-2.2h5.6l1.3 2.2"/></svg>
+      <svg width="25" height="25" viewBox="0 0 25 25" fill="none" stroke="#0D0D0D" stroke-width="1.6"><rect x="2.4" y="4.8" width="20.2" height="15.4" rx="3.2"/><path d="M2.4 16.4l5.4-5 4.4 4 3.6-3.2 6.8 6"/><circle cx="8.4" cy="9.4" r="1.5"/></svg>
+      <div class="field">
+        <span>Aa</span>
+        <svg width="21" height="21" viewBox="0 0 21 21" fill="none" stroke="#A8A8AD" stroke-width="1.5"><circle cx="10.5" cy="10.5" r="8"/><circle cx="7.9" cy="8.7" r=".9" fill="#A8A8AD" stroke="none"/><circle cx="13.1" cy="8.7" r=".9" fill="#A8A8AD" stroke="none"/><path d="M7.4 12.6c1.6 1.8 4.6 1.8 6.2 0" stroke-linecap="round"/></svg>
+      </div>
+      <svg width="23" height="23" viewBox="0 0 23 23" fill="none" stroke="#0D0D0D" stroke-width="1.6"><rect x="8.2" y="2.4" width="6.6" height="11.4" rx="3.3"/><path d="M4.6 10.8a6.9 6.9 0 0013.8 0M11.5 17.7v3" stroke-linecap="round"/></svg>
+    </div>
+
+    <div class="suggests">
+      <div class="aiicon"><i></i></div>
+      <div class="chip">返信を提案</div>
+      <div class="chip">話題を提案</div>
+      <div class="chip">ムードを分析</div>
+      <div class="chip">豆知識を発見</div>
+    </div>
+    <div class="home"><b></b></div>
+
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   差し込み口：Claude API が返すJSONをそのまま代入する
+   ========================================================= */
+window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
+
+(function render(D){
+  document.getElementById("headerName").textContent = D.partnerName;
+  document.getElementById("statusClock").textContent = D.statusTime;
+  document.getElementById("unreadCount").textContent = D.unreadCount ?? "99+";
+  document.getElementById("battLevel").textContent = D.battery ?? 75;
+
+  const defaultAvatar = \`<svg viewBox="0 0 30 30"><rect width="30" height="30" fill="#4A4F5A"/><circle cx="15" cy="11.4" r="5" fill="#D3D7DD"/><path d="M3.3 30c0-6.7 5.2-10.5 11.7-10.5S26.7 23.3 26.7 30z" fill="#D3D7DD"/></svg>\`;
+
+  // 2枚組（前編/後編）対応：range=[開始index, 終了index]。省略時は全部。
+  const R0 = D.range ? D.range[0] : 0;
+  const R1 = D.range ? D.range[1] : D.messages.length - 1;
+  const isLastPart = R1 >= D.messages.length - 1;
+
+  let [h,m] = (D.startTime || "12:00").split(":").map(Number);
+  const stamps = D.messages.map((_,i)=>{
+    if(i && Math.random() < .45){ m++; if(m>59){m=0;h=(h+1)%24;} }
+    return h + ":" + String(m).padStart(2,"0");
+  });
+
+  const talk = document.getElementById("talk");
+  if(D.dateLabel && R0 === 0){
+    const d = document.createElement("div");
+    d.className = "date"; d.textContent = D.dateLabel; talk.appendChild(d);
+  }
+
+  // どちらを画面右（自分・緑）にするか。スクショの持ち主を指定する
+  const MY = D.mySide || "girlfriend";
+  const lastMe = D.messages.map(x=>x.speaker).lastIndexOf(MY);
+
+  D.messages.forEach((msg,i)=>{
+    if(i < R0 || i > R1) return;              // このパートの範囲外は描かない
+    const me   = msg.speaker === MY;
+    const prev = D.messages[i-1], next = D.messages[i+1];
+    const head = i === R0 || !prev || prev.speaker !== msg.speaker;
+    const foot = !next || next.speaker !== msg.speaker;
+
+    const row = document.createElement("div");
+    row.className = "row " + (me?"me":"you") + (head?" tail":" same") + (msg.type==="unsend"?" unsendrow":"");
+
+    if(!me){
+      const a = document.createElement("div");
+      if(head){ a.className = "avatar"; a.innerHTML = D.partnerAvatar ? \`<img src="\${D.partnerAvatar}">\` : defaultAvatar; }
+      else    { a.className = "pad"; }
+      row.appendChild(a);
+    }
+
+    const b = document.createElement("div");
+    if(msg.type === "unsend"){
+      b.className = "bubble unsend";
+      b.textContent = "メッセージの送信を取り消しました";
+    }else{
+      b.className = "bubble";
+      b.textContent = msg.text;
+    }
+    row.appendChild(b);
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    const unread = me && D.lastUnread && isLastPart && i === lastMe;
+    meta.innerHTML =
+      (D.showRead && me && !unread ? \`<span>既読</span>\` : \`\`) +
+      (foot ? \`<span>\${stamps[i]}</span>\` : \`\`);
+    row.appendChild(meta);
+
+    talk.appendChild(row);
+  });
+})(window.TALK);
+<\/script>
+</body>
+</html>
+`;
+const TALK_PLACEHOLDER = /\/\*__TALK_JSON__\*\/[\s\S]*?\/\*__END__\*\//;
+
+async function talkFetch_(action, extra) {
+  const { data } = await sb.auth.getSession();
+  if (!data.session) throw new Error("ログインが切れました。再読み込みしてください。");
+  const res = await fetch(SUPABASE_URL + "/functions/v1/worker", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + data.session.access_token, "apikey": SUPABASE_ANON },
+    body: JSON.stringify(Object.assign({ action }, extra || {})),
+  });
+  const j = await res.json();
+  if (j && j.error) throw new Error(j.error);
+  return j;
+}
+
+/* 会話JSONの1区間を描画してPNG(dataURL)を返す。
+   ★置換は必ず「関数」で渡す。文字列だと $& が置換記号として解釈されて壊れます。 */
+function talkRenderPart_(talk, range, part, partTotal) {
+  return new Promise((resolve, reject) => {
+    const shot = Object.assign({}, talk, { range: range, part: part, partTotal: partTotal });
+    const boot = '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>'
+      + '<script>(async function(){try{'
+      + 'await document.fonts.ready;'
+      + 'await new Promise(r=>setTimeout(r,120));'
+      + 'var el=document.getElementById("capture");'
+      + 'var c=await html2canvas(el,{scale:3,backgroundColor:null,logging:false,windowWidth:390});'
+      + 'parent.postMessage({__talk:1,ok:true,b64:c.toDataURL("image/png"),h:c.height},"*");'
+      + '}catch(e){parent.postMessage({__talk:1,ok:false,err:String(e)},"*");}})();<\/script>';
+    const html = TALK_TEMPLATE.replace(TALK_PLACEHOLDER, () => JSON.stringify(shot)).replace("</body>", boot + "</body>");
+
+    const fr = document.createElement("iframe");
+    fr.style.cssText = "position:fixed;left:-99999px;top:0;width:390px;height:1400px;border:0";
+    let done = false;
+    const onMsg = (ev) => {
+      if (!ev.data || !ev.data.__talk) return;
+      if (done) return; done = true;
+      window.removeEventListener("message", onMsg);
+      try { document.body.removeChild(fr); } catch (e) {}
+      ev.data.ok ? resolve({ b64: ev.data.b64, height: ev.data.h }) : reject(new Error(ev.data.err));
+    };
+    window.addEventListener("message", onMsg);
+    setTimeout(() => { if (!done) { done = true; window.removeEventListener("message", onMsg); try { document.body.removeChild(fr); } catch (e) {} reject(new Error("描画がタイムアウトしました")); } }, 30000);
+    document.body.appendChild(fr);
+    fr.srcdoc = html;
+  });
+}
+
+const TALK = {
+  async build(el) {
+    el.innerHTML = '<div style="padding:14px"><div style="font-size:18px;font-weight:700;margin-bottom:4px">💬 Talk</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-bottom:14px">トークの内容をここで決めてから生成します。指定しない項目は「おまかせ」になります。</div>'
+      + '<div id="talkCtl" style="margin-bottom:14px"></div>'
+      + '<div id="talkList">読み込み中…</div></div>';
+    const ctl = el.querySelector("#talkCtl");
+    const C = window.TALK_COMBOS;
+    const row = (label, node) => {
+      const w = document.createElement("label");
+      w.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px";
+      const t = document.createElement("span"); t.textContent = label;
+      t.style.cssText = "min-width:132px;color:var(--muted)";
+      w.appendChild(t); w.appendChild(node); return w;
+    };
+    const sel = (id, opts, width) => {
+      const e = document.createElement("select"); e.id = id;
+      e.style.cssText = "flex:1;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:12px" + (width ? ";max-width:" + width : "");
+      for (const o of opts) { const x = document.createElement("option"); x.value = o.v; x.textContent = o.t; e.appendChild(x); }
+      return e;
+    };
+    const axis = (id, label, list) => {
+      const opts = [{ v: "", t: "おまかせ" }].concat((list || []).map(c => ({ v: c.id, t: c.label })));
+      ctl.appendChild(row(label, sel(id, opts)));
+    };
+
+    /* 投稿先アカウント（連携済みのみ） */
+    const acct = sel("talkAcct", [{ v: "", t: "選択してください" }]);
+    ctl.appendChild(row("投稿先アカウント", acct));
+    try {
+      const a2 = await talkFetch_("talkAccounts");
+      for (const s2 of (a2.accounts || [])) { const o = document.createElement("option"); o.value = s2; o.textContent = "@" + s2; acct.appendChild(o); }
+      const saved = localStorage.getItem("talkAcct");
+      if (saved && (a2.accounts || []).includes(saved)) acct.value = saved;
+    } catch (e) {}
+    acct.onchange = () => { try { localStorage.setItem("talkAcct", acct.value); } catch (e) {} };
+
+    if (!C) {
+      ctl.appendChild(Object.assign(document.createElement("div"),
+        { style: "font-size:12px;color:#c00", textContent: "combos.js が読み込まれていません。index.html の読み込み順をご確認ください。" }));
+    } else {
+      /* ★内容の指定：9軸すべてアプリ内で選べる */
+      axis("axEngine",     "炎上の型",         C.ENGINES);
+      axis("axRelation",   "関係",             C.RELATIONS);
+      axis("axOffender",   "加害側の性質",     C.OFFENDERS);
+      axis("axTrigger",    "会話の始まり",     C.TRIGGERS);
+      axis("axDemand",     "押し付ける要求",   C.DEMANDS);
+      axis("axDeflection", "正論への逃げ方",   C.DEFLECTIONS);
+      axis("axThird",      "巻き込む第三者",   C.THIRD_PARTIES);
+      axis("axPeak",       "ヘイトの頂点",     C.PEAKS);
+      axis("axCloser",     "締めの追い討ち",   C.CLOSERS);
+      ctl.appendChild(row("加害側", sel("axSide", [
+        { v: "", t: "おまかせ" }, { v: "boyfriend", t: "彼氏（受け手は彼女）" }, { v: "girlfriend", t: "彼女（受け手は彼氏）" }])));
+      ctl.appendChild(row("金銭ネタの割合", sel("axKane", [
+        { v: "0.3", t: "3割（既定）" }, { v: "0", t: "出さない" }, { v: "0.5", t: "5割" }, { v: "1", t: "毎回" }])));
+      ctl.appendChild(row("本数", sel("axCount", [
+        { v: "1", t: "1本" }, { v: "3", t: "3本" }, { v: "5", t: "5本（既定）" }])));
+      el.querySelector("#axCount").value = "5";
+
+      const heavyWrap = document.createElement("label");
+      heavyWrap.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px";
+      const heavy = document.createElement("input"); heavy.type = "checkbox"; heavy.id = "axHeavy";
+      heavyWrap.appendChild(heavy);
+      heavyWrap.appendChild(Object.assign(document.createElement("span"),
+        { textContent: "重い題材（妊娠など）も使う", style: "color:var(--muted)" }));
+      ctl.appendChild(heavyWrap);
+    }
+
+    const btns = document.createElement("div");
+    btns.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:6px";
+    const mk = (t, fn) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = t; b.onclick = fn; btns.appendChild(b); return b; };
+    mk("内容を確認する", () => TALK.preview(el));
+    mk("この内容でつくる", () => TALK.batch(el));
+    mk("↻ 更新", () => TALK.load(el));
+    ctl.appendChild(btns);
+
+    const pv = document.createElement("pre"); pv.id = "talkPv";
+    pv.style.cssText = "display:none;white-space:pre-wrap;font-size:12px;line-height:1.7;background:var(--chip);border-radius:10px;padding:12px;margin-top:10px";
+    ctl.appendChild(pv);
+
+    await TALK.load(el);
+  },
+
+  /* 画面の指定から組み合わせを1本つくる */
+  makeCombos(el, n) {
+    const C = window.TALK_COMBOS;
+    const g = (id) => (el.querySelector("#" + id) || {}).value || "";
+    const fix = {};
+    const map = { engine: "axEngine", relation: "axRelation", offender: "axOffender", trigger: "axTrigger",
+      demand: "axDemand", deflection: "axDeflection", thirdParty: "axThird", peak: "axPeak", closer: "axCloser" };
+    for (const k in map) { const v = g(map[k]); if (v) fix[k] = v; }
+    const opt = {
+      fix: fix,
+      allowHeavy: !!(el.querySelector("#axHeavy") || {}).checked,
+      kaneRatio: parseFloat(g("axKane") || "0.3"),
+    };
+    const side = g("axSide"); if (side) opt.offenderSide = side;
+
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const c = C.pickCombo(opt);
+      const offMale = c.offenderSide === "boyfriend";
+      out.push({
+        peakId: c.peak.id,
+        label: c.peak.label,
+        key: c.key,
+        /* 受け手＝スクショを撮る側（画面右・緑） */
+        cast: { me: { gender: offMale ? "female" : "male" }, partner: { gender: offMale ? "male" : "female" } },
+        brief: C.comboToBrief(c),
+      });
+    }
+    return out;
+  },
+
+  preview(el) {
+    const pv = el.querySelector("#talkPv");
+    try {
+      const c = TALK.makeCombos(el, 1)[0];
+      pv.style.display = "block";
+      pv.textContent = c.brief + "\n\n（「おまかせ」の項目は生成のたびに変わります）";
+    } catch (e) { pv.style.display = "block"; pv.textContent = "内容を組み立てられませんでした。" + e.message; }
+  },
+
+  async batch(el) {
+    const acct = (el.querySelector("#talkAcct") || {}).value || "";
+    if (!acct) { alert("投稿先のXアカウントを選んでください。"); return; }
+    const n = parseInt((el.querySelector("#axCount") || {}).value || "5", 10);
+    if (!confirm("@" + acct + " 向けに、指定した内容で" + n + "本つくります。よろしいですか？")) return;
+    try {
+      const combos = TALK.makeCombos(el, n);
+      await talkFetch_("talkBatch", { account: acct, count: n, combos: combos });
+      alert("追加しました。数分おきに1本ずつ生成されます。");
+      await TALK.load(el);
+    } catch (e) { alert("失敗しました。" + e.message); }
+  },
+
+  async load(el) {
+    const box = el.querySelector("#talkList");
+    try {
+      const j = await talkFetch_("talkList", { limit: 20 });
+      const parts = j.parts || [], jobs = j.jobs || [];
+      if (!jobs.length) { box.innerHTML = '<div style="color:var(--muted);font-size:13px">まだありません。「＋ 5本つくる」から始めてください。</div>'; return; }
+      box.innerHTML = "";
+      for (const job of jobs) {
+        const ps = parts.filter(p => p.job_id === job.id).sort((a, b) => a.part - b.part);
+        const card = document.createElement("div");
+        card.style.cssText = "border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px";
+        card.innerHTML = '<div style="font-size:13px;font-weight:600">' + (job.theme_label || job.id.slice(0, 8)) + '</div>'
+          + '<div style="font-size:11px;color:var(--muted);margin:2px 0 8px">' + job.status + (job.error ? ' / ' + job.error : '') + '</div>';
+        const row = document.createElement("div"); row.style.cssText = "display:flex;gap:6px;flex-wrap:wrap";
+        ps.forEach(p => { const s = document.createElement("span"); s.style.cssText = "font-size:11px;padding:3px 8px;border-radius:999px;background:var(--chip)"; s.textContent = p.part + "枚目: " + p.status; row.appendChild(s); });
+        card.appendChild(row);
+
+        if (job.status === "generated" && ps.length) {
+          const b = document.createElement("button"); b.className = "btn"; b.style.marginTop = "10px";
+          b.textContent = "画像をつくる（" + ps.length + "枚）";
+          b.onclick = async () => {
+            b.disabled = true;
+            try {
+              for (const p of ps) {
+                b.textContent = p.part + "枚目を作成中…";
+                const o = await talkRenderPart_(job.talk_json, [p.range_from, p.range_to], p.part, ps.length);
+                await talkFetch_("talkSave", { jobId: job.id, part: p.part, pngBase64: o.b64, height: o.height });
+              }
+              alert("画像ができました。");
+              await TALK.load(el);
+            } catch (e) { alert("画像の作成に失敗しました。" + e.message); b.disabled = false; }
+          };
+          card.appendChild(b);
+        }
+
+        if (job.status === "rendered") {
+          const b2 = document.createElement("button"); b2.className = "btn"; b2.style.marginTop = "10px";
+          b2.textContent = "スレッドで予約する";
+          b2.onclick = async () => {
+            if (!confirm("この" + ps.length + "枚をスレッドとして投稿予約します。よろしいですか？")) return;
+            b2.disabled = true;
+            try {
+              for (const p of ps) await talkFetch_("talkQueuePost", { partId: p.id });
+              alert("予約しました。1枚目から順に自動投稿されます。");
+              await TALK.load(el);
+            } catch (e) { alert("予約に失敗しました。" + e.message); b2.disabled = false; }
+          };
+          card.appendChild(b2);
+        }
+        box.appendChild(card);
+      }
+    } catch (e) { box.innerHTML = '<div style="color:#c00;font-size:13px">読み込みに失敗しました。' + e.message + '</div>'; }
+  }
+};
+BUILDERS.talk = (el) => TALK.build(el);
+
+</script>
+
 </body>
 </html>
