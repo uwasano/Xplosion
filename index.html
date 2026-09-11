@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "307";
+const APP_VERSION = "310";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11110,11 +11110,22 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
   const R1 = D.range ? D.range[1] : D.messages.length - 1;
   const isLastPart = R1 >= D.messages.length - 1;
 
-  let [h,m] = (D.startTime || "12:00").split(":").map(Number);
-  const stamps = D.messages.map((_,i)=>{
-    if(i && Math.random() < .45){ m++; if(m>59){m=0;h=(h+1)%24;} }
-    return h + ":" + String(m).padStart(2,"0");
+  const gaps = D.messages.map(function(msg,i){
+    if(i===0) return 0;
+    var prev=D.messages[i-1], same=prev.speaker===msg.speaker, r=Math.random();
+    if(same){ if(msg.type==="unsend") return 0; return r<0.74?0:(r<0.94?1:2); }
+    if(r<0.40) return 0;
+    if(r<0.70) return 1;
+    if(r<0.87) return 2+Math.floor(Math.random()*3);
+    if(r<0.965) return 5+Math.floor(Math.random()*8);
+    return 13+Math.floor(Math.random()*22);
   });
+  var _tot=gaps.reduce(function(a,b){return a+b;},0), _CAP=150;
+  if(_tot>_CAP){ var _sc=_CAP/_tot; for(var _i=0;_i<gaps.length;_i++)gaps[_i]=Math.round(gaps[_i]*_sc); _tot=gaps.reduce(function(a,b){return a+b;},0); }
+  var _sm=String(D.statusTime||"12:00").split(":").map(Number);
+  var _base=(_sm[0]*60+_sm[1])-_tot; while(_base<0)_base+=1440;
+  var _acc=0;
+  const stamps=gaps.map(function(g){ _acc+=g; var t=(_base+_acc)%1440; return Math.floor(t/60)+":"+String(t%60).padStart(2,"0"); });
 
   const talk = document.getElementById("talk");
   if(D.dateLabel && R0 === 0){
@@ -11164,7 +11175,7 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
     const unread = me && D.lastUnread && isLastPart && i === lastMe;
     meta.innerHTML =
       (D.showRead && me && !unread ? \`<span>既読</span>\` : \`\`) +
-      (foot ? \`<span>\${stamps[i]}</span>\` : \`\`);
+      \`<span>\${stamps[i]}</span>\`;
     row.appendChild(meta);
 
     talk.appendChild(row);
@@ -11304,6 +11315,12 @@ const TALK = {
     field(main, "スレッドの本数", mkSel("axParts", [
       { v: "", t: "おまかせ" }, { v: "3", t: "3本（続く感じ）" }, { v: "4", t: "4本" }, { v: "5", t: "5本構成" }]),
       "この本数でひとつながりの物語になるように投稿文が作られます。");
+
+    /* v310 投稿の形 */
+    field(main, "投稿の形", mkSel("axShape", [
+      { v: "", t: "スレッド連載（本数ごとに分ける）" },
+      { v: "single", t: "単発1枚＋アンケート（伸びやすい）" }]),
+      "単発は会話を画像1枚にまとめ、下にXの投票をぶら下げます。タップ参加で反応が伸びます。");
 
     /* ================= その他の設定（折りたたみ） ================= */
     const acct = mkSel("talkAcct", [{ v: "", t: "選択してください" }]);
@@ -11470,7 +11487,9 @@ const TALK = {
       const combos = TALK.makeCombos(el, n);
       const extra = { account: acct, count: n, combos: combos };
       /* 会話の長さで枚数が決まる（1枚22通まで）。本数×21通にすると狙った本数ちょうどになる */
-      if (parts) extra.messageCount = Number(parts) * 21;
+      const shape = ((el.querySelector("#axShape") || {}).value || "");
+      if (shape === "single") extra.messageCount = 20;
+      else if (parts) extra.messageCount = Number(parts) * 21;
       await talkFetch_("talkBatch", extra);
       alert("追加しました。数分おきに1本ずつ生成されます。");
       await TALK.load(el);
@@ -11744,6 +11763,45 @@ const TALK = {
         chips.appendChild(c);
       });
 
+    /* v310 アンケート（最後の本にぶら下げる） */
+    const pollWrap = document.createElement("div");
+    pollWrap.style.cssText = "margin-top:14px;padding-top:12px;border-top:1px solid var(--line)";
+    box.appendChild(pollWrap);
+    const pl = document.createElement("label");
+    pl.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:4px";
+    const pck = document.createElement("input"); pck.type = "checkbox"; pck.checked = true;
+    const pls = document.createElement("span"); pls.textContent = "アンケートを付ける（最後の投稿の下に投票を追加）";
+    pl.appendChild(pck); pl.appendChild(pls);
+    pollWrap.appendChild(pl);
+    const pbody = document.createElement("div"); pbody.style.cssText = "margin-top:6px";
+    pollWrap.appendChild(pbody);
+    const pnote = document.createElement("div");
+    pnote.style.cssText = "font-size:10.5px;color:var(--muted);margin-bottom:8px;opacity:.85";
+    pnote.textContent = "投票はタップだけで参加できるので、一番反応が伸びます。空欄の選択肢は無視されます（2〜4個）。";
+    pbody.appendChild(pnote);
+    const pq = document.createElement("input"); pq.type = "text"; pq.value = "みんなならどうする？";
+    pq.style.cssText = "width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:transparent;color:inherit;margin-bottom:8px";
+    pbody.appendChild(pq);
+    const pOpts = [];
+    ["我慢する", "別れる", "話し合う", ""].forEach((v, i) => {
+      const oi = document.createElement("input"); oi.type = "text"; oi.value = v; oi.maxLength = 25;
+      oi.placeholder = "選択肢" + (i + 1) + (i >= 2 ? "（任意）" : "");
+      oi.style.cssText = "width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:transparent;color:inherit;margin-bottom:6px";
+      pbody.appendChild(oi); pOpts.push(oi);
+    });
+    const pmin = document.createElement("select");
+    pmin.style.cssText = "padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12px;background:transparent;color:inherit";
+    [["1440", "期間 1日（既定）"], ["4320", "3日"], ["10080", "7日"], ["360", "6時間"]]
+      .forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; pmin.appendChild(o); });
+    pbody.appendChild(pmin);
+    pck.onchange = () => { pbody.style.display = pck.checked ? "block" : "none"; };
+    const readPoll = () => {
+      if (!pck.checked) return null;
+      const opts = pOpts.map((x) => x.value.trim()).filter(Boolean).slice(0, 4);
+      if (opts.length < 2) return null;
+      return { options: opts, text: (pq.value.trim() || "みんなならどうする？"), minutes: Number(pmin.value) || 1440 };
+    };
+
     /* --- 確定 --- */
     const act = document.createElement("div");
     act.style.cssText = "display:flex;gap:8px;margin-top:12px;flex-wrap:wrap";
@@ -11760,9 +11818,13 @@ const TALK = {
         + "\n最後：　 " + fmtJ(times[times.length - 1])
         + "\n\n2本目以降は前の投稿へのリプとして自動で繋がります。よろしいですか？")) return;
       ok.disabled = true; ok.textContent = "予約しています…";
+      const pollCfg = readPoll();
       try {
         for (let i = 0; i < ps.length; i++) {
-          await talkFetch_("talkQueuePost", { partId: ps[i].id, scheduledAt: times[i].toISOString() });
+          const isLast = (i === ps.length - 1);
+          const qextra = { partId: ps[i].id, scheduledAt: times[i].toISOString() };
+          if (isLast && pollCfg) { qextra.pollOptions = pollCfg.options; qextra.pollText = pollCfg.text; qextra.pollMinutes = pollCfg.minutes; }
+          await talkFetch_("talkQueuePost", qextra);
         }
         alert("予約しました。1本目から順に自動投稿されます。");
         await TALK.load(el);
