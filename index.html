@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "310";
+const APP_VERSION = "311";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11250,6 +11250,7 @@ function talkRenderPart_(talk, range, part, partTotal, mask, clock) {
 
 const TALK = {
   async build(el) {
+    if (TALK._pollTimer) { clearTimeout(TALK._pollTimer); TALK._pollTimer = null; }
     el.innerHTML = '<div style="padding:14px">'
       + '<div style="font-size:18px;font-weight:700;margin-bottom:2px">💬 Talk</div>'
       + '<div id="talkAcctLine" style="font-size:11px;color:var(--muted);margin-bottom:16px"></div>'
@@ -11838,9 +11839,17 @@ const TALK = {
     try {
       const j = await talkFetch_("talkList", { limit: 8 });
       const parts = j.parts || [], jobs = j.jobs || [], sched = j.sched || [];
+      /* v311 会話生成中(queued)の間は、更新ボタンを押さなくても自動で読み直す */
+      if (TALK._pollTimer) { clearTimeout(TALK._pollTimer); TALK._pollTimer = null; }
+      const needPoll = jobs.some((jj) => jj.status === "queued");
+      if (needPoll) {
+        TALK._pollTimer = setTimeout(() => {
+          if (el && el.querySelector && el.querySelector("#talkList")) TALK.load(el, openJobId);
+        }, 12000);
+      }
       const schedMap = {}; sched.forEach((x) => { schedMap[String(x.id)] = x; });
       if (!jobs.length) { box.innerHTML = '<div style="color:var(--muted);font-size:13px">まだありません。上の「この内容でつくる」から始めてください。</div>'; return; }
-      const JST = { queued: "会話を作っています…", generated: "内容の確認待ち", rendered: "画像OK・予約待ち",
+      const JST = { queued: "会話を作っています…（自動更新中）", generated: "内容の確認待ち", rendered: "画像OK・予約待ち",
                     error: "エラー", dropped: "見送り" };
       /* ★v299 同じテーマで複数の案を作った時、1つ採用したら残りは打ち消して畳む */
       const adopted = {};
