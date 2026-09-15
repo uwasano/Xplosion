@@ -65,6 +65,18 @@
   /* v324 チェックボックスとラジオは上の width:100% を受けて巨大化していた。固定サイズに戻す */
   input[type=checkbox],input[type=radio]{width:18px;min-width:18px;height:18px;flex:none;
     padding:0;margin:0;border-radius:5px;accent-color:var(--accent);vertical-align:middle}
+  /* v334 つくる画面の設定グループ（ラベル左・コントロール右の1行） */
+  .fgrp{border:1px solid var(--border);border-radius:12px;background:var(--surface2);
+    padding:0 12px;margin:0 0 10px}
+  .fgrp > .ttl{font-size:9.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);
+    font-family:var(--mono);padding:11px 0 3px}
+  .fgrp .fr{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)}
+  .fgrp > .ttl + .fr{border-top:none}
+  .fgrp .fl{flex:0 0 84px;font-size:11.5px;color:var(--muted);line-height:1.35}
+  .fgrp .fr > select{flex:1 1 auto;width:auto;min-width:0;padding:9px 10px;font-size:12.5px;
+    border-radius:9px;background:var(--surface);color:var(--text)}
+  .fgrp .fr > select:disabled{opacity:.4}
+  .fgrp .fh{font-size:10.5px;color:var(--muted);opacity:.75;padding:0 0 10px;line-height:1.55;margin-top:-2px}
   /* v324 画像を作る前の設定カード */
   .tset{border:1px solid var(--border);border-radius:12px;background:var(--surface2);
     padding:4px 14px;margin:0 0 14px}
@@ -1678,7 +1690,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "333";
+const APP_VERSION = "334";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11615,39 +11627,58 @@ const TALK = {
     catch (e) { drawBuzz([]); }
     drawPicked();
 
-    /* v326 既定：自分＝女性／相手＝男性／日付は伏せる／名前も伏せる */
-    field(main, "自分（画面右・緑の吹き出し）", mkSel("axMyGender", [
-      { v: "female", t: "女性（既定）" }, { v: "male", t: "男性" }, { v: "", t: "おまかせ" }]));
-    field(main, "相手（画面左・白の吹き出し）", mkSel("axPartnerGender", [
-      { v: "male", t: "男性（既定）" }, { v: "female", t: "女性" }, { v: "", t: "おまかせ" }]));
-    field(main, "日付の表示", mkSel("axDate", [
-      { v: "off", t: "伏せる（既定）" }, { v: "", t: "表示する" }]),
-      "トーク画面の上に出る「9月14日（月）」の表示です。");
-    field(main, "着せ替え", mkSel("axTheme", [
-      { v: "", t: "ピンク（既定）" }, { v: "default", t: "標準（青）" }, { v: "mint", t: "ミント" },
-      { v: "cream", t: "クリーム" }, { v: "lavender", t: "ラベンダー" }, { v: "mono", t: "モノトーン" }]),
-      "自分の吹き出しと背景が変わります。相手側は白のまま、枠の色だけ変わります。");
-    field(main, "名前の伏せ方", mkSel("axMask", [
-      { v: "pen", t: "伏せる（既定・手書きペンで消す）" }, { v: "", t: "そのまま出す" }]),
-      "会話に出る人名を、手書きで塗りつぶしたように隠します。柄は200種類から自動で選ばれます。");
-    field(main, "投稿文の型", mkSel("axHook", [
-      { v: "", t: "一言フック（既定・バズ特化）" }, { v: "long", t: "説明入り（従来）" }]),
-      "2本目以降を10〜20文字の一言だけにします。前提をひっくり返す・知らない名前を出すなど、次を開かせる型で書かせます。");
-    field(main, "投稿主の立場", mkSel("axStance", [
-      { v: "", t: "守る（既定・投稿主に落ち度を作らない）" }, { v: "both", t: "賛否あり（どちらにも一理ある）" }]),
-      "「守る」では、投稿主は金を出さず、謝らず、落ち度も残りません。矛先が相手だけに向きます。");
-    field(main, "子ども", mkSel("axKo", [
-      { v: "", t: "登場させない（既定）" }, { v: "1", t: "登場させる" }]),
-      "既定では、子どもが出てくる話は一切つくられません。");
-    field(main, "スレッドの本数", mkSel("axParts", [
-      { v: "", t: "おまかせ" }, { v: "3", t: "3本（続く感じ）" }, { v: "4", t: "4本" }, { v: "5", t: "5本構成" }]),
-      "この本数でひとつながりの物語になるように投稿文が作られます。");
+    /* v334 設定をまとまりごとにカードにする。1行1項目でラベルは左 */
+    const grp = (title) => {
+      const g = document.createElement("div"); g.className = "fgrp";
+      const h = document.createElement("div"); h.className = "ttl"; h.textContent = title;
+      g.appendChild(h); main.appendChild(g); return g;
+    };
+    const frow = (g, label, node, hint) => {
+      const r = document.createElement("label"); r.className = "fr";
+      const l = document.createElement("span"); l.className = "fl"; l.textContent = label;
+      r.appendChild(l); r.appendChild(node); g.appendChild(r);
+      if (hint) { const h = document.createElement("div"); h.className = "fh"; h.textContent = hint; g.appendChild(h); }
+      return node;
+    };
 
-    /* v310 投稿の形 */
-    field(main, "投稿の形", mkSel("axShape", [
-      { v: "", t: "スレッド連載（本数ごとに分ける）" },
-      { v: "single", t: "単発1枚＋アンケート（伸びやすい）" }]),
-      "単発は会話を画像1枚にまとめ、下にXの投票をぶら下げます。タップ参加で反応が伸びます。");
+    const gShape = grp("投稿の形");
+    const selShape = frow(gShape, "形", mkSel("axShape", [
+      { v: "", t: "スレッド連載（画像を分けて続ける）" },
+      { v: "single", t: "単発1枚＋アンケート" }]));
+    const selParts = frow(gShape, "本数", mkSel("axParts", [
+      { v: "", t: "おまかせ" }, { v: "3", t: "3本（続く感じ）" }, { v: "4", t: "4本" }, { v: "5", t: "5本構成" }]),
+      "単発は会話を画像1枚にまとめ、下にXの投票をぶら下げます。");
+    const syncShape = () => {
+      const one = selShape.value === "single";
+      selParts.disabled = one;
+      if (one) selParts.value = "";
+    };
+    selShape.onchange = syncShape; syncShape();
+
+    const gCast = grp("登場人物");
+    frow(gCast, "自分", mkSel("axMyGender", [
+      { v: "female", t: "女性（既定）" }, { v: "male", t: "男性" }, { v: "", t: "おまかせ" }]));
+    frow(gCast, "相手", mkSel("axPartnerGender", [
+      { v: "male", t: "男性（既定）" }, { v: "female", t: "女性" }, { v: "", t: "おまかせ" }]));
+    frow(gCast, "子ども", mkSel("axKo", [
+      { v: "", t: "登場させない（既定）" }, { v: "1", t: "登場させる" }]));
+
+    const gLook = grp("画像の見た目");
+    frow(gLook, "着せ替え", mkSel("axTheme", [
+      { v: "", t: "ピンク（既定）" }, { v: "default", t: "標準（青）" }, { v: "mint", t: "ミント" },
+      { v: "cream", t: "クリーム" }, { v: "lavender", t: "ラベンダー" }, { v: "mono", t: "モノトーン" }]));
+    frow(gLook, "日付", mkSel("axDate", [
+      { v: "off", t: "伏せる（既定）" }, { v: "", t: "表示する" }]));
+    frow(gLook, "名前", mkSel("axMask", [
+      { v: "pen", t: "伏せる（既定・手書きペンで消す）" }, { v: "", t: "そのまま出す" }]),
+      "会話に出る人名を手書きで塗りつぶしたように隠します。柄は200種類から自動で選ばれます。");
+
+    const gWrite = grp("書き方");
+    frow(gWrite, "投稿文", mkSel("axHook", [
+      { v: "", t: "一言フック（既定・バズ特化）" }, { v: "long", t: "説明入り（従来）" }]));
+    frow(gWrite, "立場", mkSel("axStance", [
+      { v: "", t: "投稿主を守る（既定）" }, { v: "both", t: "賛否あり（どちらにも一理ある）" }]),
+      "「守る」では投稿主は金を出さず、謝らず、落ち度も残りません。矛先が相手だけに向きます。");
 
     /* ================= その他の設定（折りたたみ） ================= */
     const acct = mkSel("talkAcct", [{ v: "", t: "選択してください" }]);
@@ -12078,8 +12109,12 @@ const TALK = {
         const extra = { jobId: job.id };
         /* 画面の設定（テーマ・性別・子ども・本数など）で新しい組み合わせを引き直す */
         try { extra.combo = TALK.makeCombos(el, 1)[0]; } catch (e2) { /* 前回の題材のまま作り直す */ }
+        /* v334 作り直しでも「投稿の形」を見る。単発なのに枚数が増える不具合の修正 */
+        const shape2 = ((el.querySelector("#axShape") || {}).value || "");
         const parts = ((el.querySelector("#axParts") || {}).value || "");
-        if (parts) extra.messageCount = Number(parts) * 21;
+        if (shape2 === "single") extra.messageCount = 20;
+        else if (parts) extra.messageCount = Number(parts) * 21;
+        else extra.messageCount = Number(job.message_count) || 55;
         await talkFetch_("talkRegen", extra);
         await TALK.load(el);
       } catch (e) {
