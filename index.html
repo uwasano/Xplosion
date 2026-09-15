@@ -62,6 +62,23 @@
   input,select,textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:12px;
     color:var(--text);padding:12px 14px;font-size:15px;outline:none;font-family:inherit}
   textarea{line-height:1.6;resize:vertical}
+  /* v324 チェックボックスとラジオは上の width:100% を受けて巨大化していた。固定サイズに戻す */
+  input[type=checkbox],input[type=radio]{width:18px;min-width:18px;height:18px;flex:none;
+    padding:0;margin:0;border-radius:5px;accent-color:var(--accent);vertical-align:middle}
+  /* v324 画像を作る前の設定カード */
+  .tset{border:1px solid var(--border);border-radius:12px;background:var(--surface2);
+    padding:4px 14px;margin:0 0 14px}
+  .tset .r{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    font-size:12.5px;padding:11px 0;line-height:1.5}
+  .tset .r + .r{border-top:1px solid var(--border)}
+  .tset .lb{color:var(--muted);flex:none}
+  .tset .gr{flex:1 1 auto;min-width:0}
+  .tset select,.tset input[type=number]{width:auto;min-width:0;padding:8px 11px;
+    font-size:12.5px;border-radius:9px;color:var(--text);background:var(--surface)}
+  .tset input[type=number]{width:72px;text-align:center;padding:7px 4px}
+  .tset .lnk{width:auto;background:none;border:none;color:var(--muted);font-size:11.5px;
+    text-decoration:underline;padding:4px 2px;margin:0;cursor:pointer;font-family:inherit}
+  .tset .lnk:disabled{opacity:.4;cursor:default}
   .btn{width:100%;padding:14px;border-radius:12px;border:none;cursor:pointer;margin-top:16px;
     background:linear-gradient(92deg,var(--accent),var(--violet));color:#fff;
     font-size:15px;font-weight:800;letter-spacing:.05em;box-shadow:0 0 18px rgba(255,46,126,.35)}
@@ -1661,7 +1678,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "321";
+const APP_VERSION = "325";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11124,8 +11141,9 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
   };
   const THEME = (function(){
     var t = D.theme;
-    if (typeof t === "string") t = TALK_THEMES[t] || TALK_THEMES.default;
-    if (!t || typeof t !== "object") t = TALK_THEMES.default;
+    /* v323 指定が無い時の既定はピンク。"default" を選べば従来の青になる */
+    if (typeof t === "string") t = TALK_THEMES[t] || TALK_THEMES.pink;
+    if (!t || typeof t !== "object") t = TALK_THEMES.pink;
     return Object.assign({}, TALK_THEMES.default, t);
   })();
   (function applyTheme(){
@@ -11147,12 +11165,22 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
     }
   })();
 
+  /* しっぽ v325
+     ・塗り は吹き出しの中まで閉じる（L20 19 Z）ので、吹き出しとの間に隙間ができない
+     ・枠線 は外側の輪郭だけをなぞる（閉じない）。閉じると吹き出しとの継ぎ目に
+       縦線が1本入って、しっぽが別パーツに見えてしまう（着せ替えで枠線が付くと露見した）
+     ・輪郭の終点(2.7,17.5)は吹き出しの左の角丸とぴったり重なるので、線がつながって見える */
+  const TAIL_EDGE = "M20 0 C14 .5 10.5 1.8 8.3 4 C5.5 2.3 2.5 1.5 0 1.3"
+                  + " C1.5 4 4 7 4.3 10.3 C4.4 13 3.4 15.5 2.7 17.5";
   const TAIL_SVG = (color, mirror, stroke) =>
     '<svg viewBox="0 0 20 19" width="20" height="19" xmlns="http://www.w3.org/2000/svg">'
-    + '<path d="M20 0 C14 .5 10.5 1.8 8.3 4 C5.5 2.3 2.5 1.5 0 1.3 C1.5 4 4 7 4.3 10.3 C4.4 13 3.4 15.5 2.7 17.5 L20 19 Z"'
-    + ' fill="' + color + '"'
-    + (stroke && stroke !== "transparent" ? ' stroke="' + stroke + '" stroke-width="1.4" stroke-linejoin="round"' : '')
-    + (mirror ? ' transform="translate(20,0) scale(-1,1)"' : '') + '/></svg>';
+    + '<g' + (mirror ? ' transform="translate(20,0) scale(-1,1)"' : '') + '>'
+    + '<path d="' + TAIL_EDGE + ' L20 19 Z" fill="' + color + '"/>'
+    + (stroke && stroke !== "transparent"
+        ? '<path d="' + TAIL_EDGE + '" fill="none" stroke="' + stroke + '"'
+          + ' stroke-width="1.4" stroke-linejoin="round" stroke-linecap="butt"/>'
+        : '')
+    + '</g></svg>';
 
   const defaultAvatar = \`<svg viewBox="0 0 30 30"><rect width="30" height="30" fill="#4A4F5A"/><circle cx="15" cy="11.4" r="5" fill="#D3D7DD"/><path d="M3.3 30c0-6.7 5.2-10.5 11.7-10.5S26.7 23.3 26.7 30z" fill="#D3D7DD"/></svg>\`;
 
@@ -11272,7 +11300,7 @@ function talkRenderPart_(talk, range, part, partTotal, mask, clock, theme, showD
   return new Promise((resolve, reject) => {
     const shot = Object.assign({}, talk, { range: range, part: part, partTotal: partTotal,
       mask: mask || { on: false, seed: 1 },
-      theme: theme || "default",
+      theme: theme || "pink",
       showDate: showDate !== false }, clock || talkClock_(talk));
     const boot = '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>'
       + '<script>(async function(){try{'
@@ -11357,9 +11385,9 @@ const TALK = {
     buzzHead.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:6px";
     const buzzLab = document.createElement("span");
     buzzLab.style.cssText = "font-size:11px;color:var(--muted);letter-spacing:.02em";
-    buzzLab.textContent = "今バズってる言葉";
+    buzzLab.textContent = "今炎上してる話題";
     const buzzBtn = document.createElement("button");
-    buzzBtn.textContent = "最新を取得";
+    buzzBtn.textContent = "炎上ワードを取得";
     buzzBtn.style.cssText = "background:none;border:none;color:var(--muted);font-size:11px;"
       + "text-decoration:underline;padding:2px 4px;cursor:pointer;font-family:inherit";
     buzzHead.appendChild(buzzLab); buzzHead.appendChild(buzzBtn);
@@ -11427,20 +11455,30 @@ const TALK = {
       TALK._buzzWords = words || [];
       buzzChips.innerHTML = "";
       if (!words || !words.length) {
-        buzzNote.textContent = "まだ取得していません。「最新を取得」を押してください。";
+        buzzNote.textContent = "まだ取得していません。「炎上ワードを取得」を押してください。";
         return;
       }
-      buzzNote.textContent = "押すと「投稿文に入れる話題」になります。トークの中身には出さず、同じ構図の会話を作ります。自分で追加した語は上に出ます。";
+      buzzNote.textContent = "炎上度の高い順に並んでいます（濃いものほどもめています）。"
+          + "押すと「投稿文に入れる話題」になります。トークの中身には出さず、同じ構図の会話を作ります。";
       words.slice(0, 12).forEach((w) => {
         /* v321 一つずつ消せるようにする（チップ本体＋右の×） */
         const g = document.createElement("span");
         g.style.cssText = "display:inline-flex;align-items:stretch";
         const c = document.createElement("button");
         c.className = "chip";
+        const sc = Number(w.score) || 0;
+        /* v322 炎上度で濃さを変える。強いものほど濃く出す */
+        const heat = sc >= 70 ? ";font-weight:700" : sc >= 45 ? ";font-weight:600" : ";opacity:.62";
         c.style.cssText = "font-size:11px;padding:5px 10px;border-top-right-radius:0;"
-          + "border-bottom-right-radius:0;border-right:none" + (w.used_count > 0 ? ";opacity:.5" : "");
+          + "border-bottom-right-radius:0;border-right:none" + heat
+          + (w.used_count > 0 ? ";opacity:.4" : "");
         c.textContent = w.word + (w.used_count > 0 ? "（使用済）" : "");
-        c.title = w.headline || "";
+        const SRC = { google_trends: "Googleトレンド", hatena_shakai: "はてブ 世の中",
+                      girlschannel: "ガールズちゃんねる", manual: "手で追加" };
+        c.title = (w.headline || w.word)
+          + "\n炎上度 " + sc
+          + (w.traffic ? " / " + w.traffic : "")
+          + " / " + (SRC[w.source] || w.source || "");
         c.onclick = () => {
           TALK._buzz = { word: w.word, headline: w.headline || "" };
           drawPicked();
@@ -11482,7 +11520,7 @@ const TALK = {
             + "下の欄から話題を手で追加できます。";
         }
       } catch (e) { buzzNote.textContent = "取得に失敗しました。" + e.message; }
-      buzzBtn.disabled = false; buzzBtn.textContent = "最新を取得";
+      buzzBtn.disabled = false; buzzBtn.textContent = "炎上ワードを取得";
     };
     try { const j0 = await talkFetch_("buzzList", { limit: 40 }); drawBuzz(j0.words || []); }
     catch (e) { drawBuzz([]); }
@@ -11496,7 +11534,7 @@ const TALK = {
       { v: "", t: "表示する（既定）" }, { v: "off", t: "表示しない" }]),
       "トーク画面の上に出る「9月14日（月）」の表示です。");
     field(main, "着せ替え", mkSel("axTheme", [
-      { v: "", t: "標準（青）" }, { v: "mint", t: "ミント" }, { v: "pink", t: "ピンク" },
+      { v: "", t: "ピンク（既定）" }, { v: "default", t: "標準（青）" }, { v: "mint", t: "ミント" },
       { v: "cream", t: "クリーム" }, { v: "lavender", t: "ラベンダー" }, { v: "mono", t: "モノトーン" }]),
       "自分の吹き出しと背景が変わります。相手側は白のまま、枠の色だけ変わります。");
     field(main, "名前の伏せ方", mkSel("axMask", [
@@ -11609,7 +11647,7 @@ const TALK = {
       protectMe: g("axStance") !== "both",
       hookOne: g("axHook") !== "long",
       maskPen: g("axMask") === "pen",
-      theme: g("axTheme") || "default",
+      theme: g("axTheme") || "pink",
       showDate: g("axDate") !== "off",
     };
     const myG = g("axMyGender");        /* "" | female | male */
@@ -11640,7 +11678,7 @@ const TALK = {
                 sameSex: same,
                 quote: (TALK._buzz && TALK._buzz.word)
                          ? { word: TALK._buzz.word, headline: TALK._buzz.headline || "" } : null,
-                theme: opt.theme || "default",
+                theme: opt.theme || "pink",
                 showDate: opt.showDate !== false,
                 mask: opt.maskPen ? "pen" : "none",
                 maskSeed: 1 + Math.floor(Math.random() * 200) },
@@ -11723,14 +11761,17 @@ const TALK = {
 
     /* ---- ボタン（下の会話と投稿文を確認したうえで押す） ---- */
     const act = document.createElement("div");
-    act.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px";
+    act.style.cssText = "display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px";
     box.appendChild(act);
     const mkb = (t, primary) => {
       const b = document.createElement("button"); b.className = "btn"; b.textContent = t;
-      if (primary) b.style.fontWeight = "600";
+      /* v324 幅いっぱいだと文字が2行に折れて不格好だったので、中身に合わせる */
+      b.style.cssText = "width:auto;flex:0 1 auto;margin:0;padding:12px 20px;font-size:14px;"
+        + "letter-spacing:.02em;white-space:nowrap";
+      if (primary) b.style.fontWeight = "700";
       act.appendChild(b); return b;
     };
-    const bGo = mkb("画像をつくって投稿予定へ（" + ps.length + "枚）", true);
+    const bGo = mkb("画像をつくる（" + ps.length + "枚）", true);
     /* v297 押すボタンは1つに見せる。作り直しは地味なリンクにする */
     const bShuf = document.createElement("button");
     bShuf.textContent = "↻ 作り直す";
@@ -11743,42 +11784,39 @@ const TALK = {
     const cj = job.cast_json || {};
     const maskState = { on: cj.mask === "pen", seed: Number(cj.maskSeed) || 1 };
     /* v314 着せ替え（画像を作る直前に切り替えられる） */
-    const themeState = { name: cj.theme || "default" };
-    const trow = document.createElement("label");
-    trow.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;flex-wrap:wrap";
-    const tlb = document.createElement("span"); tlb.textContent = "着せ替え";
-    tlb.style.cssText = "color:var(--muted)";
+    const themeState = { name: cj.theme || "pink" };
+    /* v324 3つの設定を1枚のカードにまとめる。行は必ず横一列に収める */
+    const tset = document.createElement("div");
+    tset.className = "tset";
+    const trow = document.createElement("label"); trow.className = "r";
+    const tlb = document.createElement("span"); tlb.className = "lb"; tlb.textContent = "着せ替え";
     const tsel = document.createElement("select");
-    tsel.style.cssText = "padding:6px 9px;border:1px solid var(--line);border-radius:8px;font-size:12px;background:transparent;color:inherit";
-    [["default","標準（青）"],["mint","ミント"],["pink","ピンク"],["cream","クリーム"],["lavender","ラベンダー"],["mono","モノトーン"]]
+    [["pink","ピンク（既定）"],["default","標準（青）"],["mint","ミント"],["cream","クリーム"],["lavender","ラベンダー"],["mono","モノトーン"]]
       .forEach(([v,t]) => { const o=document.createElement("option"); o.value=v; o.textContent=t; tsel.appendChild(o); });
     tsel.value = themeState.name;
     tsel.onchange = () => { themeState.name = tsel.value; };
     trow.appendChild(tlb); trow.appendChild(tsel);
-    box.appendChild(trow);
+    tset.appendChild(trow);
     /* v315 日付を出すか出さないか */
     const dateState = { on: cj.showDate !== false };
-    const drow = document.createElement("label");
-    drow.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px";
+    const drow = document.createElement("label"); drow.className = "r";
     const dck = document.createElement("input"); dck.type = "checkbox"; dck.checked = dateState.on;
-    const dlb = document.createElement("span"); dlb.textContent = "日付を表示する（9月14日（月））";
+    const dlb = document.createElement("span"); dlb.className = "gr";
+    dlb.textContent = "日付を表示する（9月14日（月））";
     dck.onchange = () => { dateState.on = dck.checked; };
     drow.appendChild(dck); drow.appendChild(dlb);
-    box.appendChild(drow);
-    const mrow = document.createElement("label");
-    mrow.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;flex-wrap:wrap";
+    tset.appendChild(drow);
+    const mrow = document.createElement("label"); mrow.className = "r";
     const mck = document.createElement("input"); mck.type = "checkbox"; mck.checked = maskState.on;
-    const mtx = document.createElement("span"); mtx.textContent = "名前を手書きペンで消す";
+    const mtx = document.createElement("span"); mtx.className = "gr"; mtx.textContent = "名前を手書きペンで消す";
     const mnum = document.createElement("input"); mnum.type = "number"; mnum.min = "1"; mnum.max = "200";
     mnum.value = String(maskState.seed);
-    mnum.style.cssText = "width:64px;padding:4px 6px;border:1px solid var(--line);border-radius:7px;"
-      + "font-size:12px;background:transparent;color:inherit";
-    const mlb = document.createElement("span"); mlb.textContent = "柄"; mlb.style.color = "var(--muted)";
-    const mrnd = document.createElement("button"); mrnd.textContent = "↻ 別の柄";
-    mrnd.style.cssText = "background:none;border:none;color:var(--muted);font-size:11.5px;"
-      + "text-decoration:underline;padding:4px;cursor:pointer;font-family:inherit";
+    const mlb = document.createElement("span"); mlb.className = "lb"; mlb.textContent = "柄";
+    const mrnd = document.createElement("button"); mrnd.className = "lnk"; mrnd.type = "button";
+    mrnd.textContent = "別の柄";
     mrow.appendChild(mck); mrow.appendChild(mtx); mrow.appendChild(mlb); mrow.appendChild(mnum); mrow.appendChild(mrnd);
-    box.appendChild(mrow);
+    tset.appendChild(mrow);
+    box.appendChild(tset);
     const syncMask = () => {
       maskState.on = mck.checked;
       maskState.seed = Math.min(200, Math.max(1, Number(mnum.value) || 1));
