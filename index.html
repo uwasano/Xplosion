@@ -1690,7 +1690,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "334";
+const APP_VERSION = "335";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -9730,8 +9730,8 @@ BUILDERS.schedule = (el) => {
        以前は全件を古い順に取っていたため、テーブルが1000件を超えると
        PostgRESTの上限で古い分だけが返り、新しい予約(Talkなど)が画面から消えていた。 */
     const [liveRes, histRes] = await Promise.all([
-      sb.from("scheduled_posts").select("*").in("status", ["draft", "pending"]).order("scheduled_at"),
-      sb.from("scheduled_posts").select("*").not("status", "in", "(draft,pending)")
+      sb.from("scheduled_posts").select("*").in("status", ["draft", "pending", "poll_wait"]).order("scheduled_at"),
+      sb.from("scheduled_posts").select("*").not("status", "in", "(draft,pending,poll_wait)")
         .order("posted_at", { ascending: false, nullsFirst: false }).limit(40),
     ]);
     const error = liveRes.error || histRes.error;
@@ -9739,8 +9739,9 @@ BUILDERS.schedule = (el) => {
     const data = (liveRes.data || []).concat(histRes.data || []);
     const byTime = (a,b) => a.scheduled_at.localeCompare(b.scheduled_at);
     const drafts = data.filter((p)=>p.status==="draft").sort(byTime);
-    const pending = data.filter((p)=>p.status==="pending").sort(byTime);
-    const done = data.filter((p)=>p.status!=="pending"&&p.status!=="draft").sort((a,b)=>(b.posted_at||b.scheduled_at).localeCompare(a.posted_at||a.scheduled_at)).slice(0,20);
+    /* v335 アンケート行は poll_wait（Edge専用）。予約確定として一緒に見せる */
+    const pending = data.filter((p)=>p.status==="pending"||p.status==="poll_wait").sort(byTime);
+    const done = data.filter((p)=>p.status!=="pending"&&p.status!=="draft"&&p.status!=="poll_wait").sort((a,b)=>(b.posted_at||b.scheduled_at).localeCompare(a.posted_at||a.scheduled_at)).slice(0,20);
 
     /* タブのラベルに件数を反映 */
     tabBtns["draft"].textContent = "予約待ち" + (drafts.length?" ("+drafts.length+")":"");
@@ -12219,7 +12220,10 @@ const TALK = {
     const pl = document.createElement("label");
     pl.style.cssText = "display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;margin-bottom:4px";
     const pck = document.createElement("input"); pck.type = "checkbox"; pck.checked = true;
-    const pls = document.createElement("span"); pls.textContent = "アンケートを付ける（最後の投稿の下に投票を追加）";
+    const pls = document.createElement("span");
+    pls.textContent = ps.length === 1
+      ? "アンケートを付ける（この投稿の下に投票を出す）"
+      : "アンケートを付ける（最後の投稿の下に投票を追加）";
     pl.appendChild(pck); pl.appendChild(pls);
     pollWrap.appendChild(pl);
     const pbody = document.createElement("div"); pbody.style.cssText = "margin-top:6px";
@@ -12243,6 +12247,35 @@ const TALK = {
     [["1440", "期間 1日（既定）"], ["4320", "3日"], ["10080", "7日"], ["360", "6時間"]]
       .forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; pmin.appendChild(o); });
     pbody.appendChild(pmin);
+    /* v335 アンケートがちゃんと出たか確認できるようにする */
+    const pdiag = document.createElement("button");
+    pdiag.textContent = "アンケートの状態を見る";
+    pdiag.style.cssText = "display:block;background:none;border:none;color:var(--muted);font-size:11px;"
+      + "text-decoration:underline;padding:8px 2px 0;cursor:pointer;font-family:inherit;width:auto";
+    pdiag.onclick = async (ev) => {
+      ev.preventDefault();
+      pdiag.disabled = true; pdiag.textContent = "確認中…";
+      try {
+        const j = await talkFetch_("pollDiag");
+        const rs = j.rows || [];
+        if (!rs.length) { alert("アンケートの行がまだ1件もありません。\n予約を確定するとここに出ます。"); }
+        else {
+          const JP = { poll_wait: "予約確定（アンケート）", pending: "予約確定", posted: "投稿済み",
+                       error: "失敗", posting_edge: "投稿中" };
+          alert("最近のアンケート（新しい順）\n\n" + rs.slice(0, 8).map((r) =>
+            (String(r.scheduled_at || "").slice(5, 16).replace("T", " "))
+            + "  " + (JP[r.status] || r.status)
+            + "\n　選択肢：" + (r.poll_options || []).join(" / ")
+            + (r.tweet_id ? "\n　投稿ID：" + r.tweet_id : "")
+            + (r.error_msg ? "\n　エラー：" + r.error_msg : "")).join("\n\n"));
+        }
+      } catch (e) {
+        alert("確認できませんでした。\n\n" + e.message
+          + "\n\n※「poll_options」が無いと出る場合は、Supabaseで 16_SQL_talkアンケート_v1.sql を流してください。");
+      }
+      pdiag.disabled = false; pdiag.textContent = "アンケートの状態を見る";
+    };
+    pbody.appendChild(pdiag);
     pck.onchange = () => { pbody.style.display = pck.checked ? "block" : "none"; };
     const readPoll = () => {
       if (!pck.checked) return null;
