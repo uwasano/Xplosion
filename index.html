@@ -1678,7 +1678,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "332";
+const APP_VERSION = "333";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -10874,19 +10874,22 @@ body{
 .hicons svg{display:block}
 
 /* ---------- トーク ---------- */
-.talk{padding:4px 6px 10px 8px;display:flex;flex-direction:column;}
+/* v333 実機採寸に合わせて調整（375pt幅のLINEスクショを実測）
+   画面左→アバター5.0 / アバター径28.3 / アバター→吹き出し6.9 / 行間9.9
+   本文17px・行送り22 / 時刻は吹き出しから約7px */
+.talk{padding:4px 9px 10px 5px;display:flex;flex-direction:column;}
 .date{align-self:center;background:var(--date-pill,#7791B8);color:#fff;font-size:12px;line-height:1;padding:6px 15px;border-radius:13px;margin:8px 0 10px;}
 
-.row{display:flex;align-items:flex-end;margin-top:7px;}
-.row.same{margin-top:7px;}
+.row{display:flex;align-items:flex-end;margin-top:9.5px;}
+.row.same{margin-top:9.5px;}
 .row.me{justify-content:flex-end;}
-.avatar{width:30px;height:30px;border-radius:50%;overflow:hidden;flex-shrink:0;margin-right:6px;align-self:flex-start;margin-top:-4px;}
+.avatar{width:28px;height:28px;border-radius:50%;overflow:hidden;flex-shrink:0;margin-right:7px;align-self:flex-start;margin-top:-3.7px;}
 .avatar svg,.avatar img{width:100%;height:100%;display:block;object-fit:cover;}
-.pad{width:36px;flex-shrink:0;}
+.pad{width:35px;flex-shrink:0;}
 
 .bubble{
-  position:relative;max-width:258px;padding:7.5px 16px 8.8px;
-  font-size:16.5px;line-height:19.7px;letter-spacing:.1px;color:var(--text);
+  position:relative;max-width:277px;padding:7.5px 16px 8.8px;
+  font-size:17px;line-height:22px;letter-spacing:.1px;color:var(--text);
   border-radius:19px;white-space:pre-wrap;word-break:break-word;
 }
 /* v329 吹き出しは「角丸としっぽ」を1本の閉じたパスで描く。
@@ -10904,7 +10907,7 @@ body{
 .bubble.unsend{background:transparent;border:1px solid var(--unsend-border);color:var(--unsend-text);font-size:13.5px;padding:8px 14px;}
 
 .meta{display:flex;flex-direction:column;justify-content:flex-end;
-  font-size:11px;line-height:13.7px;color:var(--meta);padding:0 6px 3.5px;white-space:nowrap;font-weight:500;}
+  font-size:11px;line-height:13.7px;color:var(--meta);padding:0 5px 3.1px;white-space:nowrap;font-weight:500;}
 .row.me .meta{align-items:flex-end;order:-1;}
 .row.you .meta{align-items:flex-start;}
 
