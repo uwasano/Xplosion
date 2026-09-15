@@ -1678,7 +1678,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "325";
+const APP_VERSION = "331";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -10889,19 +10889,18 @@ body{
   font-size:16.5px;line-height:19.7px;letter-spacing:.1px;color:var(--text);
   border-radius:19px;white-space:pre-wrap;word-break:break-word;
 }
-.you .bubble{background:var(--you-bubble);border:1.4px solid var(--you-border);}
-.me  .bubble{background:var(--me-bubble);color:var(--me-text);}
+/* v329 吹き出しは「角丸としっぽ」を1本の閉じたパスで描く。
+   CSSの背景と枠線は使わない。重ねないので継ぎ目も二重線も出ず、本文にもかぶらない */
+.you .bubble{background:transparent;border:none;}
+.me  .bubble{background:transparent;border:none;color:var(--me-text);}
+.bubble > .bg{position:absolute;top:0;left:0;width:0;height:0;overflow:visible;}
+.bubble > .tx{position:relative;z-index:1;display:block;}
 
-/* しっぽ：実機トレース。吹き出し左上角の外側に付く爪。上には飛び出さない
-   ★v296 clip-path は画像化(html2canvas)で無視されて四角い塊になるため、SVGで描く */
-.bubble > .tl{position:absolute;top:0;width:20px;height:19px;display:block;}
 
 /* 名前をペンで消す（手書き風の塗りつぶし） */
 .msk{position:relative;display:inline-block;color:transparent!important;}
 .msk > .ink{position:absolute;left:-4px;right:-4px;top:-3px;bottom:-3px;pointer-events:none;}
 .msk > .ink > svg{width:100%;height:100%;display:block;}
-.you .bubble > .tl{left:-2.7px;}
-.me  .bubble > .tl{right:-2.7px;}
 .bubble.unsend{background:transparent;border:1px solid var(--unsend-border);color:var(--unsend-text);font-size:13.5px;padding:8px 14px;}
 
 .meta{display:flex;flex-direction:column;justify-content:flex-end;
@@ -11170,17 +11169,69 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
      ・枠線 は外側の輪郭だけをなぞる（閉じない）。閉じると吹き出しとの継ぎ目に
        縦線が1本入って、しっぽが別パーツに見えてしまう（着せ替えで枠線が付くと露見した）
      ・輪郭の終点(2.7,17.5)は吹き出しの左の角丸とぴったり重なるので、線がつながって見える */
-  const TAIL_EDGE = "M20 0 C14 .5 10.5 1.8 8.3 4 C5.5 2.3 2.5 1.5 0 1.3"
-                  + " C1.5 4 4 7 4.3 10.3 C4.4 13 3.4 15.5 2.7 17.5";
-  const TAIL_SVG = (color, mirror, stroke) =>
-    '<svg viewBox="0 0 20 19" width="20" height="19" xmlns="http://www.w3.org/2000/svg">'
-    + '<g' + (mirror ? ' transform="translate(20,0) scale(-1,1)"' : '') + '>'
-    + '<path d="' + TAIL_EDGE + ' L20 19 Z" fill="' + color + '"/>'
-    + (stroke && stroke !== "transparent"
-        ? '<path d="' + TAIL_EDGE + '" fill="none" stroke="' + stroke + '"'
-          + ' stroke-width="1.4" stroke-linejoin="round" stroke-linecap="butt"/>'
-        : '')
-    + '</g></svg>';
+  /* しっぽ v327
+     吹き出しの枠線と1本につながるように、輪郭の両端を枠線の中心線に乗せてある。
+       ・しっぽの箱は left/right:-2.7px, top:0 に置く（=吹き出しの左辺は x=2.7, 上辺は y=0）
+       ・枠線1.4px の中心線は x=3.4 と y=0.7。輪郭はこの2本から出てこの2本へ戻る
+       ・角丸は 2.5px に落としてあるので、角の丸みと輪郭が二重線にならない
+     塗りは吹き出しの中まで閉じる（L26 20 Z）ので隙間ができない。 */
+  /* 吹き出し v331：角丸の四角としっぽを「1本の閉じたパス」で描く。
+     しっぽは本物のLINEのスクリーンショットから採寸した。
+       ・背景(255,245,246)と吹き出し(255,255,255)の差でサブピクセル輪郭を抽出
+       ・同じ吹き出しの右下の角を最小二乗で円フィット → 半径61.08px
+         これを角丸19pxとみなして倍率 S=3.2145 を確定
+       ・輪郭を弧長で並べ、7本の3次ベジェに最小二乗フィット（残差 rms 0.10px）
+       ・左辺と上辺との接続は接線を水平・垂直に固定してあるので継ぎ目が出ない
+     実測値（吹き出しの左辺=0 上辺=0 のcss px）
+       上辺に戻る点 18.5 / 谷は y≈5.5 で平ら / 先端 x=-4.54（外へ約5px）
+       しっぽが左辺に着地 y=11 */
+  const BUBBLE_PAD = 9;
+  const BUBBLE_SVG = (w, h, mirror, fill, stroke, tail) => {
+    const o = 0.5, W = w - 0.5, H = h - 0.5;
+    const R = Math.max(2, Math.min(19, (h - 1) / 2));
+    const r2 = (n) => Math.round(n * 100) / 100;
+    const useTail = tail && h >= 26 && w >= 34;
+    let d = useTail
+      ? "M18.5 " + o + " L" + r2(W - R) + " " + o
+      : "M" + r2(o + R) + " " + o + " L" + r2(W - R) + " " + o;
+    d += " A" + r2(R) + " " + r2(R) + " 0 0 1 " + r2(W) + " " + r2(o + R)
+       + " L" + r2(W) + " " + r2(H - R)
+       + " A" + r2(R) + " " + r2(R) + " 0 0 1 " + r2(W - R) + " " + r2(H)
+       + " L" + r2(o + R) + " " + r2(H)
+       + " A" + r2(R) + " " + r2(R) + " 0 0 1 " + o + " " + r2(H - R);
+    d += useTail
+      ? " L" + o + " 11"
+        + " C0.5 9.6 -0.35 8.4 -1.85 8.31"       /* 左辺から離れる（接線は垂直） */
+        + " C-2.83 7.56 -3.89 6.74 -4.32 5.52"   /* しっぽの下側 */
+        + " C-4.51 5.08 -4.54 4.43 -4.09 4.12"   /* 先端 */
+        + " C-2.54 4.34 -0.94 5.3 0.76 5.45"     /* しっぽの上側 */
+        + " C2.19 5.61 3.65 5.63 5.09 5.56"      /* 谷（ここは平ら） */
+        + " C6.76 5.24 8.11 4.21 9.38 3.15"      /* 角の立ち上がり */
+        + " C12.16 1.7 15.25 " + o + " 18.5 " + o + " Z"  /* 上辺へ（接線は水平） */
+      : " L" + o + " " + r2(o + R) + " A" + r2(R) + " " + r2(R) + " 0 0 1 " + r2(o + R) + " " + o + " Z";
+    const vb = mirror ? ("0 0 " + (w + BUBBLE_PAD) + " " + h)
+                      : ("-" + BUBBLE_PAD + " 0 " + (w + BUBBLE_PAD) + " " + h);
+    return '<svg width="' + (w + BUBBLE_PAD) + '" height="' + h + '" viewBox="' + vb + '"'
+      + ' style="display:block;position:absolute;top:0;'
+      + (mirror ? "left:0" : "left:-" + BUBBLE_PAD + "px") + '">'
+      + '<g' + (mirror ? ' transform="translate(' + w + ',0) scale(-1,1)"' : '') + '>'
+      + '<path d="' + d + '" fill="' + fill + '"'
+      + (stroke && stroke !== "transparent"
+          ? ' stroke="' + stroke + '" stroke-width="1" stroke-linejoin="round"' : '')
+      + '/></g></svg>';
+  };
+  function paintBubbles(){
+    const list = document.querySelectorAll(".bubble > .bg");
+    for (let i = 0; i < list.length; i++) {
+      const bg = list[i], b = bg.parentNode;
+      const w = b.offsetWidth, h = b.offsetHeight;
+      if (!w || !h) continue;
+      const me = b.getAttribute("data-me") === "1";
+      bg.innerHTML = BUBBLE_SVG(w, h, me,
+        me ? THEME.me : "#FFFFFF", me ? null : THEME.youBorder,
+        b.getAttribute("data-tail") === "1");
+    }
+  }
 
   const defaultAvatar = \`<svg viewBox="0 0 30 30"><rect width="30" height="30" fill="#4A4F5A"/><circle cx="15" cy="11.4" r="5" fill="#D3D7DD"/><path d="M3.3 30c0-6.7 5.2-10.5 11.7-10.5S26.7 23.3 26.7 30z" fill="#D3D7DD"/></svg>\`;
 
@@ -11239,13 +11290,13 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
       b.textContent = "メッセージの送信を取り消しました";
     }else{
       b.className = "bubble";
-      putText(b, msg.text, D.mask, 1);
-    }
-    if(head && msg.type !== "unsend"){
-      const tl = document.createElement("span");
-      tl.className = "tl";
-      tl.innerHTML = TAIL_SVG(me ? THEME.me : "#FFFFFF", me, me ? null : THEME.youBorder);
-      b.appendChild(tl);
+      b.setAttribute("data-me", me ? "1" : "0");
+      b.setAttribute("data-tail", head ? "1" : "0");
+      const bg = document.createElement("span"); bg.className = "bg";
+      b.appendChild(bg);
+      const tx = document.createElement("span"); tx.className = "tx";
+      putText(tx, msg.text, D.mask, 1);
+      b.appendChild(tx);
     }
     row.appendChild(b);
 
@@ -11259,6 +11310,11 @@ window.TALK = /*__TALK_JSON__*/ null /*__END__*/;
 
     talk.appendChild(row);
   });
+  /* 実寸が決まってから描く。フォント読み込みで幅が変わるので複数回呼ぶ */
+  paintBubbles();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(paintBubbles);
+  window.addEventListener("load", paintBubbles);
+  window.paintBubbles = paintBubbles;
 })(window.TALK);
 <\/script>
 </body>
@@ -11526,19 +11582,20 @@ const TALK = {
     catch (e) { drawBuzz([]); }
     drawPicked();
 
+    /* v326 既定：自分＝女性／相手＝男性／日付は伏せる／名前も伏せる */
     field(main, "自分（画面右・緑の吹き出し）", mkSel("axMyGender", [
-      { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
+      { v: "female", t: "女性（既定）" }, { v: "male", t: "男性" }, { v: "", t: "おまかせ" }]));
     field(main, "相手（画面左・白の吹き出し）", mkSel("axPartnerGender", [
-      { v: "", t: "おまかせ" }, { v: "female", t: "女性" }, { v: "male", t: "男性" }]));
+      { v: "male", t: "男性（既定）" }, { v: "female", t: "女性" }, { v: "", t: "おまかせ" }]));
     field(main, "日付の表示", mkSel("axDate", [
-      { v: "", t: "表示する（既定）" }, { v: "off", t: "表示しない" }]),
+      { v: "off", t: "伏せる（既定）" }, { v: "", t: "表示する" }]),
       "トーク画面の上に出る「9月14日（月）」の表示です。");
     field(main, "着せ替え", mkSel("axTheme", [
       { v: "", t: "ピンク（既定）" }, { v: "default", t: "標準（青）" }, { v: "mint", t: "ミント" },
       { v: "cream", t: "クリーム" }, { v: "lavender", t: "ラベンダー" }, { v: "mono", t: "モノトーン" }]),
       "自分の吹き出しと背景が変わります。相手側は白のまま、枠の色だけ変わります。");
     field(main, "名前の伏せ方", mkSel("axMask", [
-      { v: "", t: "そのまま出す（既定）" }, { v: "pen", t: "手書きペンで消す" }]),
+      { v: "pen", t: "伏せる（既定・手書きペンで消す）" }, { v: "", t: "そのまま出す" }]),
       "会話に出る人名を、手書きで塗りつぶしたように隠します。柄は200種類から自動で選ばれます。");
     field(main, "投稿文の型", mkSel("axHook", [
       { v: "", t: "一言フック（既定・バズ特化）" }, { v: "long", t: "説明入り（従来）" }]),
