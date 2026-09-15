@@ -1661,7 +1661,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "320";
+const APP_VERSION = "321";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11372,7 +11372,7 @@ const TALK = {
     const addRow = document.createElement("div");
     addRow.style.cssText = "display:flex;gap:6px;margin-top:8px;flex-wrap:wrap";
     const addWord = document.createElement("input");
-    addWord.type = "text"; addWord.placeholder = "話題を追加（例：エルコレ）";
+    addWord.type = "text"; addWord.placeholder = "話題を手で追加（見つけた語を貼る）";
     addWord.style.cssText = "flex:1;min-width:190px;padding:7px 9px;border:1px solid var(--line);"
       + "border-radius:8px;font-size:12px;background:transparent;color:inherit";
     const addBtn = document.createElement("button");
@@ -11432,9 +11432,13 @@ const TALK = {
       }
       buzzNote.textContent = "押すと「投稿文に入れる話題」になります。トークの中身には出さず、同じ構図の会話を作ります。自分で追加した語は上に出ます。";
       words.slice(0, 12).forEach((w) => {
+        /* v321 一つずつ消せるようにする（チップ本体＋右の×） */
+        const g = document.createElement("span");
+        g.style.cssText = "display:inline-flex;align-items:stretch";
         const c = document.createElement("button");
         c.className = "chip";
-        c.style.cssText = "font-size:11px;padding:5px 10px" + (w.used_count > 0 ? ";opacity:.5" : "");
+        c.style.cssText = "font-size:11px;padding:5px 10px;border-top-right-radius:0;"
+          + "border-bottom-right-radius:0;border-right:none" + (w.used_count > 0 ? ";opacity:.5" : "");
         c.textContent = w.word + (w.used_count > 0 ? "（使用済）" : "");
         c.title = w.headline || "";
         c.onclick = () => {
@@ -11442,7 +11446,28 @@ const TALK = {
           drawPicked();
           try { talkFetch_("buzzUse", { id: w.id }); } catch (e) {}
         };
-        buzzChips.appendChild(c);
+        const d = document.createElement("button");
+        d.className = "chip";
+        d.textContent = "×";
+        d.title = "この話題を候補から消す";
+        d.style.cssText = "font-size:11px;padding:5px 8px;border-top-left-radius:0;"
+          + "border-bottom-left-radius:0;color:var(--muted)";
+        d.onclick = async (ev) => {
+          ev.stopPropagation();
+          d.disabled = true; c.disabled = true; g.style.opacity = ".4";
+          try {
+            await talkFetch_("buzzDrop", { id: w.id });
+            if (TALK._buzz && TALK._buzz.word === w.word) { TALK._buzz = null; drawPicked(); }
+            TALK._buzzWords = (TALK._buzzWords || []).filter(x => x.id !== w.id);
+            drawBuzz(TALK._buzzWords);
+            buzzNote.textContent = "「" + w.word + "」を候補から消しました。";
+          } catch (e) {
+            d.disabled = false; c.disabled = false; g.style.opacity = "";
+            buzzNote.textContent = "削除に失敗しました。" + e.message;
+          }
+        };
+        g.appendChild(c); g.appendChild(d);
+        buzzChips.appendChild(g);
       });
     };
 
