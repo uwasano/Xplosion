@@ -30,6 +30,9 @@
     --bg:#04060C; --surface:#0F1422; --surface2:#0C1120; --border:#1D2A47;
     --accent:#FF2E7E; --accent2:#00E5FF; --violet:#B44DFF;
     --text:#EAF0FF; --muted:#7E8BA8; --ok:#3DFFA8; --bad:#FF7B7B;
+    /* v339 --line は定義されていなかった。border:1px solid var(--line) が丸ごと無効になり、
+       入力欄の枠線が全部消えて「ただの文字」に見えていた。--border と同じ値で定義する */
+    --line:#1D2A47;
     --mono:"SF Mono",ui-monospace,Menlo,monospace;
   }
   *{box-sizing:border-box}
@@ -100,6 +103,32 @@
   .chip{padding:8px 14px;border-radius:999px;border:1px solid var(--border);background:transparent;
     color:var(--muted);font-size:13px;font-weight:700;cursor:pointer}
   .chip.on{border-color:var(--accent);background:rgba(255,46,126,.12);color:var(--accent);box-shadow:0 0 12px rgba(255,46,126,.3)}
+  /* v341 フック候補（1本目の5案）。バズり率で色と見た目を変える */
+  .hkw{margin:6px 0 10px}
+  .hkw > .ttl{font-size:9.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);font-family:var(--mono);margin-bottom:6px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;white-space:nowrap}
+  .hkw > .ttl .sub{font-weight:600;letter-spacing:0;color:var(--muted);font-family:inherit;font-size:10.5px;opacity:.85;white-space:normal}
+  .hk{display:flex;align-items:flex-start;gap:9px;width:100%;text-align:left;padding:8px 10px;margin-bottom:6px;
+    border:1px solid var(--border);border-radius:11px;background:var(--surface);color:var(--text);cursor:pointer;
+    font-family:inherit;font-size:12.5px;line-height:1.55;position:relative;transition:transform .08s}
+  .hk:active{transform:scale(.99)}
+  .hk .sc{flex:none;min-width:46px;text-align:center;font-family:var(--mono);font-weight:800;font-size:12px;
+    padding:3px 6px;border-radius:7px;border:1px solid var(--border);color:var(--muted)}
+  .hk .ty{flex:none;font-size:10px;color:var(--muted);opacity:.85;margin-top:3px;min-width:34px}
+  .hk .tx{flex:1;min-width:0;word-break:break-word}
+  .hk .bar{position:absolute;left:10px;right:10px;bottom:0;height:2px;border-radius:2px;background:var(--border);overflow:hidden}
+  .hk .bar > i{display:block;height:100%;width:0;background:var(--muted)}
+  /* 熱さ4段階 */
+  .hk.h4{border-color:#ff5a3c;background:linear-gradient(90deg,rgba(255,90,60,.18),rgba(255,46,126,.08));box-shadow:0 0 16px rgba(255,90,60,.28)}
+  .hk.h4 .sc{background:linear-gradient(92deg,#ff5a3c,#ff2e7e);color:#fff;border-color:transparent}
+  .hk.h4 .bar > i{background:linear-gradient(90deg,#ff5a3c,#ff2e7e)}
+  .hk.h3{border-color:#ff9f43;background:rgba(255,159,67,.09)}
+  .hk.h3 .sc{color:#ffb86b;border-color:#ff9f43}
+  .hk.h3 .bar > i{background:#ff9f43}
+  .hk.h2 .sc{color:#e8d36a;border-color:rgba(232,211,106,.5)}
+  .hk.h2 .bar > i{background:#e8d36a}
+  .hk.h1{opacity:.55}
+  .hk.on{outline:2px solid var(--accent2);outline-offset:1px}
+  .hk .def{flex:none;font-size:9.5px;font-weight:800;color:var(--accent2);border:1px solid var(--accent2);border-radius:999px;padding:1px 7px;margin-top:2px}
   .chip.on.cyan{border-color:var(--accent2);background:rgba(0,229,255,.1);color:var(--accent2);box-shadow:0 0 12px rgba(0,229,255,.25)}
   .out{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--accent2);
     border-radius:12px;padding:16px;margin-top:14px;position:relative;box-shadow:0 0 24px rgba(0,229,255,.06)}
@@ -1690,7 +1719,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "335";
+const APP_VERSION = "340";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -11385,6 +11414,54 @@ async function talkFetch_(action, extra) {
    置換は必ず「関数」で渡す。文字列だと $& が置換記号として解釈されて壊れます。 */
 /* v306 日付・曜日・時刻はAIに書かせず、実際の日時から作る。
    AIが書くと「9月6日(土)」のように曜日がズレる。 */
+/* v341 1本目のフック候補（AIが5案作って自己採点したもの）を並べる。
+   タップすると textarea に入り、onPick で保存する。バズり率で色を変える：
+   80以上=激アツ(赤・光る) / 65〜79=アツい(橙) / 50〜64=普通(黄) / 50未満=弱い(薄く) */
+function talkHookChips_(hooks, ta, onPick) {
+  const list = Array.isArray(hooks) ? hooks.filter((h) => h && h.text) : [];
+  if (!list.length) return null;
+  const wrap = document.createElement("div"); wrap.className = "hkw";
+  const ttl = document.createElement("div"); ttl.className = "ttl";
+  ttl.innerHTML = "1本目のフック候補 <span class=\"sub\">AIが5案を自己採点。タップで差し替え。数字はバズり率(%)</span>";
+  wrap.appendChild(ttl);
+  const clean = (s) => String(s || "").replace(/[〈〉]/g, "");
+  const heat = (s) => s >= 80 ? "h4" : s >= 65 ? "h3" : s >= 50 ? "h2" : "h1";
+  const heatWord = (s) => s >= 80 ? "🔥激アツ" : s >= 65 ? "アツい" : s >= 50 ? "普通" : "弱い";
+  const rows = [];
+  const refresh = () => {
+    const cur = clean(ta.value).trim();
+    rows.forEach((r) => {
+      const on = clean(r.h.text).trim() === cur;
+      r.el.classList.toggle("on", on);
+      r.def.style.display = on ? "" : "none";
+    });
+  };
+  list.slice().sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0)).forEach((h) => {
+    const sc = Math.max(0, Math.min(100, Math.round(Number(h.score) || 0)));
+    const b = document.createElement("button"); b.type = "button";
+    b.className = "hk " + heat(sc);
+    b.title = heatWord(sc);
+    const s = document.createElement("span"); s.className = "sc"; s.textContent = sc + "%";
+    const ty = document.createElement("span"); ty.className = "ty"; ty.textContent = String(h.type || "");
+    const tx = document.createElement("span"); tx.className = "tx"; tx.textContent = clean(h.text);
+    const def = document.createElement("span"); def.className = "def"; def.textContent = "使用中";
+    const bar = document.createElement("span"); bar.className = "bar";
+    const fill = document.createElement("i"); fill.style.width = sc + "%"; bar.appendChild(fill);
+    b.appendChild(s); b.appendChild(ty); b.appendChild(tx); b.appendChild(def); b.appendChild(bar);
+    b.onclick = (ev) => {
+      ev.preventDefault();
+      ta.value = clean(h.text);
+      refresh();
+      try { if (onPick) onPick(); } catch (e) {}
+    };
+    wrap.appendChild(b);
+    rows.push({ h: h, el: b, def: def });
+  });
+  ta.addEventListener("input", refresh);
+  refresh();
+  return wrap;
+}
+
 function talkClock_(talk) {
   const now = new Date();
   const WD = ["日", "月", "火", "水", "木", "金", "土"];
@@ -11477,7 +11554,8 @@ const TALK = {
     const theme = document.createElement("input");
     theme.id = "talkTheme"; theme.type = "text";
     theme.placeholder = "例：誕生日の店を当日キャンセルされた";
-    theme.style.cssText = "width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;font-size:14px;background:transparent;color:inherit";
+    theme.style.cssText = "width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:10px;"
+      + "font-size:14px;background:var(--surface);color:var(--text)";
     field(main, "テーマ", theme, "トークの中身（会話で起きること）です。空欄なら自動で選ばれます。");
 
     /* v316 今バズってる言葉から題材を選ぶ（Googleトレンド公式RSS） */
@@ -11642,19 +11720,15 @@ const TALK = {
       return node;
     };
 
+    /* v337 「形」と「本数」をやめて、枚数ひとつで決める。既定は1枚＋アンケート */
     const gShape = grp("投稿の形");
-    const selShape = frow(gShape, "形", mkSel("axShape", [
-      { v: "", t: "スレッド連載（画像を分けて続ける）" },
-      { v: "single", t: "単発1枚＋アンケート" }]));
-    const selParts = frow(gShape, "本数", mkSel("axParts", [
-      { v: "", t: "おまかせ" }, { v: "3", t: "3本（続く感じ）" }, { v: "4", t: "4本" }, { v: "5", t: "5本構成" }]),
-      "単発は会話を画像1枚にまとめ、下にXの投票をぶら下げます。");
-    const syncShape = () => {
-      const one = selShape.value === "single";
-      selParts.disabled = one;
-      if (one) selParts.value = "";
-    };
-    selShape.onchange = syncShape; syncShape();
+    frow(gShape, "枚数", mkSel("axSheets", [
+      { v: "1", t: "1枚＋アンケート（既定）" },
+      { v: "2", t: "2枚（スレッド）" },
+      { v: "3", t: "3枚（スレッド）" },
+      { v: "4", t: "4枚（スレッド）" }]),
+      "1枚は会話を画像1枚にまとめ、下にXの投票をぶら下げます。"
+      + "2枚以上は前の投稿へのリプとして繋がり、1枚ごとに投稿文が付きます。");
 
     const gCast = grp("登場人物");
     frow(gCast, "自分", mkSel("axMyGender", [
@@ -11841,8 +11915,8 @@ const TALK = {
     const acct = (el.querySelector("#talkAcct") || {}).value || "";
     if (!acct) { alert("投稿先のXアカウントを選んでください。"); return; }
     const n = parseInt((el.querySelector("#axCount") || {}).value || "1", 10);
-    const parts = ((el.querySelector("#axParts") || {}).value || "");
-    const partTxt = parts ? parts + "本のスレッド" : "おまかせの本数";
+    const sheets = Math.max(1, Math.min(4, Number((el.querySelector("#axSheets") || {}).value) || 1));
+    const partTxt = sheets === 1 ? "1枚＋アンケート" : sheets + "枚のスレッド";
     if (!confirm("@" + acct + " 向けに、" + partTxt + "の話を" + n + "話つくります。\n"
       + (n > 1 ? "※同じテーマで" + n + "本のカードが並びます。1つだけで良い場合は「その他の設定 → まとめて作る数」を1話ずつにしてください。\n" : "")
       + "\nよろしいですか？")) return;
@@ -11851,10 +11925,8 @@ const TALK = {
     try {
       const combos = TALK.makeCombos(el, n);
       const extra = { account: acct, count: n, combos: combos };
-      /* 会話の長さで枚数が決まる（1枚22通まで）。本数×21通にすると狙った本数ちょうどになる */
-      const shape = ((el.querySelector("#axShape") || {}).value || "");
-      if (shape === "single") extra.messageCount = 20;
-      else if (parts) extra.messageCount = Number(parts) * 21;
+      /* 会話の長さで枚数が決まる（1枚22通まで）。枚数×21通にすると狙った枚数ちょうどになる */
+      extra.messageCount = sheets === 1 ? 20 : sheets * 21;
       await talkFetch_("talkBatch", extra);
       alert("追加しました。数分おきに1本ずつ生成されます。");
       await TALK.load(el);
@@ -11997,6 +12069,38 @@ const TALK = {
     mnum.disabled = !maskState.on; mrnd.disabled = !maskState.on;
     drawConv();
 
+    /* ---- v336 1コメント目（投稿したあと自分で置くコメント） ---- */
+    if (tj.firstComment) {
+      const fcWrap = document.createElement("div");
+      fcWrap.style.cssText = "border:1px solid var(--border);border-radius:12px;background:var(--surface2);"
+        + "padding:10px 12px;margin-bottom:14px";
+      const fcTtl = document.createElement("div");
+      fcTtl.style.cssText = "font-size:9.5px;font-weight:800;letter-spacing:.18em;color:var(--accent2);"
+        + "font-family:var(--mono);margin-bottom:6px";
+      fcTtl.textContent = "1コメント目";
+      const fcNote = document.createElement("div");
+      fcNote.style.cssText = "font-size:10.5px;color:var(--muted);opacity:.85;margin-bottom:7px;line-height:1.6";
+      fcNote.textContent = "投稿されたあと、自分でこれを返信として置きます。答えを確定させないので、"
+        + "「最初は？」と食いついてコメントが伸びます。";
+      const fcTa = document.createElement("textarea");
+      fcTa.value = String(tj.firstComment || "");
+      fcTa.rows = 2;
+      fcTa.style.cssText = "width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;"
+        + "font-size:13px;line-height:1.7;background:var(--surface);color:var(--text);resize:vertical";
+      const fcBtn = document.createElement("button");
+      fcBtn.className = "chip"; fcBtn.textContent = "コピー";
+      fcBtn.style.cssText = "font-size:11px;padding:5px 14px;margin-top:7px;width:auto";
+      fcBtn.onclick = async (ev) => {
+        ev.preventDefault();
+        try { await navigator.clipboard.writeText(fcTa.value); fcBtn.textContent = "コピーしました"; }
+        catch (e2) { fcTa.select(); fcBtn.textContent = "選択しました"; }
+        setTimeout(() => { fcBtn.textContent = "コピー"; }, 1600);
+      };
+      fcWrap.appendChild(fcTtl); fcWrap.appendChild(fcNote);
+      fcWrap.appendChild(fcTa); fcWrap.appendChild(fcBtn);
+      box.appendChild(fcWrap);
+    }
+
     /* ---- 投稿文（編集できる） ---- */
     const pt = document.createElement("div");
     pt.style.cssText = "font-size:12px;font-weight:600;margin-bottom:6px";
@@ -12063,11 +12167,17 @@ const TALK = {
       l.textContent = (i + 1) + "本目";
       const t = document.createElement("textarea");
       t.rows = 2; t.value = String(p.post_text || "").replace(/[〈〉]/g, "");
-      t.style.cssText = "width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:12.5px;"
-        + "background:transparent;color:inherit;font-family:inherit;line-height:1.6;resize:vertical";
+      t.style.cssText = "width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;"
+        + "background:var(--surface);color:var(--text);font-family:inherit;line-height:1.6;resize:vertical";
       t.onfocus = () => { lastTa = t; };
       t.onblur = () => { autoSave(); };
-      w.appendChild(l); w.appendChild(t); box.appendChild(w);
+      w.appendChild(l); w.appendChild(t);
+      /* v341 1本目だけ、AIの5案（バズり率つき）を下に並べる */
+      if (i === 0) {
+        const hk = talkHookChips_(tj.hooks, t, () => { autoSave(); });
+        if (hk) w.appendChild(hk);
+      }
+      box.appendChild(w);
       areas.push({ id: p.id, ta: t });
     });
     box.appendChild(savedNote);
@@ -12110,12 +12220,9 @@ const TALK = {
         const extra = { jobId: job.id };
         /* 画面の設定（テーマ・性別・子ども・本数など）で新しい組み合わせを引き直す */
         try { extra.combo = TALK.makeCombos(el, 1)[0]; } catch (e2) { /* 前回の題材のまま作り直す */ }
-        /* v334 作り直しでも「投稿の形」を見る。単発なのに枚数が増える不具合の修正 */
-        const shape2 = ((el.querySelector("#axShape") || {}).value || "");
-        const parts = ((el.querySelector("#axParts") || {}).value || "");
-        if (shape2 === "single") extra.messageCount = 20;
-        else if (parts) extra.messageCount = Number(parts) * 21;
-        else extra.messageCount = Number(job.message_count) || 55;
+        /* v337 作り直しでも「枚数」を見る。枚数が勝手に増える不具合の修正 */
+        const sh = Math.max(1, Math.min(4, Number((el.querySelector("#axSheets") || {}).value) || 1));
+        extra.messageCount = sh === 1 ? 20 : sh * 21;
         await talkFetch_("talkRegen", extra);
         await TALK.load(el);
       } catch (e) {
@@ -12132,7 +12239,7 @@ const TALK = {
      ・1本ずつ個別に時刻を直すこともできます。
      ・「この予定で確定する」を押すまで、予約は入りません。
      ============================================================ */
-  buildSchedule(el, box, ps) {
+  buildSchedule(el, box, ps, job) {
     const pad = (n) => String(n).padStart(2, "0");
     const toInput = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate())
       + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
@@ -12213,6 +12320,59 @@ const TALK = {
         chips.appendChild(c);
       });
 
+    /* v340 最終画面（投稿予定）でも投稿文を直せるようにする。
+       確定を押した時に必ず保存してから予約するので、直した文がそのまま投稿される */
+    const txWrap = document.createElement("div");
+    txWrap.style.cssText = "margin-top:14px;padding-top:12px;border-top:1px solid var(--border)";
+    box.appendChild(txWrap);
+    const txTtl = document.createElement("div");
+    txTtl.style.cssText = "font-size:13px;font-weight:600;margin-bottom:3px";
+    txTtl.textContent = "投稿文（" + ps.length + "本／ここでも直せます）";
+    const txNote = document.createElement("div");
+    txNote.style.cssText = "font-size:10.5px;color:var(--muted);opacity:.85;margin-bottom:8px;line-height:1.6";
+    txNote.textContent = "画像はもうできています。ここで直した文で予約されます。";
+    txWrap.appendChild(txTtl); txWrap.appendChild(txNote);
+    const txAreas = [];
+    ps.forEach((p2, i) => {
+      const w = document.createElement("div"); w.style.cssText = "margin-bottom:8px";
+      const l = document.createElement("div");
+      l.style.cssText = "font-size:10.5px;color:var(--muted);margin-bottom:3px";
+      l.textContent = (i + 1) + "本目";
+      const ta = document.createElement("textarea");
+      ta.rows = 2; ta.value = String(p2.post_text || "").replace(/[〈〉]/g, "");
+      ta.style.cssText = "width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;"
+        + "font-size:12.5px;background:var(--surface);color:var(--text);font-family:inherit;"
+        + "line-height:1.6;resize:vertical";
+      w.appendChild(l); w.appendChild(ta);
+      /* v341 最終画面でも1本目はフック候補から選び直せる */
+      if (i === 0) {
+        const hk = talkHookChips_(job && job.talk_json ? job.talk_json.hooks : null, ta,
+          () => { saveTx(true).catch(() => {}); });
+        if (hk) w.appendChild(hk);
+      }
+      txWrap.appendChild(w);
+      txAreas.push({ id: p2.id, ta: ta });
+    });
+    const txNote2 = document.createElement("div");
+    txNote2.style.cssText = "font-size:10.5px;color:var(--muted);min-height:14px";
+    txWrap.appendChild(txNote2);
+    let txLast = JSON.stringify(txAreas.map((a) => a.ta.value));
+    const saveTx = async (quiet) => {
+      const cur = JSON.stringify(txAreas.map((a) => a.ta.value));
+      if (txAreas.some((a) => !a.ta.value.trim())) {
+        txNote2.textContent = "空の投稿文があります。保存していません。";
+        throw new Error("投稿文が空の本があります。");
+      }
+      if (cur === txLast && quiet) return;
+      await talkFetch_("talkPartsUpdate", {
+        jobId: job.id, parts: txAreas.map((a) => ({ id: a.id, post_text: a.ta.value.trim() })) });
+      txAreas.forEach((a, i) => { ps[i].post_text = a.ta.value.trim(); });
+      txLast = cur;
+      txNote2.textContent = "保存しました";
+      setTimeout(() => { if (txNote2.textContent === "保存しました") txNote2.textContent = ""; }, 2000);
+    };
+    txAreas.forEach((a) => { a.ta.onblur = () => { saveTx(true).catch(() => {}); }; });
+
     /* v310 アンケート（最後の本にぶら下げる） */
     const pollWrap = document.createElement("div");
     pollWrap.style.cssText = "margin-top:14px;padding-top:12px;border-top:1px solid var(--line)";
@@ -12232,18 +12392,33 @@ const TALK = {
     pnote.style.cssText = "font-size:10.5px;color:var(--muted);margin-bottom:8px;opacity:.85";
     pnote.textContent = "投票はタップだけで参加できるので、一番反応が伸びます。空欄の選択肢は無視されます（2〜4個）。";
     pbody.appendChild(pnote);
-    const pq = document.createElement("input"); pq.type = "text"; pq.value = "みんなならどうする？";
-    pq.style.cssText = "width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:transparent;color:inherit;margin-bottom:8px";
+    /* v338 アンケートは会話から作られたものを使う。無ければ空欄にして手で書かせる */
+    const genPoll = (job && job.talk_json && job.talk_json.poll) ? job.talk_json.poll : null;
+    const genOpts = (genPoll && Array.isArray(genPoll.options)) ? genPoll.options.slice(0, 4) : [];
+    if (!genPoll) {
+      const pw = document.createElement("div");
+      pw.style.cssText = "font-size:10.5px;color:var(--bad);margin-bottom:8px;line-height:1.6";
+      pw.textContent = "この話にはアンケートが作られていません（古いジョブです）。"
+        + "「内容を直す・画像を作り直す」から作り直すと、会話に合った質問が入ります。";
+      pbody.appendChild(pw);
+    }
+    const pq = document.createElement("input"); pq.type = "text";
+    pq.value = (genPoll && genPoll.question) ? String(genPoll.question) : "";
+    pq.placeholder = "質問（例：どこからがアウト？）";
+    pq.style.cssText = "width:100%;padding:9px 11px;border:1px solid var(--border);border-radius:9px;"
+      + "font-size:13px;background:var(--surface);color:var(--text);margin-bottom:8px";
     pbody.appendChild(pq);
     const pOpts = [];
-    ["我慢する", "別れる", "話し合う", ""].forEach((v, i) => {
+    [genOpts[0] || "", genOpts[1] || "", genOpts[2] || "", genOpts[3] || ""].forEach((v, i) => {
       const oi = document.createElement("input"); oi.type = "text"; oi.value = v; oi.maxLength = 25;
       oi.placeholder = "選択肢" + (i + 1) + (i >= 2 ? "（任意）" : "");
-      oi.style.cssText = "width:100%;padding:7px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;background:transparent;color:inherit;margin-bottom:6px";
+      oi.style.cssText = "width:100%;padding:8px 11px;border:1px solid var(--border);border-radius:9px;"
+        + "font-size:13px;background:var(--surface);color:var(--text);margin-bottom:6px";
       pbody.appendChild(oi); pOpts.push(oi);
     });
     const pmin = document.createElement("select");
-    pmin.style.cssText = "padding:7px 9px;border:1px solid var(--line);border-radius:8px;font-size:12px;background:transparent;color:inherit";
+    pmin.style.cssText = "padding:8px 11px;border:1px solid var(--border);border-radius:9px;font-size:12.5px;"
+      + "background:var(--surface);color:var(--text);width:auto";
     [["1440", "期間 1日（既定）"], ["4320", "3日"], ["10080", "7日"], ["360", "6時間"]]
       .forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; pmin.appendChild(o); });
     pbody.appendChild(pmin);
@@ -12281,7 +12456,9 @@ const TALK = {
       if (!pck.checked) return null;
       const opts = pOpts.map((x) => x.value.trim()).filter(Boolean).slice(0, 4);
       if (opts.length < 2) return null;
-      return { options: opts, text: (pq.value.trim() || "みんなならどうする？"), minutes: Number(pmin.value) || 1440 };
+      const q = pq.value.trim();
+      if (!q) return null;
+      return { options: opts, text: q, minutes: Number(pmin.value) || 1440 };
     };
 
     /* --- 確定 --- */
@@ -12299,7 +12476,10 @@ const TALK = {
       if (!confirm(ps.length + "本のスレッドを予約します。\n\n1本目： " + fmtJ(times[0])
         + "\n最後：　 " + fmtJ(times[times.length - 1])
         + "\n\n2本目以降は前の投稿へのリプとして自動で繋がります。よろしいですか？")) return;
-      ok.disabled = true; ok.textContent = "予約しています…";
+      ok.disabled = true; ok.textContent = "保存しています…";
+      try { await saveTx(false); }
+      catch (eT) { alert(eT.message); ok.disabled = false; ok.textContent = "この予定で確定する"; return; }
+      ok.textContent = "予約しています…";
       const pollCfg = readPoll();
       let pollErr = null, pollDone = false;
       try {
@@ -12315,6 +12495,8 @@ const TALK = {
             + "\n\n※「poll_options ... does not exist」と出ている場合は、Supabaseで 16_SQL_talkアンケート_v1.sql をまだ実行していません。それを流すと直ります。");
         } else if (pollCfg && !pollDone) {
           alert("投稿は予約できましたが、アンケートが作成されませんでした。選択肢を2つ以上入れてください。");
+        } else if (!pollCfg && pck.checked) {
+          alert("アンケートは付きませんでした。質問と、選択肢を2つ以上入れてください。");
         }
         alert("予約しました。1本目から順に自動投稿されます。");
         await TALK.load(el);
@@ -12472,7 +12654,7 @@ const TALK = {
           const openSched = () => {
             b2.style.display = "none";
             sc2.style.display = "block";
-            if (!sc2.dataset.built) { TALK.buildSchedule(el, sc2, ps); sc2.dataset.built = "1"; }
+            if (!sc2.dataset.built) { TALK.buildSchedule(el, sc2, ps, job); sc2.dataset.built = "1"; }
           };
           b2.onclick = openSched;
 
