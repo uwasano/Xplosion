@@ -1719,7 +1719,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "350";
+const APP_VERSION = "352";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -12835,6 +12835,68 @@ const TALK = {
     act.appendChild(ok); box.appendChild(act);
   },
 
+  /* v351 成績カード（型別・時間帯別の平均表示回数）。折りたたみ。 */
+  statsCard(el) {
+    const c = document.createElement("div");
+    c.style.cssText = "margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface2)";
+    const h = document.createElement("div");
+    h.style.cssText = "display:flex;justify-content:space-between;align-items:center;cursor:pointer";
+    h.innerHTML = '<span style="font-size:12px;font-weight:700">成績（24時間の表示回数）</span><span class="muted" style="font-size:11px">読み込み中…</span>';
+    const body = document.createElement("div"); body.style.cssText = "display:none;margin-top:8px;font-size:11.5px;line-height:1.7";
+    c.appendChild(h); c.appendChild(body);
+    h.onclick = () => { body.style.display = body.style.display === "none" ? "block" : "none"; };
+    talkFetch_("talkStats").then((j) => {
+      const sub = h.querySelector("span:last-child");
+      const pf = j.perf || {};
+      if (!pf.n) { sub.textContent = "まだデータなし"; body.innerHTML = '<div class="muted">投稿から24時間たつと自動で集計されます（キーの設定は不要です）。</div>'; return; }
+      /* v352 表示回数が取れない経路（キーなし・公開埋め込み）では「反応スコア」で出す */
+      const unit = pf.hasViews ? " 表示" : " 反応";
+      h.querySelector("span:first-child").textContent = pf.hasViews ? "成績（24時間の表示回数）" : "成績（24時間の反応スコア）";
+      sub.textContent = pf.n + "本 / 平均 " + pf.avgViews.toLocaleString() + unit;
+      const TY = { "①": "①謎", "②": "②判定", "③": "③共感", "④": "④感情", "⑤": "⑤続き", "便": "便乗", "?": "不明" };
+      let html = '<div style="font-weight:600;margin-bottom:3px">フックの型別</div>';
+      html += (pf.byType || []).map((x) => '<div style="display:flex;justify-content:space-between"><span>' + esc(TY[x.type] || x.type) + '（' + x.n + '本）</span><b>' + x.avgViews.toLocaleString() + '</b></div>').join("");
+      html += '<div style="font-weight:600;margin:8px 0 3px">投稿した時間帯（JST）</div>';
+      html += (pf.byHour || []).slice(0, 6).map((x) => '<div style="display:flex;justify-content:space-between"><span>' + x.hour + '時台（' + x.n + '本）</span><b>' + x.avgViews.toLocaleString() + '</b></div>').join("");
+      html += '<div class="muted" style="margin-top:8px;font-size:10.5px">この実績は次の生成のフック採点に自動で反映されます。'
+        + (pf.hasViews ? "" : " 反応スコア＝いいね×20＋返信×60（表示回数はキーなしでは取れないため）。twitterapi.io のキーを Secrets に入れると表示回数と返信一覧も取れます。") + '</div>';
+      body.innerHTML = html;
+      const btn = document.createElement("button"); btn.className = "chip"; btn.textContent = "いま取り戻す"; btn.style.cssText = "font-size:11px;padding:4px 10px;margin-top:6px;width:auto";
+      btn.onclick = async (ev) => { ev.stopPropagation(); btn.disabled = true; try { const r = await talkFetch_("talkMetrics"); btn.textContent = r.fetched + "本 取得"; } catch (e) { btn.textContent = "失敗: " + e.message; } };
+      body.appendChild(btn);
+    }).catch((e) => { h.querySelector("span:last-child").textContent = "取得できませんでした"; });
+    return c;
+  },
+  /* v351 反応（コメント）を読んで、返信案を出す。送るのは人がボタンを押した時だけ */
+  reactionsPanel(postId) {
+    const w = document.createElement("div");
+    w.style.cssText = "margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface)";
+    w.innerHTML = '<div class="muted" style="font-size:11.5px">コメントを読んでいます…</div>';
+    talkFetch_("talkReplies", { postId }).then((j) => {
+      w.innerHTML = "";
+      if (!j.ok) { w.innerHTML = '<div class="err" style="font-size:11.5px">' + esc(j.error || "") + '</div>'; return; }
+      if (!j.drafts.length) { w.innerHTML = '<div class="muted" style="font-size:11.5px">' + esc(j.reason || "まだコメントがありません。") + '</div>'; return; }
+      const ttl = document.createElement("div"); ttl.style.cssText = "font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.6";
+      ttl.textContent = "コメントごとに投稿主の声で返信案を作りました。直してから「送る」を押してください（自動では送りません）。早く返すほど伸びます。";
+      w.appendChild(ttl);
+      j.drafts.forEach((d) => {
+        const r = document.createElement("div"); r.style.cssText = "margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)";
+        const cm = document.createElement("div"); cm.style.cssText = "font-size:11.5px;color:var(--muted);margin-bottom:4px"; cm.textContent = "@" + d.user + "：" + d.comment;
+        const ta = document.createElement("textarea"); ta.rows = 2; ta.value = d.text;
+        ta.style.cssText = "width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;background:var(--surface2);color:var(--text);font-family:inherit;line-height:1.6";
+        const b = document.createElement("button"); b.className = "chip"; b.textContent = "この返信を送る"; b.style.cssText = "font-size:11px;padding:4px 12px;margin-top:5px;width:auto";
+        b.onclick = async () => {
+          const tx = ta.value.trim(); if (!tx) return;
+          if (!confirm("@" + d.user + " さんに返信します。よろしいですか？\n\n" + tx)) return;
+          b.disabled = true; b.textContent = "予約中…";
+          try { const rr = await talkFetch_("talkReplyPost", { postId, replyToTweetId: d.replyToTweetId, text: tx }); b.textContent = "数分以内に送られます"; }
+          catch (e) { b.disabled = false; b.textContent = "失敗: " + e.message; }
+        };
+        r.appendChild(cm); r.appendChild(ta); r.appendChild(b); w.appendChild(r);
+      });
+    }).catch((e) => { w.innerHTML = '<div class="err" style="font-size:11.5px">' + esc(e.message) + '</div>'; });
+    return w;
+  },
   async load(el, openJobId) {
     const box = el.querySelector("#talkList");
     try {
@@ -12867,6 +12929,8 @@ const TALK = {
       const IMGBASE = String(SUPABASE_URL).replace(/\/+$/, "") + "/storage/v1/object/public/talkimages/";
       const bust = "?t=" + Date.now();
       box.innerHTML = "";
+      /* v351 成績（表示回数）。twitterapi.io のキーが入っていれば数字が出る */
+      try { box.appendChild(TALK.statsCard(el)); } catch (eS) { /* 出なくても本体は動く */ }
       /* v303 画面に出すのは「いま作業中のもの」だけ。
          予約が入ったもの・見送りにしたものは、下の「済んだ分」に畳む */
       const liveBox = document.createElement("div"); box.appendChild(liveBox);
@@ -13022,8 +13086,17 @@ const TALK = {
           });
           const note2 = document.createElement("div");
           note2.style.cssText = "font-size:10.5px;color:var(--muted);margin:6px 0 8px;opacity:.85";
-          note2.textContent = "予約済みの分は「予約管理」の予約確定タブで管理できます。取り消しはどちらからでも構いません。";
+          note2.textContent = "予約済みの分は「予約管理」の予約確定タブで管理できます。取り消しはどちらからでも構いません。投稿時刻は機械的に見えないよう数分ずらして投稿されます。";
           q.appendChild(note2);
+          /* v351 投稿済みなら、コメントを読んで返信案を出す */
+          const posted1 = queued.find((p) => schedMap[String(p.post_id)] && schedMap[String(p.post_id)].status === "posted");
+          if (posted1) {
+            const br = document.createElement("button"); br.className = "chip"; br.textContent = "反応を見る・返信する";
+            br.style.cssText = "font-size:11px;padding:5px 12px;margin-bottom:6px;width:auto";
+            const holder = document.createElement("div");
+            br.onclick = () => { br.disabled = true; holder.appendChild(TALK.reactionsPanel(posted1.post_id)); };
+            q.appendChild(br); q.appendChild(holder);
+          }
           const bc = document.createElement("button"); bc.className = "btn";
           bc.textContent = "予約をすべて取り消す";
           bc.onclick = async () => {
