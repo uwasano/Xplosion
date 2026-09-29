@@ -1719,7 +1719,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "352";
+const APP_VERSION = "353";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -12074,6 +12074,30 @@ const TALK = {
     frow(gWrite, "立場", mkSel("axStance", [
       { v: "", t: "投稿主を守る（既定）" }, { v: "both", t: "賛否あり（どちらにも一理ある）" }]),
       "「守る」では投稿主は金を出さず、謝らず、落ち度も残りません。矛先が相手だけに向きます。");
+
+    /* ================= v353 到達改善（オンオフ。サーバー側の app_flags に保存） ================= */
+    const gReach = grp("到達改善（自動）");
+    const FLAGS = [
+      { key: "talk_jitter",    label: "時刻ずらし",   hint: "指定時刻から2〜14分ずらして投稿します（毎日同じ秒に出さない）。" },
+      { key: "talk_dedupe",    label: "似た文の回避", hint: "直近12本と言い回しが似すぎるフック案を使いません。" },
+      { key: "talk_metrics",   label: "反応の取得",   hint: "24時間後と7日後に、いいね・返信数（取れる時は表示回数）を自動で集めます。" },
+      { key: "talk_perf_bias", label: "実績を採点に反映", hint: "伸びた型のフック案に点を足し、直近3本と同じ型は減点します。" },
+    ];
+    const flagEls = {};
+    FLAGS.forEach((f) => {
+      const c = document.createElement("input"); c.type = "checkbox"; c.checked = true; c.id = "flag_" + f.key; c.disabled = true;
+      flagEls[f.key] = c;
+      frow(gReach, f.label, c, f.hint);
+      c.onchange = async () => {
+        c.disabled = true;
+        try { await talkFetch_("flagsSet", { key: f.key, value: c.checked }); }
+        catch (e) { c.checked = !c.checked; alert("保存できませんでした。" + e.message); }
+        c.disabled = false;
+      };
+    });
+    talkFetch_("flagsGet").then((j) => {
+      FLAGS.forEach((f) => { const c = flagEls[f.key]; c.checked = j.flags[f.key] !== false; c.disabled = false; });
+    }).catch(() => { FLAGS.forEach((f) => { flagEls[f.key].disabled = false; }); });
 
     /* ================= その他の設定（折りたたみ） ================= */
     const acct = mkSel("talkAcct", [{ v: "", t: "選択してください" }]);
