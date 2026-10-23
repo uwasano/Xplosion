@@ -1800,7 +1800,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "365";
+const APP_VERSION = "367";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13560,12 +13560,13 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v365 高配当動画（v1.6：レースを選んで動画／スマホだけで完結） =================
+/* ================= v367 高配当動画（v2.0：レースの画面収録から実況の音声だけを取り出して使える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
    初期状態はOFF。URLに ?racevideo=1 を付けて開くと、この端末だけONになる（?racevideo=0 でOFFに戻る）。
-   OFFの間は、メニューにも画面にも一切出ない。動画づくりは別サービス（race-video/）が行う。 */
+   OFFの間は、メニューにも画面にも一切出ない。動画づくりは別サービス（race-video/）が行う。
+   本物の実況：画面収録などの録画ファイルから、この端末の中で音声だけを取り出し（映像は取り込まない）、チェックを入れたレースの動画に入れる。 */
 (function () {
   try {
   /* 必要な部品が無い版のXplosionでも、他の機能に影響しないよう、何もせずに終わる */
@@ -13585,8 +13586,9 @@ BUILDERS.talk = (el) => TALK.build(el);
     const enabled = () => ls.get(K_ON) === "1";
     const cfg = () => { try { return Object.assign({ url: "", key: "" }, JSON.parse(ls.get(K_CFG) || "{}")); } catch (e) { return { url: "", key: "" }; } };
     const yen = (n) => "¥" + Number(n).toLocaleString("ja-JP");
-    const todayJst = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
-    const yesterday = () => new Date(Date.now() + 9 * 3600e3 - 86400e3).toISOString().slice(0, 10);
+    /* 読み取れるのは「昨日まで」（日本時間）。当日分は結果が出そろっていないため */
+    const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
+    const yesterday = () => daysAgoJst(1);
     const isTouch = () => { try { return matchMedia("(pointer: coarse)").matches || /iPhone|iPad|Android/i.test(navigator.userAgent); } catch (e) { return false; } };
 
     /* 画像を、長辺maxSidepx以内のJPEGにそろえる（端末の保存容量と送信量を抑える） */
@@ -13621,6 +13623,37 @@ BUILDERS.talk = (el) => TALK.build(el);
       const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(new Error("録音を読み込めませんでした")); fr.readAsDataURL(blob);
     });
     const mmss = (sec) => { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + "分" + String(sec % 60).padStart(2, "0") + "秒"; };
+
+    /* ---- 録画（画面収録）から音声だけを取り出す。映像は取り込まず、保存も送信もしない。この端末のブラウザの中だけで処理する ---- */
+    const AUD_SR = 16000;
+    function wavBlob(pcm, sr) {
+      const n = pcm.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+      const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+      w(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data"); v.setUint32(40, n * 2, true);
+      new Int16Array(buf, 44, n).set(pcm);
+      return new Blob([buf], { type: "audio/wav" });
+    }
+    async function extractAudioPcm(file) {
+      const AC = window.AudioContext || window.webkitAudioContext, OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!AC || !OAC) throw new Error("この端末のブラウザでは、録画から音声を取り出せません。");
+      if (file.size > 400 * 1024 * 1024) throw new Error("ファイルが大きすぎます（400MB以下にしてください）。レースの部分だけに切り取った録画がおすすめです。");
+      const raw = await file.arrayBuffer();
+      const ctx = new AC();
+      let ab;
+      try { ab = await new Promise((res, rej) => { const p = ctx.decodeAudioData(raw, res, rej); if (p && p.catch) p.catch(rej); }); }
+      catch (e) { throw new Error("この録画（ファイル）から音声を取り出せませんでした。音の入っていない録画か、この端末のブラウザで読めない形式の可能性があります。別のブラウザ（iPhoneはSafari、AndroidはChrome）でお試しください。"); }
+      finally { try { ctx.close(); } catch (e) {} }
+      if (!ab || !(ab.duration > 0.5)) throw new Error("この録画には、音がほとんど入っていませんでした。");
+      const oc = new OAC(1, Math.max(1, Math.ceil(ab.duration * AUD_SR)), AUD_SR);
+      const src = oc.createBufferSource(); src.buffer = ab; src.connect(oc.destination); src.start(0);
+      const out = await new Promise((res, rej) => { const p = oc.startRendering(); if (p && p.then) p.then(res, rej); else oc.oncomplete = (e) => res(e.renderedBuffer); });
+      const f = out.getChannelData(0), pcm = new Int16Array(f.length);
+      let peak = 0;
+      for (let i = 0; i < f.length; i++) { const x = Math.max(-1, Math.min(1, f[i])); const a = x < 0 ? -x : x; if (a > peak) peak = a; pcm[i] = x < 0 ? x * 32768 : x * 32767; }
+      if (peak < 0.003) throw new Error("この録画には、音がほとんど入っていませんでした。音量を上げ、マナーモードを解除して、もう一度録画してください。");
+      return { pcm, sr: AUD_SR };
+    }
     function saveBlob(blob, name) {
       const u = URL.createObjectURL(blob), a = document.createElement("a");
       a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -13657,14 +13690,14 @@ BUILDERS.talk = (el) => TALK.build(el);
         "『レースを選ぶ』で、日付 → 競艇場 → レース番号の順に選びます。『高配当TOP10』に切り替えると、その日の上位10レースから選べます。",
         "ほしいレースの『動画をつくる』を押します（1〜3分。画面を開いたままお待ちください）。",
         "できあがったら『保存する』を押すと、共有メニューが開きます（iPhoneは『ビデオを保存』）。パソコンでは自動で保存されます。",
-        "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意。画面の共有を使った録音はパソコンのChrome専用）。",
+        "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、レースの画面収録から音声だけを取り出して使えます（スマホでも可）。",
       ]);
       const touch = isTouch();
       const box = document.createElement("div"); el.appendChild(box);
       const card = (html) => { const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:12px;font-size:14px;line-height:1.75"; if (html) d.innerHTML = html; box.appendChild(d); return d; };
       const mkBtn = (label, cls) => { const b = document.createElement("button"); b.type = "button"; b.className = "mini " + (cls || ""); b.textContent = label; b.style.cssText = "flex:1 1 auto;min-width:96px;min-height:44px"; return b; };
       const state = { busy: false, mode: ls.get(K_MODE) === "rank" ? "rank" : "pick", venues: null };
-      const fixedEls = [], listEls = [];                       // つくっている間は押せなくする
+      const fixedEls = [], listEls = [], recChecks = [];       // つくっている間は押せなくする（recChecks＝各レースの『録音した実況を使う』）
       const setBusy = (b) => { state.busy = b; fixedEls.concat(listEls).forEach((x) => { x.disabled = b; }); };
 
       /* ================= レースを選ぶ（いちばん上） ================= */
@@ -13674,12 +13707,12 @@ BUILDERS.talk = (el) => TALK.build(el);
       [segPick, segTop].forEach((b, i) => { b.type = "button"; b.className = "chip"; b.style.cssText = "flex:1;min-height:44px;text-align:center"; b.textContent = i === 0 ? "レースを選ぶ" : "高配当TOP10"; seg.appendChild(b); fixedEls.push(b); });
       main.appendChild(seg);
       const hint = document.createElement("div"); hint.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted)"; main.appendChild(hint);
-      const dateIn = inp(main, "", "date"); dateIn.style.marginTop = "10px"; dateIn.value = yesterday(); dateIn.max = todayJst(); fixedEls.push(dateIn);
+      const dateIn = inp(main, "", "date"); dateIn.style.marginTop = "10px"; dateIn.value = yesterday(); dateIn.max = yesterday(); fixedEls.push(dateIn);
       const quick = document.createElement("div"); quick.style.cssText = "display:flex;gap:8px;margin-top:8px";
-      const bToday = mkBtn("今日"), bYest = mkBtn("昨日"); quick.appendChild(bToday); quick.appendChild(bYest); main.appendChild(quick);
-      fixedEls.push(bToday, bYest);
-      bToday.onclick = () => { dateIn.value = todayJst(); show.click(); };
-      bYest.onclick = () => { dateIn.value = yesterday(); show.click(); };
+      const bYest = mkBtn("昨日"), bTwo = mkBtn("一昨日"); quick.appendChild(bYest); quick.appendChild(bTwo); main.appendChild(quick);
+      fixedEls.push(bYest, bTwo);
+      bYest.onclick = () => { dateIn.value = daysAgoJst(1); show.click(); };
+      bTwo.onclick = () => { dateIn.value = daysAgoJst(2); show.click(); };
       const show = document.createElement("button"); show.type = "button"; show.className = "mini primary"; show.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
       main.appendChild(show); fixedEls.push(show);
       const cfgHint = document.createElement("div"); cfgHint.className = "err"; cfgHint.style.display = "none"; main.appendChild(cfgHint);
@@ -13689,27 +13722,35 @@ BUILDERS.talk = (el) => TALK.build(el);
       const refreshMode = () => {
         segPick.className = "chip" + (state.mode === "pick" ? " on" : ""); segTop.className = "chip" + (state.mode === "rank" ? " on" : "");
         hint.textContent = state.mode === "pick"
-          ? "日付を選んで『開催場を表示』を押し、競艇場 → レース番号の順に選びます。結果の出ているレースならどれでも動画にできます。"
-          : "その日の高配当の上位10レースから選びます（公式の高配当ベスト10）。";
+          ? "日付（昨日まで）を選んで『開催場を表示』を押し、競艇場 → レース番号の順に選びます。結果の出ているレースならどれでも動画にできます。"
+          : "その日（昨日まで）の高配当の上位10レースから選びます（公式の高配当ベスト10）。";
         show.textContent = state.mode === "pick" ? "開催場を表示" : "TOP10を表示";
         cfgHint.style.display = needCfg() ? "none" : "block";
         cfgHint.textContent = needCfg() ? "" : "先に、いちばん下の『動画サービスの設定』を保存してください。";
       };
-      const setMode = (m) => { if (state.busy) return; state.mode = m; ls.set(K_MODE, m); list.innerHTML = ""; listEls.length = 0; refreshMode(); };
+      const setMode = (m) => { if (state.busy) return; state.mode = m; ls.set(K_MODE, m); list.innerHTML = ""; listEls.length = 0; recChecks.length = 0; refreshMode(); };
       segPick.onclick = () => setMode("pick"); segTop.onclick = () => setMode("rank");
 
       const msgCard = (html) => { const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:12px;font-size:14px;line-height:1.75"; d.innerHTML = html; list.appendChild(d); return d; };
       const sub = (t) => { const h = document.createElement("div"); h.style.cssText = "margin:16px 2px 2px;font-size:13px;color:var(--muted)"; h.textContent = t; list.appendChild(h); return h; };
       const gradeBadge = (g) => g && g !== "一般" ? ' <span style="font-size:11px;font-weight:800;padding:1px 6px;border-radius:6px;border:1px solid var(--accent);color:var(--accent-text);vertical-align:middle">' + esc(g) + '</span>' : "";
       const starsOf = (lv) => "★".repeat(lv) + "☆".repeat(5 - lv);
-      const clearList = () => { list.innerHTML = ""; listEls.length = 0; };
+      const clearList = () => { list.innerHTML = ""; listEls.length = 0; recChecks.length = 0; };
+      /* 録音した実況は1つのレース用。使うレースを、利用者がカードごとに選ぶ（取り違え防止のため、初期状態は未チェック） */
+      function syncRecChecks() { recChecks.forEach((x) => { x.lab.style.display = rec.blob ? "flex" : "none"; if (!rec.blob) x.cb.checked = false; }); }
+      function recOpt(parent) {
+        const lab = document.createElement("label"); lab.style.cssText = "display:none;gap:8px;align-items:center;margin-top:10px;font-size:13.5px";
+        const cb = document.createElement("input"); cb.type = "checkbox"; lab.appendChild(cb);
+        lab.appendChild(document.createTextNode("録音した実況を、このレースに使う（合成音声の代わりに入ります）"));
+        parent.appendChild(lab); recChecks.push({ lab, cb }); listEls.push(cb); syncRecChecks(); return cb;
+      }
       const fail = (e) => { clearList(); msgCard('<div class="err" style="margin:0">' + esc(e.message || e) + '</div>'); };
 
       show.onclick = async () => {
         if (state.busy) return;
         const c = needCfg(); if (!c) { refreshMode(); toast("先に『動画サービスの設定』を保存してください", "err"); openCfg(); return; }
         if (!dateIn.value) { toast("日付を選んでください", "err"); return; }
-        if (dateIn.value > todayJst()) dateIn.value = todayJst();
+        if (dateIn.value > yesterday()) { dateIn.value = yesterday(); toast("読み取れるのは昨日までです（当日分は結果が出そろっていないため）"); }
         clearList(); msgCard("読み込み中…（最初の1回は、サービスの起動に数秒かかることがあります）");
         setBusy(true);
         try {
@@ -13763,7 +13804,8 @@ BUILDERS.talk = (el) => TALK.build(el);
             const b = document.createElement("button"); b.type = "button"; b.className = "mini primary"; b.textContent = "動画をつくる"; b.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
             const note = document.createElement("div"); note.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted);display:none";
             const out = document.createElement("div");
-            b.onclick = () => makeVideo({ mode: "pick", jcd: j.jcd, race: r.race, combo: r.combo, payout: r.payout, venue: j.venue, rank: r.rank || null }, b, note, out, c);
+            const rb = recOpt(d);
+            b.onclick = () => makeVideo({ mode: "pick", jcd: j.jcd, race: r.race, combo: r.combo, payout: r.payout, venue: j.venue, rank: r.rank || null, recBox: rb }, b, note, out, c);
             listEls.push(b); d.appendChild(b); d.appendChild(note); d.appendChild(out);
           } else {
             d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font-weight:800;font-size:17px;color:var(--muted)">' + r.race + 'R</div>'
@@ -13786,7 +13828,8 @@ BUILDERS.talk = (el) => TALK.build(el);
           const b = document.createElement("button"); b.type = "button"; b.className = "mini primary"; b.textContent = "動画をつくる"; b.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
           const note = document.createElement("div"); note.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted);display:none";
           const out = document.createElement("div");
-          b.onclick = () => makeVideo({ mode: "rank", rank: r.rank, venue: r.venue, race: r.race }, b, note, out, c);
+          const rb = recOpt(d);
+          b.onclick = () => makeVideo({ mode: "rank", rank: r.rank, venue: r.venue, race: r.race, recBox: rb }, b, note, out, c);
           listEls.push(b); d.appendChild(b); d.appendChild(note); d.appendChild(out); list.appendChild(d);
         });
       }
@@ -13808,9 +13851,10 @@ BUILDERS.talk = (el) => TALK.build(el);
           else { body.jcd = t.jcd; body.race = t.race; body.expect_combo = t.combo; body.expect_payout = t.payout; }   // 一覧で見た内容と結果ページが食い違えば、サーバーが作らない
           const intro = ls.get(K_INTRO); if (intro) body.intro_image = intro;
           const endi = ls.get(K_END); if (endi) body.ending_image = endi;
-          if (body.commentary && rec.blob && rec.use && t.rank && rec.rank === t.rank) {       // 録音した本物の実況を、このレースに使う
+          if (body.commentary && rec.blob && t.recBox && t.recBox.checked) {                   // 録音した本物の実況を、チェックしたこのレースに使う
             if (rec.start == null || rec.result == null) throw new Error("録音の『スタートの瞬間』と『結果アナウンスの始まり』の秒を入れてください");
-            body.commentary_audio = await blobToDataURL(rec.blob); body.audio_start = rec.start; body.audio_result = rec.result;
+            const up = await audioForUpload();
+            body.commentary_audio = up.data; body.audio_start = up.start; body.audio_result = up.result;
           }
           const payload = JSON.stringify(body);
           let res = null, tries = 0;
@@ -13928,33 +13972,35 @@ BUILDERS.talk = (el) => TALK.build(el);
       cmBox.onchange = () => { ls.set(K_CM, cmBox.checked ? "1" : "0"); toast(cmBox.checked ? "音声（実況・BGM・効果音）をつけます" : "音声なし（無音）にします"); };
       cmLab.appendChild(cmBox); cmLab.appendChild(document.createTextNode("音声（実況・BGM・効果音）をつける")); cmCard.appendChild(cmLab);
 
-      /* ---- 実況の録音（本物の実況・任意）。ブラウザのタブの音声だけを録音する（映像は保存しない）。パソコンのChrome/Edge用 ---- */
-      const rec = { blob: null, url: "", dur: 0, rank: 1, start: null, result: null, use: true, mr: null, stream: null, t0: 0, timer: null, kill: null };
-      const rc = section("実況の録音（本物の実況・任意・パソコン向け）", false);
-      rc.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px">パソコンのChrome（またはEdge）で使えます（スマホでは画面の共有による録音はできません。録音ずみの音声ファイルを選ぶことはできます）。別のタブでBOATCASTのレース映像を開いて再生できる状態にしてから、下の『録音をはじめる』を押し、そのタブを選んで『タブの音声も共有』にチェックを入れてください。<b>音声だけ</b>を録音し、映像は保存しません。録音しながら、スタートの瞬間と結果アナウンスの始まりで、それぞれの印のボタンを押してください（あとで秒数を直せます）。録音した実況は、決め場面のカットに合わせて動画に入ります。使えるのは<b>高配当TOP10に入っているレース</b>です（『使うレース』で順位を選びます）。録音は私的な視聴用です。公開する場合は、権利者の許可をご確認ください。この録音は、画面を開いている間だけ保持します。</div>');
+      /* ---- 実況の録音（本物の実況・任意）。音声だけを使う（映像は取り込まず、保存も送信もしない）。①録画から取り出す（スマホ可） ②パソコンのタブの音声を録音 ---- */
+      const rec = { blob: null, url: "", dur: 0, start: null, result: null, pcm: null, sr: 0, mr: null, stream: null, t0: 0, timer: null, kill: null };
+      const rc = section("実況の録音（本物の実況・任意）", false);
+      rc.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px">本物の実況を、決め場面のカットに合わせて動画に入れられます。<b>音声だけ</b>を使い、映像は取り込みません。<br>'
+        + '<b>① スマホ・パソコン共通（おすすめ）</b>：BOATCASTなどでレースの映像を再生しながら、端末の<b>画面収録</b>（iPhone：コントロールセンターの録画ボタン、Android：画面の録画）で録り、できた録画ファイルを下で選びます。録画から<b>音声だけ</b>を、この端末の中で取り出します（録画ファイルそのものは送りません。動画をつくるときに、実況の部分の音声だけをサービスに送ります）。音量を上げ、マナーモードを解除して録画してください。<br>'
+        + '<b>② パソコンのChrome（またはEdge）</b>：別のタブでレース映像を再生できる状態にして『録音をはじめる』を押し、そのタブを選んで『タブの音声も共有』にチェックを入れます。録音しながら、スタートの瞬間と結果アナウンスの始まりで印のボタンを押します。<br>'
+        + 'どちらも、音声ができたら、使いたいレースの『動画をつくる』の上の『録音した実況を、このレースに使う』にチェックを入れてください（音声は1つのレース用です。ほかのレースは合成音声のままです）。録音は私的な視聴用です。公開する場合は、権利者の許可をご確認ください。この音声は、画面を開いている間だけ保持します。</div>');
       const rcRow = document.createElement("div"); rcRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center";
-      const bRec = mkBtn("録音をはじめる", "primary"), bStop = mkBtn("録音を止める"), bMkS = mkBtn("スタートの瞬間（印）", "cyan"), bMkR = mkBtn("結果アナウンスの始まり（印）", "cyan");
+      const bRec = mkBtn("録音をはじめる（パソコン）", "primary"), bStop = mkBtn("録音を止める"), bMkS = mkBtn("スタートの瞬間（印）", "cyan"), bMkR = mkBtn("結果アナウンスの始まり（印）", "cyan");
       const timeLab = document.createElement("div"); timeLab.style.cssText = "font-size:13px;color:var(--muted);width:100%";
       rcRow.appendChild(bRec); rcRow.appendChild(bStop); rcRow.appendChild(bMkS); rcRow.appendChild(bMkR); rc.appendChild(rcRow); rc.appendChild(timeLab);
       const rcFileLab = document.createElement("label"); rcFileLab.style.cssText = "display:block;margin-top:10px;font-size:13px;color:var(--muted)";
-      rcFileLab.appendChild(document.createTextNode("すでに録音した音声ファイルを使う場合："));
-      const rcFile = document.createElement("input"); rcFile.type = "file"; rcFile.accept = "audio/*,video/webm"; rcFile.style.cssText = "display:block;margin-top:4px";
+      rcFileLab.appendChild(document.createTextNode("画面収録などの録画（または録音）ファイルから、音声だけを取り出す："));
+      const rcFile = document.createElement("input"); rcFile.type = "file"; rcFile.accept = "video/*,audio/*"; rcFile.style.cssText = "display:block;margin-top:4px";
       rcFileLab.appendChild(rcFile); rc.appendChild(rcFileLab);
+      const rcStat = document.createElement("div"); rcStat.style.cssText = "margin-top:8px;font-size:13px;display:none"; rc.appendChild(rcStat);
       const rcBody = document.createElement("div"); rcBody.style.cssText = "margin-top:12px;display:none"; rc.appendChild(rcBody);
       const audioEl = document.createElement("audio"); audioEl.controls = true; audioEl.preload = "metadata"; audioEl.style.cssText = "width:100%";
       const fieldRow = (label) => { const w = document.createElement("div"); w.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"; const l = document.createElement("div"); l.style.cssText = "font-size:13px;min-width:150px"; l.textContent = label; w.appendChild(l); return { w, l }; };
       const numIn = () => { const i = document.createElement("input"); i.type = "number"; i.step = "0.1"; i.min = "0"; i.style.cssText = "width:96px;padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)"; return i; };
-      const fS = fieldRow("スタートの瞬間（秒）"), inS = numIn(), lsS = mkBtn("ここから聞く"); lsS.style.cssText = "flex:0 0 auto;min-width:0;min-height:40px";
-      const fR = fieldRow("結果アナウンスの始まり（秒）"), inR = numIn(), lsR = mkBtn("ここから聞く"); lsR.style.cssText = "flex:0 0 auto;min-width:0;min-height:40px";
-      fS.w.appendChild(inS); fS.w.appendChild(lsS); fR.w.appendChild(inR); fR.w.appendChild(lsR);
-      const fK = fieldRow("使うレース"), selRank = document.createElement("select"); selRank.style.cssText = "padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)";
-      for (let i = 1; i <= 10; i++) { const o = document.createElement("option"); o.value = String(i); o.textContent = "高配当TOP10の" + i + "位"; selRank.appendChild(o); }
-      fK.w.appendChild(selRank);
-      const useLab = document.createElement("label"); useLab.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px";
-      const useBox = document.createElement("input"); useBox.type = "checkbox"; useBox.checked = true; useLab.appendChild(useBox); useLab.appendChild(document.createTextNode("この録音の実況を使う（合成音声の代わりに入ります）"));
-      const bDel = mkBtn("録音を消す"); bDel.style.cssText += ";margin-top:10px;width:100%";
+      const smallBtn = (label) => { const b = mkBtn(label); b.style.cssText = "flex:0 0 auto;min-width:0;min-height:40px"; return b; };
+      const fS = fieldRow("スタートの瞬間（秒）"), inS = numIn(), lsS = smallBtn("ここから聞く"), nowS = smallBtn("いまの位置にする");
+      const fR = fieldRow("結果アナウンスの始まり（秒）"), inR = numIn(), lsR = smallBtn("ここから聞く"), nowR = smallBtn("いまの位置にする");
+      fS.w.appendChild(inS); fS.w.appendChild(lsS); fS.w.appendChild(nowS); fR.w.appendChild(inR); fR.w.appendChild(lsR); fR.w.appendChild(nowR);
+      const rcHint = document.createElement("div"); rcHint.style.cssText = "margin-top:8px;font-size:12.5px;color:var(--muted)";
+      rcHint.textContent = "上のプレーヤーで再生し、スタートの合図が聞こえた瞬間に止めて、『いまの位置にする』を押します。結果アナウンスの始まりも同じです（秒数は、あとで手で直せます）。";
+      const bDel = mkBtn("音声を消す"); bDel.style.cssText += ";margin-top:10px;width:100%";
       const rcInfo = document.createElement("div"); rcInfo.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted)";
-      [audioEl, rcInfo, fK.w, fS.w, fR.w, useLab, bDel].forEach((x) => rcBody.appendChild(x));
+      [audioEl, rcInfo, rcHint, fS.w, fR.w, bDel].forEach((x) => rcBody.appendChild(x));
 
       const elapsed = () => (Date.now() - rec.t0) / 1000;
       const recording = () => !!(rec.mr && rec.mr.state === "recording");
@@ -13964,23 +14010,33 @@ BUILDERS.talk = (el) => TALK.build(el);
         bMkS.style.display = on ? "block" : "none"; bMkR.style.display = on ? "block" : "none";
         rcFileLab.style.display = on ? "none" : "block";
         rcBody.style.display = rec.blob && !on ? "block" : "none";
-        if (rec.blob) { inS.value = rec.start == null ? "" : rec.start.toFixed(1); inR.value = rec.result == null ? "" : rec.result.toFixed(1); selRank.value = String(rec.rank); useBox.checked = rec.use; }
-        rcInfo.textContent = rec.blob ? "録音：" + mmss(rec.dur) + "。使うのは高配当TOP10の" + rec.rank + "位のレースの動画だけです（ほかのレースは合成音声のままです）。" : "";
+        if (rec.blob) { inS.value = rec.start == null ? "" : rec.start.toFixed(1); inR.value = rec.result == null ? "" : rec.result.toFixed(1); }
+        rcInfo.textContent = rec.blob ? "音声：" + mmss(rec.dur) + "。使いたいレースの『動画をつくる』の上の『録音した実況を、このレースに使う』にチェックを入れてください。" : "";
         if (!on) timeLab.textContent = "";
+        syncRecChecks();
       }
       function endRec() {
         clearInterval(rec.timer); clearTimeout(rec.kill);
         try { if (rec.stream) rec.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
         rec.stream = null;
       }
-      function setBlob(blob, dur) {
+      function setBlob(blob, dur, pcm, sr) {
         if (rec.url) URL.revokeObjectURL(rec.url);
-        rec.blob = blob; rec.dur = dur; rec.url = URL.createObjectURL(blob); audioEl.src = rec.url;
+        rec.blob = blob; rec.dur = dur; rec.pcm = pcm || null; rec.sr = sr || 0; rec.url = URL.createObjectURL(blob); audioEl.src = rec.url;
         rcRefresh();
+      }
+      /* サービスに送る音声。取り出した音声が大きいとき（約6分より長いとき）は、スタートの少し前〜結果アナウンスのあとだけに切り詰める（通信量を減らすため） */
+      async function audioForUpload() {
+        if (rec.pcm && rec.pcm.length * 2 > 12 * 1024 * 1024 && rec.start != null && rec.result != null) {
+          const sr = rec.sr, from = Math.max(0, rec.start - 6), to = Math.min(rec.pcm.length / sr, rec.result + 25);
+          const part = rec.pcm.subarray(Math.floor(from * sr), Math.ceil(to * sr));
+          return { data: await blobToDataURL(wavBlob(part, sr)), start: rec.start - from, result: rec.result - from };
+        }
+        return { data: await blobToDataURL(rec.blob), start: rec.start, result: rec.result };
       }
       async function startRec() {
         if (state.busy) return;
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || typeof MediaRecorder === "undefined") { toast("この端末のブラウザでは録音できません。パソコンのChrome（またはEdge）をお使いください", "err"); return; }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || typeof MediaRecorder === "undefined") { toast("この端末のブラウザでは、画面の共有による録音はできません。画面収録した録画ファイルを選んでください", "err"); return; }
         let stream;
         try { stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }); }
         catch (e) { toast("画面（タブ）の共有が取り消されました", "err"); return; }
@@ -13995,7 +14051,6 @@ BUILDERS.talk = (el) => TALK.build(el);
         mr.onstop = () => {
           const dur = elapsed(); endRec();
           if (!chunks.length) { toast("録音できた音がありませんでした", "err"); rcRefresh(); return; }
-          rec.rank = Number(selRank.value) || 1;
           setBlob(new Blob(chunks, { type: mr.mimeType || mime || "audio/webm" }), dur);
           toast("録音しました（" + mmss(dur) + "）。印の秒数を確かめてください");
         };
@@ -14018,18 +14073,33 @@ BUILDERS.talk = (el) => TALK.build(el);
       bMkS.onclick = () => mark("s"); bMkR.onclick = () => mark("r");
       inS.onchange = () => { const v = parseFloat(inS.value); rec.start = isFinite(v) ? v : null; };
       inR.onchange = () => { const v = parseFloat(inR.value); rec.result = isFinite(v) ? v : null; };
-      selRank.onchange = () => { rec.rank = Number(selRank.value) || 1; rcRefresh(); };
-      useBox.onchange = () => { rec.use = useBox.checked; };
       const listen = (v) => { if (!isFinite(v)) return; try { audioEl.currentTime = Math.max(0, v - 1.5); audioEl.play(); } catch (e) {} };
       lsS.onclick = () => listen(parseFloat(inS.value)); lsR.onclick = () => listen(parseFloat(inR.value));
-      bDel.onclick = () => { try { audioEl.pause(); } catch (e) {} if (rec.url) URL.revokeObjectURL(rec.url); rec.blob = null; rec.url = ""; rec.start = rec.result = null; audioEl.removeAttribute("src"); rcRefresh(); toast("録音を消しました"); };
-      rcFile.onchange = () => {
-        const f = rcFile.files && rcFile.files[0]; if (!f) return;
+      const setNow = (inEl) => { const t = audioEl.currentTime; if (!isFinite(t)) return; inEl.value = t.toFixed(1); inEl.onchange(); toast("いまの位置（" + t.toFixed(1) + "秒）を入れました"); };
+      nowS.onclick = () => setNow(inS); nowR.onclick = () => setNow(inR);
+      bDel.onclick = () => { try { audioEl.pause(); } catch (e) {} if (rec.url) URL.revokeObjectURL(rec.url); rec.blob = null; rec.url = ""; rec.pcm = null; rec.start = rec.result = null; audioEl.removeAttribute("src"); rcRefresh(); toast("音声を消しました"); };
+      /* 音声ファイルは、取り出せなくても、そのままサービスに渡せる（サービス側で変換する） */
+      const useAudioAsIs = (f) => {
         const u = URL.createObjectURL(f), a = new Audio();
         a.preload = "metadata";
-        a.onloadedmetadata = () => { URL.revokeObjectURL(u); rec.start = rec.result = null; rec.rank = Number(selRank.value) || 1; setBlob(f, isFinite(a.duration) ? a.duration : 0); toast("録音ファイルを読み込みました。スタートの瞬間と結果アナウンスの秒を入れてください"); };
-        a.onerror = () => { URL.revokeObjectURL(u); toast("この音声ファイルは読み込めませんでした", "err"); };
-        a.src = u; rcFile.value = "";
+        a.onloadedmetadata = () => { URL.revokeObjectURL(u); rec.start = rec.result = null; setBlob(f, isFinite(a.duration) ? a.duration : 0); rcStat.style.display = "none"; toast("音声ファイルを読み込みました。スタートの瞬間と結果アナウンスの秒を入れてください"); };
+        a.onerror = () => { URL.revokeObjectURL(u); rcStat.className = "err"; rcStat.textContent = "この音声ファイルは読み込めませんでした"; };
+        a.src = u;
+      };
+      rcFile.onchange = async () => {
+        const f = rcFile.files && rcFile.files[0]; rcFile.value = ""; if (!f) return;
+        const looksVideo = /^video\//i.test(f.type) || /\.(mov|mp4|m4v|webm|mkv|3gp)$/i.test(f.name);
+        rcStat.style.display = "block"; rcStat.className = ""; rcStat.textContent = "音声を取り出しています…（録画の長さによっては、数十秒かかります。画面を開いたままお待ちください）";
+        try {
+          const x = await extractAudioPcm(f);
+          rec.start = rec.result = null;
+          setBlob(wavBlob(x.pcm, x.sr), x.pcm.length / x.sr, x.pcm, x.sr);
+          rcStat.style.display = "none";
+          toast("音声だけを取り出しました（" + mmss(x.pcm.length / x.sr) + "）。スタートの瞬間と結果アナウンスの秒を入れてください");
+        } catch (e) {
+          if (!looksVideo) { useAudioAsIs(f); return; }
+          rcStat.className = "err"; rcStat.textContent = String(e.message || e);
+        }
       };
       rcRefresh();
       refreshMode();
