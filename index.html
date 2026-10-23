@@ -1800,7 +1800,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "363";
+const APP_VERSION = "365";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13559,6 +13559,494 @@ const TALK = {
   }
 };
 BUILDERS.talk = (el) => TALK.build(el);
+
+/* ================= v365 高配当動画（v1.6：レースを選んで動画／スマホだけで完結） =================
+   BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
+   選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
+   スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
+   初期状態はOFF。URLに ?racevideo=1 を付けて開くと、この端末だけONになる（?racevideo=0 でOFFに戻る）。
+   OFFの間は、メニューにも画面にも一切出ない。動画づくりは別サービス（race-video/）が行う。 */
+(function () {
+  try {
+  /* 必要な部品が無い版のXplosionでも、他の機能に影響しないよう、何もせずに終わる */
+  if (typeof BUILDERS === "undefined" || typeof TABS === "undefined" || typeof NAV_GROUPS === "undefined"
+    || typeof head !== "function" || typeof inp !== "function" || typeof toast !== "function" || typeof esc !== "function") return;
+  const RACEVID = (() => {
+    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode";
+    const ls = {
+      get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
+      del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+    };
+    try {
+      const m = /[?&]racevideo=([01])(?:&|#|$)/.exec(location.search);
+      if (m) { if (m[1] === "1") ls.set(K_ON, "1"); else ls.del(K_ON); }
+    } catch (e) {}
+    const enabled = () => ls.get(K_ON) === "1";
+    const cfg = () => { try { return Object.assign({ url: "", key: "" }, JSON.parse(ls.get(K_CFG) || "{}")); } catch (e) { return { url: "", key: "" }; } };
+    const yen = (n) => "¥" + Number(n).toLocaleString("ja-JP");
+    const todayJst = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+    const yesterday = () => new Date(Date.now() + 9 * 3600e3 - 86400e3).toISOString().slice(0, 10);
+    const isTouch = () => { try { return matchMedia("(pointer: coarse)").matches || /iPhone|iPad|Android/i.test(navigator.userAgent); } catch (e) { return false; } };
+
+    /* 画像を、長辺maxSidepx以内のJPEGにそろえる（端末の保存容量と送信量を抑える） */
+    function fitImage(file, maxSide) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file), im = new Image();
+        im.onload = () => {
+          const k = Math.min(1, maxSide / Math.max(im.naturalWidth, im.naturalHeight));
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+          const g = c.getContext("2d"); g.fillStyle = "#04060C"; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+          URL.revokeObjectURL(url);
+          resolve(c.toDataURL("image/jpeg", 0.9));
+        };
+        im.onerror = () => { URL.revokeObjectURL(url); reject(new Error("画像を読み込めませんでした")); };
+        im.src = url;
+      });
+    }
+
+    function fileNameOf(res, fallback) {
+      const cd = res.headers.get("Content-Disposition") || "";
+      let m = /filename\*=utf-8''([^;]+)/i.exec(cd);
+      if (m) { try { return decodeURIComponent(m[1]); } catch (e) {} }
+      m = /filename="?([^";]+)"?/i.exec(cd);
+      return m ? m[1] : fallback;
+    }
+    async function errText(res) {
+      try { const j = await res.json(); if (j && j.detail) return typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch (e) {}
+      return "サーバーがエラーを返しました（" + res.status + "）";
+    }
+    const blobToDataURL = (blob) => new Promise((resolve, reject) => {
+      const fr = new FileReader(); fr.onload = () => resolve(String(fr.result)); fr.onerror = () => reject(new Error("録音を読み込めませんでした")); fr.readAsDataURL(blob);
+    });
+    const mmss = (sec) => { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + "分" + String(sec % 60).padStart(2, "0") + "秒"; };
+    function saveBlob(blob, name) {
+      const u = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(u), 60000);
+    }
+    /* スマホ：共有メニュー（「ビデオを保存」など）を開く。使えない端末ではダウンロードにする。必ずボタンを押した直後に呼ぶこと */
+    async function shareOrSave(blob, name) {
+      try {
+        const f = new File([blob], name, { type: "video/mp4" });
+        if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: name }); return "share"; }
+      } catch (e) { if (e && e.name === "AbortError") return "cancel"; }
+      saveBlob(blob, name); return "download";
+    }
+    /* つくっている間、画面が消えて通信が止まらないようにする（対応している端末だけ） */
+    const wake = {
+      l: null, want: false,
+      async on() { this.want = true; try { if (navigator.wakeLock && !this.l) { this.l = await navigator.wakeLock.request("screen"); this.l.addEventListener("release", () => { this.l = null; }); } } catch (e) { this.l = null; } },
+      off() { this.want = false; try { if (this.l) this.l.release(); } catch (e) {} this.l = null; },
+    };
+    try { document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && wake.want) wake.on(); }); } catch (e) {}
+
+    async function getJson(c, path, params) {
+      const q = Object.keys(params).map((k) => k + "=" + encodeURIComponent(params[k])).join("&");
+      let res;
+      try { res = await fetch(c.url + path + "?" + q, { headers: { "X-API-Key": c.key } }); }
+      catch (e) { throw new Error("動画サービスにつながりません。URL・合言葉・電波の状態を確かめてください"); }
+      if (!res.ok) throw new Error(await errText(res));
+      return res.json();
+    }
+
+    function build(el) {
+      head(el, "高配当動画", "BOAT RACEのレースを選んで、そのレースだけ縦型の再現動画（約30秒）をつくります。スマホだけで使えます。押さなければ何もつくりません。", [
+        "最初に、いちばん下の『動画サービスの設定』へ、動画サービスのURLと合言葉を入れて保存します（1回だけ）。",
+        "『レースを選ぶ』で、日付 → 競艇場 → レース番号の順に選びます。『高配当TOP10』に切り替えると、その日の上位10レースから選べます。",
+        "ほしいレースの『動画をつくる』を押します（1〜3分。画面を開いたままお待ちください）。",
+        "できあがったら『保存する』を押すと、共有メニューが開きます（iPhoneは『ビデオを保存』）。パソコンでは自動で保存されます。",
+        "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意。画面の共有を使った録音はパソコンのChrome専用）。",
+      ]);
+      const touch = isTouch();
+      const box = document.createElement("div"); el.appendChild(box);
+      const card = (html) => { const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:12px;font-size:14px;line-height:1.75"; if (html) d.innerHTML = html; box.appendChild(d); return d; };
+      const mkBtn = (label, cls) => { const b = document.createElement("button"); b.type = "button"; b.className = "mini " + (cls || ""); b.textContent = label; b.style.cssText = "flex:1 1 auto;min-width:96px;min-height:44px"; return b; };
+      const state = { busy: false, mode: ls.get(K_MODE) === "rank" ? "rank" : "pick", venues: null };
+      const fixedEls = [], listEls = [];                       // つくっている間は押せなくする
+      const setBusy = (b) => { state.busy = b; fixedEls.concat(listEls).forEach((x) => { x.disabled = b; }); };
+
+      /* ================= レースを選ぶ（いちばん上） ================= */
+      const main = card('<div style="font-weight:800;font-size:16px;margin-bottom:8px">レースを選んで動画をつくる</div>');
+      const seg = document.createElement("div"); seg.className = "chips"; seg.style.cssText = "display:flex;gap:8px";
+      const segPick = document.createElement("button"), segTop = document.createElement("button");
+      [segPick, segTop].forEach((b, i) => { b.type = "button"; b.className = "chip"; b.style.cssText = "flex:1;min-height:44px;text-align:center"; b.textContent = i === 0 ? "レースを選ぶ" : "高配当TOP10"; seg.appendChild(b); fixedEls.push(b); });
+      main.appendChild(seg);
+      const hint = document.createElement("div"); hint.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted)"; main.appendChild(hint);
+      const dateIn = inp(main, "", "date"); dateIn.style.marginTop = "10px"; dateIn.value = yesterday(); dateIn.max = todayJst(); fixedEls.push(dateIn);
+      const quick = document.createElement("div"); quick.style.cssText = "display:flex;gap:8px;margin-top:8px";
+      const bToday = mkBtn("今日"), bYest = mkBtn("昨日"); quick.appendChild(bToday); quick.appendChild(bYest); main.appendChild(quick);
+      fixedEls.push(bToday, bYest);
+      bToday.onclick = () => { dateIn.value = todayJst(); show.click(); };
+      bYest.onclick = () => { dateIn.value = yesterday(); show.click(); };
+      const show = document.createElement("button"); show.type = "button"; show.className = "mini primary"; show.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
+      main.appendChild(show); fixedEls.push(show);
+      const cfgHint = document.createElement("div"); cfgHint.className = "err"; cfgHint.style.display = "none"; main.appendChild(cfgHint);
+      const list = document.createElement("div"); box.appendChild(list);
+
+      const needCfg = () => { const c = cfg(); return c.url && c.key ? c : null; };
+      const refreshMode = () => {
+        segPick.className = "chip" + (state.mode === "pick" ? " on" : ""); segTop.className = "chip" + (state.mode === "rank" ? " on" : "");
+        hint.textContent = state.mode === "pick"
+          ? "日付を選んで『開催場を表示』を押し、競艇場 → レース番号の順に選びます。結果の出ているレースならどれでも動画にできます。"
+          : "その日の高配当の上位10レースから選びます（公式の高配当ベスト10）。";
+        show.textContent = state.mode === "pick" ? "開催場を表示" : "TOP10を表示";
+        cfgHint.style.display = needCfg() ? "none" : "block";
+        cfgHint.textContent = needCfg() ? "" : "先に、いちばん下の『動画サービスの設定』を保存してください。";
+      };
+      const setMode = (m) => { if (state.busy) return; state.mode = m; ls.set(K_MODE, m); list.innerHTML = ""; listEls.length = 0; refreshMode(); };
+      segPick.onclick = () => setMode("pick"); segTop.onclick = () => setMode("rank");
+
+      const msgCard = (html) => { const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:12px;font-size:14px;line-height:1.75"; d.innerHTML = html; list.appendChild(d); return d; };
+      const sub = (t) => { const h = document.createElement("div"); h.style.cssText = "margin:16px 2px 2px;font-size:13px;color:var(--muted)"; h.textContent = t; list.appendChild(h); return h; };
+      const gradeBadge = (g) => g && g !== "一般" ? ' <span style="font-size:11px;font-weight:800;padding:1px 6px;border-radius:6px;border:1px solid var(--accent);color:var(--accent-text);vertical-align:middle">' + esc(g) + '</span>' : "";
+      const starsOf = (lv) => "★".repeat(lv) + "☆".repeat(5 - lv);
+      const clearList = () => { list.innerHTML = ""; listEls.length = 0; };
+      const fail = (e) => { clearList(); msgCard('<div class="err" style="margin:0">' + esc(e.message || e) + '</div>'); };
+
+      show.onclick = async () => {
+        if (state.busy) return;
+        const c = needCfg(); if (!c) { refreshMode(); toast("先に『動画サービスの設定』を保存してください", "err"); openCfg(); return; }
+        if (!dateIn.value) { toast("日付を選んでください", "err"); return; }
+        if (dateIn.value > todayJst()) dateIn.value = todayJst();
+        clearList(); msgCard("読み込み中…（最初の1回は、サービスの起動に数秒かかることがあります）");
+        setBusy(true);
+        try {
+          if (state.mode === "rank") { const j = await getJson(c, "/api/ranking", { date: dateIn.value }); renderTop(j, c); }
+          else { const j = await getJson(c, "/api/venues", { date: dateIn.value }); state.venues = j; renderVenues(j, c); }
+        } catch (e) { fail(e); }
+        setBusy(false);
+      };
+
+      /* ---- 競艇場 → レース番号 ---- */
+      function renderVenues(j, c) {
+        clearList();
+        sub(j.date + " の開催場（出典：BOAT RACE公式サイト）");
+        if (!j.venues.length) { msgCard(esc(j.note || "この日の開催が見つかりませんでした")); return; }
+        const g = document.createElement("div"); g.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px";
+        j.venues.forEach((v) => {
+          const b = document.createElement("button"); b.type = "button"; b.className = "card";
+          b.style.cssText = "text-align:left;padding:12px;min-height:64px;min-width:0;cursor:pointer;color:var(--text);font-family:inherit;line-height:1.4";
+          b.innerHTML = '<div style="font-weight:800;font-size:16px">' + esc(v.venue) + gradeBadge(v.grade) + '</div>'
+            + '<div style="font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(v.day || "") + (j.today && v.status ? '　' + esc(v.status) : '') + '</div>'
+            + '<div style="font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(v.title || "") + '</div>';
+          b.onclick = () => openVenue(v, c);
+          listEls.push(b); g.appendChild(b);
+        });
+        list.appendChild(g);
+      }
+
+      async function openVenue(v, c) {
+        if (state.busy) return;
+        clearList(); msgCard("読み込み中…"); setBusy(true);
+        try { const j = await getJson(c, "/api/races", { date: dateIn.value, jcd: v.jcd }); renderRaces(j, v, c); }
+        catch (e) { fail(e); const back = mkBtn("‹ 競艇場を選びなおす"); back.style.cssText += ";width:100%;margin-top:10px"; back.onclick = () => state.venues && renderVenues(state.venues, c); list.appendChild(back); listEls.push(back); }
+        setBusy(false);
+      }
+
+      function renderRaces(j, v, c) {
+        clearList();
+        const bar = document.createElement("div"); bar.style.cssText = "display:flex;gap:8px;margin-top:12px";
+        const back = mkBtn("‹ 競艇場を選びなおす"), reload = mkBtn("結果を更新");
+        back.onclick = () => state.venues && renderVenues(state.venues, c); reload.onclick = () => openVenue(v, c);
+        bar.appendChild(back); bar.appendChild(reload); list.appendChild(bar); listEls.push(back, reload);
+        sub(j.date + "　" + j.venue + "　" + (v.day || "") + "　" + (v.title || ""));
+        j.races.forEach((r) => {
+          const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:10px";
+          const top10 = r.rank ? ' <span style="font-weight:800;font-size:11.5px;padding:1px 7px;border-radius:6px;border:1px solid var(--accent2);color:var(--accent2);vertical-align:middle">高配当TOP10 ' + r.rank + '位</span>' : "";
+          if (r.done) {
+            d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
+              + '<div style="font-weight:800;font-size:17px">' + r.race + 'R' + top10 + '</div>'
+              + '<div style="font-weight:800;font-size:17px;color:var(--accent-text)">' + esc(yen(r.payout)) + '</div></div>'
+              + '<div style="margin-top:4px;font-size:13.5px;color:var(--muted)">3連単 ' + esc(r.combo.join("-")) + '　<b style="color:var(--text)">' + esc(String(r.multiplier)) + '倍</b>　演出 ' + starsOf(r.level) + (r.note ? '　' + esc(r.note) : '') + '</div>';
+            const b = document.createElement("button"); b.type = "button"; b.className = "mini primary"; b.textContent = "動画をつくる"; b.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
+            const note = document.createElement("div"); note.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted);display:none";
+            const out = document.createElement("div");
+            b.onclick = () => makeVideo({ mode: "pick", jcd: j.jcd, race: r.race, combo: r.combo, payout: r.payout, venue: j.venue, rank: r.rank || null }, b, note, out, c);
+            listEls.push(b); d.appendChild(b); d.appendChild(note); d.appendChild(out);
+          } else {
+            d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><div style="font-weight:800;font-size:17px;color:var(--muted)">' + r.race + 'R</div>'
+              + '<div style="font-size:13.5px;color:var(--muted)">結果待ち（まだ確定していません）</div></div>' + (r.note ? '<div style="margin-top:4px;font-size:13px;color:var(--muted)">' + esc(r.note) + '</div>' : '');
+          }
+          list.appendChild(d);
+        });
+      }
+
+      /* ---- 高配当TOP10 ---- */
+      function renderTop(j, c) {
+        clearList();
+        sub(j.date + " の高配当 TOP10（出典：BOAT RACE公式サイト）");
+        j.races.forEach((r) => {
+          const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:10px";
+          d.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">'
+            + '<div style="font-weight:800;font-size:16px">' + r.rank + '位　' + esc(r.venue) + ' ' + r.race + 'R <span style="font-weight:600;font-size:12.5px;color:var(--muted)">' + esc(r.day || "") + '</span></div>'
+            + '<div style="font-weight:800;font-size:17px;color:var(--accent-text)">' + esc(yen(r.payout)) + '</div></div>'
+            + '<div style="margin-top:4px;font-size:13.5px;color:var(--muted)">3連単 ' + esc(r.combo.join("-")) + '　<b style="color:var(--text)">' + esc(String(r.multiplier)) + '倍</b>　演出 ' + starsOf(r.level) + '</div>';
+          const b = document.createElement("button"); b.type = "button"; b.className = "mini primary"; b.textContent = "動画をつくる"; b.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
+          const note = document.createElement("div"); note.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted);display:none";
+          const out = document.createElement("div");
+          b.onclick = () => makeVideo({ mode: "rank", rank: r.rank, venue: r.venue, race: r.race }, b, note, out, c);
+          listEls.push(b); d.appendChild(b); d.appendChild(note); d.appendChild(out); list.appendChild(d);
+        });
+      }
+
+      /* ---- 動画をつくる（どちらの選び方でも同じ） ---- */
+      async function makeVideo(t, b, note, out, c) {
+        if (state.busy) return;
+        setBusy(true);
+        const label = b.textContent; b.textContent = "つくっています…";
+        note.style.display = "block"; note.className = ""; out.innerHTML = "";
+        const t0 = Date.now(); let extra = "";
+        const tick = () => { note.textContent = (extra || "つくっています…") + " " + Math.round((Date.now() - t0) / 1000) + "秒経過（目安：1〜3分。画面を開いたまま、お待ちください）"; };
+        tick(); const timer = setInterval(tick, 1000);
+        wake.on();
+        const ctl = new AbortController(), kill = setTimeout(() => ctl.abort(), 10 * 60 * 1000);
+        try {
+          const body = { date: dateIn.value, commentary: ls.get(K_CM) !== "0" };
+          if (t.mode === "rank") body.rank = t.rank;
+          else { body.jcd = t.jcd; body.race = t.race; body.expect_combo = t.combo; body.expect_payout = t.payout; }   // 一覧で見た内容と結果ページが食い違えば、サーバーが作らない
+          const intro = ls.get(K_INTRO); if (intro) body.intro_image = intro;
+          const endi = ls.get(K_END); if (endi) body.ending_image = endi;
+          if (body.commentary && rec.blob && rec.use && t.rank && rec.rank === t.rank) {       // 録音した本物の実況を、このレースに使う
+            if (rec.start == null || rec.result == null) throw new Error("録音の『スタートの瞬間』と『結果アナウンスの始まり』の秒を入れてください");
+            body.commentary_audio = await blobToDataURL(rec.blob); body.audio_start = rec.start; body.audio_result = rec.result;
+          }
+          const payload = JSON.stringify(body);
+          let res = null, tries = 0;
+          for (;;) {                                           // 電波が途切れたときは、2回までつなぎ直す（サーバーが同じ動画を保持していれば、すぐ返る）
+            try { res = await fetch(c.url + "/api/render", { method: "POST", signal: ctl.signal, headers: { "X-API-Key": c.key, "Content-Type": "application/json" }, body: payload }); break; }
+            catch (e) {
+              if (e && e.name === "AbortError") throw e;
+              if (++tries > 2) throw new Error("通信が途切れました。電波のよい場所で、もう一度お試しください。");
+              extra = "通信が途切れました。つなぎ直しています（" + tries + "/2）…"; await new Promise((r) => setTimeout(r, 3000));
+            }
+          }
+          if (!res.ok) throw new Error(await errText(res));
+          const blob = await res.blob();
+          const fb = t.mode === "rank" ? "高配当" + t.rank + "位_" + dateIn.value + ".mp4" : (t.venue || "") + t.race + "R_" + dateIn.value + ".mp4";
+          const name = fileNameOf(res, fb);
+          const url = URL.createObjectURL(blob);
+          out.innerHTML = '<video controls playsinline preload="metadata" style="width:100%;max-width:300px;margin-top:10px;border-radius:10px;background:#000;display:block"></video>';
+          out.querySelector("video").src = url;
+          const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px";
+          if (touch) {
+            const sv = mkBtn("保存する（共有メニューを開く）", "primary"); sv.style.cssText += ";min-height:48px;font-size:15px";
+            sv.onclick = async () => { const r = await shareOrSave(blob, name); if (r === "download") toast("ダウンロードしました"); };
+            const dl = mkBtn("ファイルとしてダウンロード", "cyan"); dl.onclick = () => saveBlob(blob, name);
+            row.appendChild(sv); row.appendChild(dl);
+            note.textContent = "できました（" + Math.round((Date.now() - t0) / 1000) + "秒）。下の『保存する』を押してください：" + name;
+          } else {
+            const again = mkBtn("もう一度保存する", "cyan"); again.onclick = () => saveBlob(blob, name); row.appendChild(again);
+            note.textContent = "できました（" + Math.round((Date.now() - t0) / 1000) + "秒）。自動で保存します：" + name;
+          }
+          note.className = "okmsg"; out.appendChild(row);
+          /* 選手写真・音声が実際にどうなったかを、必ず表示する */
+          const ph = /^(\d+)\/(\d+)$/.exec(res.headers.get("X-Photos") || ""), au = res.headers.get("X-Audio");
+          const info = document.createElement("div"); info.style.cssText = "margin-top:8px;font-size:13px;line-height:1.7";
+          const line = (txt, bad) => { const d = document.createElement("div"); d.textContent = txt; if (bad) d.className = "err"; info.appendChild(d); };
+          if (ph) { const ok = +ph[1], tot = +ph[2]; if (tot && ok === tot) line("選手写真：" + ok + "/" + tot + "枚（公式サイトから取得）"); else line("選手写真：" + ok + "/" + tot + "枚しか取得できませんでした。取得できなかった艇は、艇番の丸印で描いています。", true); }
+          if (au) line(au === "real" ? "実況：録音した本物の実況を使いました" : au === "synth" ? "実況：合成音声（BGM・効果音つき）" : "音声：なし（無音）");
+          out.insertBefore(info, out.firstChild);
+          if (!touch) saveBlob(blob, name);                    // スマホは、押してもらった瞬間にしか共有メニューを開けないので、自動保存はしない
+        } catch (e) {
+          note.className = "err";
+          note.textContent = e.name === "AbortError" ? "時間がかかりすぎたため中止しました。もう一度お試しください。" : String(e.message || e);
+        }
+        clearInterval(timer); clearTimeout(kill); wake.off();
+        b.textContent = label; setBusy(false);
+      }
+
+      /* ================= 設定・オプション（下） ================= */
+      const section = (title, open) => {
+        const d = document.createElement("details"); d.className = "card"; d.style.cssText = "padding:12px 14px;margin-top:12px;font-size:14px;line-height:1.75";
+        if (open) d.open = true;
+        const s = document.createElement("summary"); s.style.cssText = "font-weight:800;cursor:pointer;min-height:28px"; s.textContent = title; d.appendChild(s);
+        const bodyEl = document.createElement("div"); bodyEl.style.cssText = "margin-top:8px"; d.appendChild(bodyEl);
+        box.appendChild(d); bodyEl.det = d; return bodyEl;
+      };
+
+      /* ---- サービスの設定 ---- */
+      const cur = cfg();
+      const c1 = section("動画サービスの設定", !(cur.url && cur.key));
+      const openCfg = () => { c1.det.open = true; try { c1.det.scrollIntoView({ block: "center", behavior: "smooth" }); } catch (e) {} };
+      const urlIn = inp(c1, "動画サービスのURL（例: https://race-video-xxxx.run.app）", "url"); urlIn.value = cur.url;
+      const keyIn = inp(c1, "合言葉（APIキー）", "password"); keyIn.value = cur.key; keyIn.style.marginTop = "8px";
+      [urlIn, keyIn].forEach((x) => { x.autocapitalize = "off"; x.autocomplete = "off"; x.spellcheck = false; x.setAttribute("autocorrect", "off"); });
+      const saveCfg = mkBtn("設定を保存", "cyan"); saveCfg.style.cssText += ";margin-top:10px;width:100%";
+      const cfgMsg = document.createElement("div"); cfgMsg.className = "okmsg"; cfgMsg.style.display = "none";
+      saveCfg.onclick = () => {
+        const url = urlIn.value.trim().replace(/\/+$/, "");
+        if (url && !/^https:\/\//i.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(url)) { toast("URLは https:// から入力してください", "err"); return; }
+        ls.set(K_CFG, JSON.stringify({ url, key: keyIn.value.trim() }));
+        cfgMsg.textContent = "保存しました"; cfgMsg.style.display = "block"; toast("保存しました"); refreshMode();
+      };
+      c1.appendChild(saveCfg); c1.appendChild(cfgMsg);
+
+      /* ---- 画像の差し込み（オープニング / エンディング。どちらも任意） ---- */
+      const imgSec = section("オープニング／エンディング画像（任意）", false);
+      const imageSlot = (key, title, desc, maxSide, okMsg, onText) => {
+        const c = document.createElement("div"); c.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid var(--border)";
+        c.innerHTML = '<div style="font-weight:800;margin-bottom:4px">' + title + '</div><div style="color:var(--muted);font-size:13px">' + desc + '</div>';
+        imgSec.appendChild(c);
+        const prev = document.createElement("div"); prev.style.cssText = "margin-top:10px;display:flex;gap:12px;align-items:center";
+        const img = document.createElement("img"); img.style.cssText = "width:72px;height:128px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong);display:none";
+        const st = document.createElement("div"); st.style.cssText = "font-size:13px;color:var(--muted)";
+        prev.appendChild(img); prev.appendChild(st); c.appendChild(prev);
+        const file = document.createElement("input"); file.type = "file"; file.accept = "image/*"; file.style.cssText = "margin-top:10px";
+        const rm = mkBtn("画像を外す"); rm.style.cssText += ";margin-top:8px;width:100%";
+        const refresh = () => {
+          const v = ls.get(key);
+          img.style.display = v ? "block" : "none"; if (v) img.src = v;
+          st.textContent = v ? onText : "未設定";
+          rm.style.display = v ? "block" : "none";
+        };
+        file.onchange = async () => {
+          const f = file.files && file.files[0]; if (!f) return;
+          try {
+            const data = await fitImage(f, maxSide);
+            if (!ls.set(key, data)) { toast("画像を保存できませんでした（端末の保存容量が足りません）", "err"); file.value = ""; return; }
+            toast(okMsg);
+          } catch (e) { toast(String(e.message || e), "err"); }
+          file.value = ""; refresh();
+        };
+        rm.onclick = () => { ls.del(key); refresh(); toast("画像を外しました"); };
+        c.appendChild(file); c.appendChild(rm); refresh();
+      };
+      imageSlot(K_INTRO, "オープニング画像",
+        "未設定なら、これまでどおりそのまま始まります。設定すると、動画の最初にこの画像を1秒見せてから、スライドで本編に切り替わります（その分、動画は1秒長くなります）。縦長（9:16）がいちばんきれいです。",
+        1920, "オープニング画像を設定しました", "設定中：最初にこの画像を1秒出します");
+      imageSlot(K_END, "エンディング画像（的中画面など）",
+        "未設定なら、これまでどおりそのまま終わります。的中画面などのスクリーンショットを入れておくと、動画の最後にトランジションで切り替わり、約3秒間、スマホの画面としてその画像を見せます（見出し・払戻金・着順などの文字はレースごとに自動で入れ替わります。その分、動画は3秒長くなります）。画面まわりの黒い余白は自動で切り取ります。",
+        2560, "エンディング画像を設定しました", "設定中：最後にスマホ画面として約3秒見せます");
+
+      /* ---- 実況（合成音声）。初期状態はつける ---- */
+      const cmCard = section("音声（実況・BGM・効果音）", false);
+      cmCard.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px">レース中はBGMが流れ、決め場面に実況の声と画面下のテロップがつきます。配当の発表では、倍率が大きいほど派手な効果音が鳴ります。声は合成音声です。切ると、これまでどおりの無音の動画になります。</div>');
+      const cmLab = document.createElement("label"); cmLab.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px";
+      const cmBox = document.createElement("input"); cmBox.type = "checkbox"; cmBox.checked = ls.get(K_CM) !== "0";
+      cmBox.onchange = () => { ls.set(K_CM, cmBox.checked ? "1" : "0"); toast(cmBox.checked ? "音声（実況・BGM・効果音）をつけます" : "音声なし（無音）にします"); };
+      cmLab.appendChild(cmBox); cmLab.appendChild(document.createTextNode("音声（実況・BGM・効果音）をつける")); cmCard.appendChild(cmLab);
+
+      /* ---- 実況の録音（本物の実況・任意）。ブラウザのタブの音声だけを録音する（映像は保存しない）。パソコンのChrome/Edge用 ---- */
+      const rec = { blob: null, url: "", dur: 0, rank: 1, start: null, result: null, use: true, mr: null, stream: null, t0: 0, timer: null, kill: null };
+      const rc = section("実況の録音（本物の実況・任意・パソコン向け）", false);
+      rc.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px">パソコンのChrome（またはEdge）で使えます（スマホでは画面の共有による録音はできません。録音ずみの音声ファイルを選ぶことはできます）。別のタブでBOATCASTのレース映像を開いて再生できる状態にしてから、下の『録音をはじめる』を押し、そのタブを選んで『タブの音声も共有』にチェックを入れてください。<b>音声だけ</b>を録音し、映像は保存しません。録音しながら、スタートの瞬間と結果アナウンスの始まりで、それぞれの印のボタンを押してください（あとで秒数を直せます）。録音した実況は、決め場面のカットに合わせて動画に入ります。使えるのは<b>高配当TOP10に入っているレース</b>です（『使うレース』で順位を選びます）。録音は私的な視聴用です。公開する場合は、権利者の許可をご確認ください。この録音は、画面を開いている間だけ保持します。</div>');
+      const rcRow = document.createElement("div"); rcRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center";
+      const bRec = mkBtn("録音をはじめる", "primary"), bStop = mkBtn("録音を止める"), bMkS = mkBtn("スタートの瞬間（印）", "cyan"), bMkR = mkBtn("結果アナウンスの始まり（印）", "cyan");
+      const timeLab = document.createElement("div"); timeLab.style.cssText = "font-size:13px;color:var(--muted);width:100%";
+      rcRow.appendChild(bRec); rcRow.appendChild(bStop); rcRow.appendChild(bMkS); rcRow.appendChild(bMkR); rc.appendChild(rcRow); rc.appendChild(timeLab);
+      const rcFileLab = document.createElement("label"); rcFileLab.style.cssText = "display:block;margin-top:10px;font-size:13px;color:var(--muted)";
+      rcFileLab.appendChild(document.createTextNode("すでに録音した音声ファイルを使う場合："));
+      const rcFile = document.createElement("input"); rcFile.type = "file"; rcFile.accept = "audio/*,video/webm"; rcFile.style.cssText = "display:block;margin-top:4px";
+      rcFileLab.appendChild(rcFile); rc.appendChild(rcFileLab);
+      const rcBody = document.createElement("div"); rcBody.style.cssText = "margin-top:12px;display:none"; rc.appendChild(rcBody);
+      const audioEl = document.createElement("audio"); audioEl.controls = true; audioEl.preload = "metadata"; audioEl.style.cssText = "width:100%";
+      const fieldRow = (label) => { const w = document.createElement("div"); w.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"; const l = document.createElement("div"); l.style.cssText = "font-size:13px;min-width:150px"; l.textContent = label; w.appendChild(l); return { w, l }; };
+      const numIn = () => { const i = document.createElement("input"); i.type = "number"; i.step = "0.1"; i.min = "0"; i.style.cssText = "width:96px;padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)"; return i; };
+      const fS = fieldRow("スタートの瞬間（秒）"), inS = numIn(), lsS = mkBtn("ここから聞く"); lsS.style.cssText = "flex:0 0 auto;min-width:0;min-height:40px";
+      const fR = fieldRow("結果アナウンスの始まり（秒）"), inR = numIn(), lsR = mkBtn("ここから聞く"); lsR.style.cssText = "flex:0 0 auto;min-width:0;min-height:40px";
+      fS.w.appendChild(inS); fS.w.appendChild(lsS); fR.w.appendChild(inR); fR.w.appendChild(lsR);
+      const fK = fieldRow("使うレース"), selRank = document.createElement("select"); selRank.style.cssText = "padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)";
+      for (let i = 1; i <= 10; i++) { const o = document.createElement("option"); o.value = String(i); o.textContent = "高配当TOP10の" + i + "位"; selRank.appendChild(o); }
+      fK.w.appendChild(selRank);
+      const useLab = document.createElement("label"); useLab.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px";
+      const useBox = document.createElement("input"); useBox.type = "checkbox"; useBox.checked = true; useLab.appendChild(useBox); useLab.appendChild(document.createTextNode("この録音の実況を使う（合成音声の代わりに入ります）"));
+      const bDel = mkBtn("録音を消す"); bDel.style.cssText += ";margin-top:10px;width:100%";
+      const rcInfo = document.createElement("div"); rcInfo.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted)";
+      [audioEl, rcInfo, fK.w, fS.w, fR.w, useLab, bDel].forEach((x) => rcBody.appendChild(x));
+
+      const elapsed = () => (Date.now() - rec.t0) / 1000;
+      const recording = () => !!(rec.mr && rec.mr.state === "recording");
+      function rcRefresh() {
+        const on = recording();
+        bRec.style.display = on ? "none" : "block"; bStop.style.display = on ? "block" : "none";
+        bMkS.style.display = on ? "block" : "none"; bMkR.style.display = on ? "block" : "none";
+        rcFileLab.style.display = on ? "none" : "block";
+        rcBody.style.display = rec.blob && !on ? "block" : "none";
+        if (rec.blob) { inS.value = rec.start == null ? "" : rec.start.toFixed(1); inR.value = rec.result == null ? "" : rec.result.toFixed(1); selRank.value = String(rec.rank); useBox.checked = rec.use; }
+        rcInfo.textContent = rec.blob ? "録音：" + mmss(rec.dur) + "。使うのは高配当TOP10の" + rec.rank + "位のレースの動画だけです（ほかのレースは合成音声のままです）。" : "";
+        if (!on) timeLab.textContent = "";
+      }
+      function endRec() {
+        clearInterval(rec.timer); clearTimeout(rec.kill);
+        try { if (rec.stream) rec.stream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+        rec.stream = null;
+      }
+      function setBlob(blob, dur) {
+        if (rec.url) URL.revokeObjectURL(rec.url);
+        rec.blob = blob; rec.dur = dur; rec.url = URL.createObjectURL(blob); audioEl.src = rec.url;
+        rcRefresh();
+      }
+      async function startRec() {
+        if (state.busy) return;
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia || typeof MediaRecorder === "undefined") { toast("この端末のブラウザでは録音できません。パソコンのChrome（またはEdge）をお使いください", "err"); return; }
+        let stream;
+        try { stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true }); }
+        catch (e) { toast("画面（タブ）の共有が取り消されました", "err"); return; }
+        const at = stream.getAudioTracks();
+        if (!at.length) { stream.getTracks().forEach((t) => t.stop()); toast("音声が共有されていません。タブを選ぶ画面で『タブの音声も共有』にチェックを入れて、もう一度お試しください", "err"); return; }
+        const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"].find((m) => { try { return MediaRecorder.isTypeSupported(m); } catch (e) { return false; } }) || "";
+        let mr;
+        try { mr = new MediaRecorder(new MediaStream(at), mime ? { mimeType: mime } : undefined); }
+        catch (e) { stream.getTracks().forEach((t) => t.stop()); toast("録音をはじめられませんでした", "err"); return; }
+        const chunks = [];
+        mr.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        mr.onstop = () => {
+          const dur = elapsed(); endRec();
+          if (!chunks.length) { toast("録音できた音がありませんでした", "err"); rcRefresh(); return; }
+          rec.rank = Number(selRank.value) || 1;
+          setBlob(new Blob(chunks, { type: mr.mimeType || mime || "audio/webm" }), dur);
+          toast("録音しました（" + mmss(dur) + "）。印の秒数を確かめてください");
+        };
+        stream.getVideoTracks().forEach((t) => t.addEventListener("ended", () => { if (recording()) mr.stop(); }));
+        rec.mr = mr; rec.stream = stream; rec.t0 = Date.now(); rec.start = null; rec.result = null;
+        mr.start(1000);
+        rec.timer = setInterval(() => {
+          timeLab.textContent = "録音中… " + mmss(elapsed()) + "　スタート印：" + (rec.start == null ? "まだ" : rec.start.toFixed(1) + "秒") + "　結果印：" + (rec.result == null ? "まだ" : rec.result.toFixed(1) + "秒");
+        }, 500);
+        rec.kill = setTimeout(() => { if (recording()) mr.stop(); }, 12 * 60 * 1000 - 5000);   // サービスの上限（12分）の手前で止める
+        rcRefresh();
+      }
+      bRec.onclick = startRec;
+      bStop.onclick = () => { if (recording()) rec.mr.stop(); };
+      const mark = (which) => {
+        if (!recording()) return;
+        const t = Math.max(0, elapsed() - 0.3);               // ボタンを押すまでの反応の遅れぶん、0.3秒戻して記録
+        if (which === "s") { rec.start = t; toast("スタートの瞬間に印をつけました（" + t.toFixed(1) + "秒）"); } else { rec.result = t; toast("結果アナウンスの始まりに印をつけました（" + t.toFixed(1) + "秒）"); }
+      };
+      bMkS.onclick = () => mark("s"); bMkR.onclick = () => mark("r");
+      inS.onchange = () => { const v = parseFloat(inS.value); rec.start = isFinite(v) ? v : null; };
+      inR.onchange = () => { const v = parseFloat(inR.value); rec.result = isFinite(v) ? v : null; };
+      selRank.onchange = () => { rec.rank = Number(selRank.value) || 1; rcRefresh(); };
+      useBox.onchange = () => { rec.use = useBox.checked; };
+      const listen = (v) => { if (!isFinite(v)) return; try { audioEl.currentTime = Math.max(0, v - 1.5); audioEl.play(); } catch (e) {} };
+      lsS.onclick = () => listen(parseFloat(inS.value)); lsR.onclick = () => listen(parseFloat(inR.value));
+      bDel.onclick = () => { try { audioEl.pause(); } catch (e) {} if (rec.url) URL.revokeObjectURL(rec.url); rec.blob = null; rec.url = ""; rec.start = rec.result = null; audioEl.removeAttribute("src"); rcRefresh(); toast("録音を消しました"); };
+      rcFile.onchange = () => {
+        const f = rcFile.files && rcFile.files[0]; if (!f) return;
+        const u = URL.createObjectURL(f), a = new Audio();
+        a.preload = "metadata";
+        a.onloadedmetadata = () => { URL.revokeObjectURL(u); rec.start = rec.result = null; rec.rank = Number(selRank.value) || 1; setBlob(f, isFinite(a.duration) ? a.duration : 0); toast("録音ファイルを読み込みました。スタートの瞬間と結果アナウンスの秒を入れてください"); };
+        a.onerror = () => { URL.revokeObjectURL(u); toast("この音声ファイルは読み込めませんでした", "err"); };
+        a.src = u; rcFile.value = "";
+      };
+      rcRefresh();
+      refreshMode();
+    }
+    return { enabled, build };
+  })();
+  BUILDERS.racevideo = (el) => RACEVID.build(el);
+  /* OFFのままなら、メニューにも出さない（既存の画面・動作には一切触れない） */
+  if (RACEVID.enabled()) {
+    TABS.push({ id: "racevideo", num: "", label: "高配当動画" });
+    const _pg = NAV_GROUPS.find((g) => g.id === "post");
+    if (_pg && _pg.tabs.indexOf("racevideo") < 0) _pg.tabs.push("racevideo");
+  }
+  } catch (e) {
+    try { console.warn("高配当動画タブを読み込めませんでした（他の機能には影響しません）", e); } catch (_) {}
+  }
+})();
 
 </script>
 
