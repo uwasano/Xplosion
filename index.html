@@ -51,13 +51,15 @@
     font-family:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
     font-size:15px;line-height:1.6;font-variant-numeric:tabular-nums;
     -webkit-font-smoothing:antialiased;
+  }
+  /* 背景の模様は、動かない1枚の層にする（body の background-attachment:fixed は、iPhone でスクロール中に下のメニューがずれる原因になりやすい） */
+  body::before{content:"";position:fixed;left:0;top:0;right:0;bottom:0;z-index:-1;pointer-events:none;
+    -webkit-transform:translateZ(0);transform:translateZ(0);
     background-image:
       radial-gradient(ellipse 90% 40% at 50% -5%, rgba(255,46,126,.13), transparent),
       radial-gradient(ellipse 70% 40% at 90% 105%, rgba(0,229,255,.08), transparent),
       repeating-linear-gradient(0deg, rgba(29,42,71,.22) 0 1px, transparent 1px 34px),
-      repeating-linear-gradient(90deg, rgba(29,42,71,.22) 0 1px, transparent 1px 34px);
-    background-attachment:fixed;
-  }
+      repeating-linear-gradient(90deg, rgba(29,42,71,.22) 0 1px, transparent 1px 34px)}
   a{color:var(--accent2)}
   ::selection{background:rgba(255,46,126,.35)}
   .wrap{max-width:600px;margin:0 auto;padding:12px 16px calc(var(--navh) + 40px + env(safe-area-inset-bottom))}
@@ -89,7 +91,7 @@
 
   /* ---------- ナビ：上=小タブ（固定）、下=大きな区分（固定バー） ---------- */
   nav#nav{position:sticky;top:0;z-index:50;margin:10px -16px 0;padding:8px 16px;
-    background:rgba(4,6,12,.9);backdrop-filter:saturate(1.4) blur(10px);-webkit-backdrop-filter:saturate(1.4) blur(10px);
+    background:#04060c;
     border-bottom:1px solid var(--border);display:block}
   nav#nav:empty{display:none}
   .navrow{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;scroll-snap-type:x proximity}
@@ -101,8 +103,9 @@
   .navbtn.on{background:rgba(255,46,126,.12);border-color:var(--accent);color:var(--accent-text);box-shadow:0 0 14px rgba(255,46,126,.3)}
   .navbtn b{font-size:11px;opacity:.7;font-weight:700}
   .navbtn.sub{font-size:14px;padding:8px 14px}
-  .bnav{position:fixed;left:0;right:0;bottom:0;z-index:60;background:rgba(10,14,26,.96);
-    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--border);
+  .bnav{position:fixed;left:0;right:0;bottom:0;z-index:60;background:#0a0e1a;
+    -webkit-transform:translate3d(0,0,0);transform:translate3d(0,0,0);will-change:transform;-webkit-backface-visibility:hidden;backface-visibility:hidden;
+    border-top:1px solid var(--border);
     padding:6px 8px calc(6px + env(safe-area-inset-bottom))}
   .bnav .in{max-width:600px;margin:0 auto;display:flex;gap:4px}
   .bnav button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
@@ -1800,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "372";
+const APP_VERSION = "373";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13735,7 +13738,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         if (out) { if (o.onOk) o.onOk(); return out; }
         if (o.sig && o.sig.aborted) throw stoppedErr();
         if (woke) continue;
-        n++; if (o.onRetry) o.onRetry(n);
+        n++; if (o.onRetry && n >= 2) o.onRetry(n);                  // 1回だけの途切れは、すぐ裏でつなぎ直せるので表示しない（2回続けて切れたときだけ知らせる）
         await napUntilBack(Math.min(1000 * n, 5000));
       }
     }
@@ -13743,9 +13746,9 @@ BUILDERS.talk = (el) => TALK.build(el);
     const PHASE_TXT = (v) => {
       const f = v.frac != null ? Math.round(v.frac * 100) : null;
       switch (v.phase) {
-        case "open": return "公式のリプレイを開いています…（このあと約4分、実況を録音します）";
+        case "open": return "公式のリプレイを開いています…（このあと約3分、実況を録音します）";
         case "prepare": return "公式プレイヤーの再生を準備しています…";
-        case "record": return "公式リプレイの実況を録音しています…" + (f != null ? f + "％" : "") + "（録音は等倍で進むため約4分かかります。画面を閉じても続きます）";
+        case "record": return "公式リプレイの実況を録音しています…" + (f != null ? f + "％" : "") + "（録音は等倍で進むため約3分かかります。画面を閉じても続きます）";
         case "check": return "録音を確認しています…";
         case "render": return "動画をつくっています…";
         default: return "つくっています…";
@@ -13762,7 +13765,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     /* できる（done）か失敗する（error）まで、短い問い合わせを繰り返す。サーバーが記録を失っていたら { state: "lost" } */
     async function waitJob(c, id, o, onState) {
       for (;;) {
-        const { res, data } = await reliable(c.url + "/api/render/" + encodeURIComponent(id) + "?wait=20", { headers: { "X-API-Key": c.key } },
+        const { res, data } = await reliable(c.url + "/api/render/" + encodeURIComponent(id) + "?wait=12", { headers: { "X-API-Key": c.key } },
           Object.assign({ timeoutMs: 45000 }, o), (r) => (r.ok ? r.json() : null));
         if (res.status === 404) return { state: "lost" };
         if (!res.ok) throw new Error(await errText(res));
@@ -13793,7 +13796,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       head(el, "高配当動画", "BOAT RACEのレースを選んで、そのレースだけ縦型の再現動画（約30秒）をつくります。スマホだけで使えます。押さなければ何もつくりません。", [
         "最初に、いちばん下の『動画サービスの設定』へ、動画サービスのURLと合言葉を入れて保存します（1回だけ）。",
         "『レースを選ぶ』で、日付 → 競艇場 → レース番号の順に選びます。『高配当TOP10』に切り替えると、その日の上位10レースから選べます。",
-        "ほしいレースの『動画をつくる』を押します（2〜5分。公式の実況を自動で使う設定のときは、さらに約5分かかります。通信が途切れても自動でつなぎ直します。画面を開いたままお待ちください）。",
+        "ほしいレースの『動画をつくる』を押します（約2〜3分。公式の実況を自動で使う設定のときは、約4〜5分かかります。通信が途切れても自動でつなぎ直します。画面を開いたままお待ちください）。",
         "できあがったら『保存する』を押すと、共有メニューが開きます（iPhoneは『ビデオを保存』）。パソコンでは自動で保存されます。",
         "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、サービスが公式リプレイから自動で録音して入れます（下の『音声』の項目。約5分長くなります）。自分の録音（画面収録）を使うこともできます。",
       ]);
@@ -14179,8 +14182,8 @@ BUILDERS.talk = (el) => TALK.build(el);
       /* ---- 公式リプレイの実況を、サービスが自動で録音して使う（v2.6）。端末は何もしなくてよい ---- */
       const rrLab = document.createElement("label"); rrLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px;font-weight:700";
       const rrBox = document.createElement("input"); rrBox.type = "checkbox"; rrBox.checked = ls.get(K_RR) !== "0"; rrBox.style.marginTop = "5px";
-      rrBox.onchange = () => { ls.set(K_RR, rrBox.checked ? "1" : "0"); toast(rrBox.checked ? "公式リプレイの実況を自動で使います（約5分長くなります）" : "公式の実況は使わず、合成音声にします"); };
-      rrLab.appendChild(rrBox); rrLab.appendChild(document.createTextNode("公式リプレイの実況を、サービスが自動で録音して使う（動画づくりが約5分長くなります）")); cmCard.appendChild(rrLab);
+      rrBox.onchange = () => { ls.set(K_RR, rrBox.checked ? "1" : "0"); toast(rrBox.checked ? "公式リプレイの実況を自動で使います（約4〜5分かかります）" : "公式の実況は使わず、合成音声にします"); };
+      rrLab.appendChild(rrBox); rrLab.appendChild(document.createTextNode("公式リプレイの実況を、サービスが自動で録音して使う（動画づくりは約4〜5分かかります）")); cmCard.appendChild(rrLab);
       cmCard.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px;margin-top:4px">BOATCASTの公式リプレイを、<b>サービス側のブラウザ</b>が再生して、実況の<b>音声だけ</b>を録ります。パソコンもスマホも、開いたままにする必要はありません（動画ができたら受け取るだけ）。'
         + '録れなかったとき（リプレイがまだ無い・公式側で再生できない等）は、合成音声の動画をつくり、その理由を結果に表示します。下の『実況の録音』で自分の録音を選んだレースは、そちらを優先します。録った音声は動画づくりの間だけ使い、保存しません。</div>');
       const prBtn = mkBtn("公式リプレイを録音できるか確認する（約30秒）", "cyan"); prBtn.style.cssText += ";margin-top:10px;width:100%";
