@@ -1800,7 +1800,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "367";
+const APP_VERSION = "370";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13560,13 +13560,17 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v367 高配当動画（v2.0：レースの画面収録から実況の音声だけを取り出して使える） =================
+/* ================= v369 高配当動画（v2.2：朝・昼・夕方・ナイターの背景／エンディング画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
-   初期状態はOFF。URLに ?racevideo=1 を付けて開くと、この端末だけONになる（?racevideo=0 でOFFに戻る）。
-   OFFの間は、メニューにも画面にも一切出ない。動画づくりは別サービス（race-video/）が行う。
-   本物の実況：画面収録などの録画ファイルから、この端末の中で音声だけを取り出し（映像は取り込まない）、チェックを入れたレースの動画に入れる。 */
+   初期状態からON（X画面は「投稿」、Instagram画面は「制作」を押すと、いちばん左に『高配当動画』が出る）。
+   隠したいときだけ、URLに ?racevideo=0 を付けて開く（この端末だけOFF。?racevideo=1 で戻る）。動画づくりは別サービス（race-video/）が行う。
+   本物の実況：画面収録などの録画ファイルから、この端末の中で音声だけを取り出し（映像は取り込まない）、チェックを入れたレースの動画に入れる。
+   スタート／結果アナウンスの秒は空欄でよい（録音のゴール後の無音から、サービスが自動で見つける）。
+   音声・選手写真は保存しない：端末では画面を開いている間だけ、サービスでは処理が終わるとすぐ、できた動画も最長1時間（遅くとも翌日まで）で消える。
+   エンディング画像：動画ができた直後に、この端末からも消える（サービスは受け取った画像を動画にはめ込むだけで、処理が終わるとすぐ消す）。次の動画に使うときは選び直す。
+   背景：レースの締切時刻（公式の締切予定時刻）と競艇場の位置から太陽の高さを求め、朝・昼・夕方・ナイターの空・水・客席の照明にする。天気（晴・曇・雨など）も反映。 */
 (function () {
   try {
   /* 必要な部品が無い版のXplosionでも、他の機能に影響しないよう、何もせずに終わる */
@@ -13581,9 +13585,10 @@ BUILDERS.talk = (el) => TALK.build(el);
     };
     try {
       const m = /[?&]racevideo=([01])(?:&|#|$)/.exec(location.search);
-      if (m) { if (m[1] === "1") ls.set(K_ON, "1"); else ls.del(K_ON); }
+      if (m) { if (m[1] === "1") ls.del(K_ON); else ls.set(K_ON, "0"); }
     } catch (e) {}
-    const enabled = () => ls.get(K_ON) === "1";
+    /* 最初からON。?racevideo=0 を付けて開いた端末だけOFF（v367まではOFFが初期状態だったため、ボタンが出なかった） */
+    const enabled = () => ls.get(K_ON) !== "0";
     const cfg = () => { try { return Object.assign({ url: "", key: "" }, JSON.parse(ls.get(K_CFG) || "{}")); } catch (e) { return { url: "", key: "" }; } };
     const yen = (n) => "¥" + Number(n).toLocaleString("ja-JP");
     /* 読み取れるのは「昨日まで」（日本時間）。当日分は結果が出そろっていないため */
@@ -13688,7 +13693,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       head(el, "高配当動画", "BOAT RACEのレースを選んで、そのレースだけ縦型の再現動画（約30秒）をつくります。スマホだけで使えます。押さなければ何もつくりません。", [
         "最初に、いちばん下の『動画サービスの設定』へ、動画サービスのURLと合言葉を入れて保存します（1回だけ）。",
         "『レースを選ぶ』で、日付 → 競艇場 → レース番号の順に選びます。『高配当TOP10』に切り替えると、その日の上位10レースから選べます。",
-        "ほしいレースの『動画をつくる』を押します（1〜3分。画面を開いたままお待ちください）。",
+        "ほしいレースの『動画をつくる』を押します（2〜5分。画面を開いたままお待ちください）。",
         "できあがったら『保存する』を押すと、共有メニューが開きます（iPhoneは『ビデオを保存』）。パソコンでは自動で保存されます。",
         "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、レースの画面収録から音声だけを取り出して使えます（スマホでも可）。",
       ]);
@@ -13835,16 +13840,19 @@ BUILDERS.talk = (el) => TALK.build(el);
       }
 
       /* ---- 動画をつくる（どちらの選び方でも同じ） ---- */
+      let slotRefresh = {};
+      const SC_WX = { clear: "晴れ", cloudy: "曇り", rain: "雨", snow: "雪", fog: "霧" };
+      const SC_SRC = { official: "公式の締切予定時刻", band: "開催区分から推定した時刻（公式の時刻を取得できませんでした）", day: "通常開催の標準時刻から推定（公式の時刻を取得できませんでした）" };
       async function makeVideo(t, b, note, out, c) {
         if (state.busy) return;
         setBusy(true);
         const label = b.textContent; b.textContent = "つくっています…";
         note.style.display = "block"; note.className = ""; out.innerHTML = "";
         const t0 = Date.now(); let extra = "";
-        const tick = () => { note.textContent = (extra || "つくっています…") + " " + Math.round((Date.now() - t0) / 1000) + "秒経過（目安：1〜3分。画面を開いたまま、お待ちください）"; };
+        const tick = () => { note.textContent = (extra || "つくっています…") + " " + Math.round((Date.now() - t0) / 1000) + "秒経過（目安：2〜5分。画面を開いたまま、お待ちください）"; };
         tick(); const timer = setInterval(tick, 1000);
         wake.on();
-        const ctl = new AbortController(), kill = setTimeout(() => ctl.abort(), 10 * 60 * 1000);
+        const ctl = new AbortController(), kill = setTimeout(() => ctl.abort(), 16 * 60 * 1000);
         try {
           const body = { date: dateIn.value, commentary: ls.get(K_CM) !== "0" };
           if (t.mode === "rank") body.rank = t.rank;
@@ -13852,9 +13860,10 @@ BUILDERS.talk = (el) => TALK.build(el);
           const intro = ls.get(K_INTRO); if (intro) body.intro_image = intro;
           const endi = ls.get(K_END); if (endi) body.ending_image = endi;
           if (body.commentary && rec.blob && t.recBox && t.recBox.checked) {                   // 録音した本物の実況を、チェックしたこのレースに使う
-            if (rec.start == null || rec.result == null) throw new Error("録音の『スタートの瞬間』と『結果アナウンスの始まり』の秒を入れてください");
+            if ((rec.start == null) !== (rec.result == null)) throw new Error("『スタートの瞬間』と『結果アナウンスの始まり』は、どちらも空欄（自動で探します）か、どちらも秒を入れてください");
             const up = await audioForUpload();
-            body.commentary_audio = up.data; body.audio_start = up.start; body.audio_result = up.result;
+            body.commentary_audio = up.data;
+            if (up.start != null) { body.audio_start = up.start; body.audio_result = up.result; }         // 空欄なら送らない → サービスが自動で見つける
           }
           const payload = JSON.stringify(body);
           let res = null, tries = 0;
@@ -13891,6 +13900,16 @@ BUILDERS.talk = (el) => TALK.build(el);
           const line = (txt, bad) => { const d = document.createElement("div"); d.textContent = txt; if (bad) d.className = "err"; info.appendChild(d); };
           if (ph) { const ok = +ph[1], tot = +ph[2]; if (tot && ok === tot) line("選手写真：" + ok + "/" + tot + "枚（公式サイトから取得）"); else line("選手写真：" + ok + "/" + tot + "枚しか取得できませんでした。取得できなかった艇は、艇番の丸印で描いています。", true); }
           if (au) line(au === "real" ? "実況：録音した本物の実況を使いました" : au === "synth" ? "実況：合成音声（BGM・効果音つき）" : "音声：なし（無音）");
+          const al = /^(auto|manual);([\d.]+);([\d.]+)$/.exec(res.headers.get("X-Audio-Align") || "");
+          if (au === "real" && al) line("実況の位置：" + (al[1] === "auto" ? "自動で見つけました" : "入れた秒どおりです") + "（スタート" + al[2] + "秒／結果発表" + al[3] + "秒）" + (al[1] === "auto" ? "。ずれていたら、下の録音のところに秒を入れて、作り直せます。" : ""));
+          /* 背景（朝・昼・夕方・ナイター）が何を根拠にできたか */
+          const sc = (res.headers.get("X-Scene") || "").split(";");
+          if (sc.length === 4) {
+            let ph2 = sc[0]; try { ph2 = decodeURIComponent(sc[0]); } catch (e) {}
+            line("背景：" + ph2 + "（" + sc[1] + "・" + (SC_SRC[sc[3]] || sc[3]) + "）／天気：" + (SC_WX[sc[2]] || sc[2]), false);
+          }
+          /* エンディング画像は、動画ができた直後に消す（端末の保存からも外す。サービス側は処理が終わるとすぐ消している） */
+          if (endi) { ls.del(K_END); if (slotRefresh[K_END]) slotRefresh[K_END](); line("エンディング画像：動画にはめ込んだので、この端末から消しました。次の動画に使うときは、もう一度選んでください。", false); }
           out.insertBefore(info, out.firstChild);
           if (!touch) saveBlob(blob, name);                    // スマホは、押してもらった瞬間にしか共有メニューを開けないので、自動保存はしない
         } catch (e) {
@@ -13929,6 +13948,7 @@ BUILDERS.talk = (el) => TALK.build(el);
 
       /* ---- 画像の差し込み（オープニング / エンディング。どちらも任意） ---- */
       const imgSec = section("オープニング／エンディング画像（任意）", false);
+      slotRefresh = {};                                       // 画像の枠ごとの表示更新（動画ができたあと、エンディング画像を消したときに使う）
       const imageSlot = (key, title, desc, maxSide, okMsg, onText) => {
         const c = document.createElement("div"); c.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid var(--border)";
         c.innerHTML = '<div style="font-weight:800;margin-bottom:4px">' + title + '</div><div style="color:var(--muted);font-size:13px">' + desc + '</div>';
@@ -13956,13 +13976,14 @@ BUILDERS.talk = (el) => TALK.build(el);
         };
         rm.onclick = () => { ls.del(key); refresh(); toast("画像を外しました"); };
         c.appendChild(file); c.appendChild(rm); refresh();
+        slotRefresh[key] = refresh;
       };
       imageSlot(K_INTRO, "オープニング画像",
         "未設定なら、これまでどおりそのまま始まります。設定すると、動画の最初にこの画像を1秒見せてから、スライドで本編に切り替わります（その分、動画は1秒長くなります）。縦長（9:16）がいちばんきれいです。",
         1920, "オープニング画像を設定しました", "設定中：最初にこの画像を1秒出します");
       imageSlot(K_END, "エンディング画像（的中画面など）",
-        "未設定なら、これまでどおりそのまま終わります。的中画面などのスクリーンショットを入れておくと、動画の最後にトランジションで切り替わり、約3秒間、スマホの画面としてその画像を見せます（見出し・払戻金・着順などの文字はレースごとに自動で入れ替わります。その分、動画は3秒長くなります）。画面まわりの黒い余白は自動で切り取ります。",
-        2560, "エンディング画像を設定しました", "設定中：最後にスマホ画面として約3秒見せます");
+        "未設定なら、これまでどおりそのまま終わります。的中画面などのスクリーンショットを入れておくと、動画の最後にトランジションで切り替わり、約3秒間、スマホの画面としてその画像を見せます（見出し・払戻金・着順などの文字はレースごとに自動で入れ替わります。その分、動画は3秒長くなります）。画面まわりの黒い余白は自動で切り取ります。動画ができた直後に、この画像は端末から自動で消えます（保存しません。次の動画に使うときは、もう一度選んでください）。",
+        2560, "エンディング画像を設定しました", "設定中：最後にスマホ画面として約3秒見せます（動画ができたら、この画像は端末から自動で消えます）");
 
       /* ---- 実況（合成音声）。初期状態はつける ---- */
       const cmCard = section("音声（実況・BGM・効果音）", false);
@@ -13978,7 +13999,9 @@ BUILDERS.talk = (el) => TALK.build(el);
       rc.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px">本物の実況を、決め場面のカットに合わせて動画に入れられます。<b>音声だけ</b>を使い、映像は取り込みません。<br>'
         + '<b>① スマホ・パソコン共通（おすすめ）</b>：BOATCASTなどでレースの映像を再生しながら、端末の<b>画面収録</b>（iPhone：コントロールセンターの録画ボタン、Android：画面の録画）で録り、できた録画ファイルを下で選びます。録画から<b>音声だけ</b>を、この端末の中で取り出します（録画ファイルそのものは送りません。動画をつくるときに、実況の部分の音声だけをサービスに送ります）。音量を上げ、マナーモードを解除して録画してください。<br>'
         + '<b>② パソコンのChrome（またはEdge）</b>：別のタブでレース映像を再生できる状態にして『録音をはじめる』を押し、そのタブを選んで『タブの音声も共有』にチェックを入れます。録音しながら、スタートの瞬間と結果アナウンスの始まりで印のボタンを押します。<br>'
-        + 'どちらも、音声ができたら、使いたいレースの『動画をつくる』の上の『録音した実況を、このレースに使う』にチェックを入れてください（音声は1つのレース用です。ほかのレースは合成音声のままです）。録音は私的な視聴用です。公開する場合は、権利者の許可をご確認ください。この音声は、画面を開いている間だけ保持します。</div>');
+        + 'どちらも、音声ができたら、使いたいレースの『動画をつくる』の上の『録音した実況を、このレースに使う』にチェックを入れてください（音声は1つのレース用です。ほかのレースは合成音声のままです）。録音は私的な視聴用です。公開する場合は、権利者の許可をご確認ください。<br>'
+        + '<b>秒の入力は不要です</b>：下の2つの秒は<b>空欄のまま</b>で、録音のゴール直後にある約10秒の無音から、サービスが自動で位置を見つけます（BOATCASTの録音で確認ずみ）。見つからないときや、ずれたときだけ、秒を手で入れてください。<br>'
+        + '<b>保存はしません</b>：この音声は、この画面を開いている間だけ端末の中に置き、動画をつくるときだけサービスに送ります。サービスでは、処理が終わるとすぐ音声と選手写真を消し、できた動画も最長1時間（遅くとも翌日まで）で自動的に消えます。</div>');
       const rcRow = document.createElement("div"); rcRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center";
       const bRec = mkBtn("録音をはじめる（パソコン）", "primary"), bStop = mkBtn("録音を止める"), bMkS = mkBtn("スタートの瞬間（印）", "cyan"), bMkR = mkBtn("結果アナウンスの始まり（印）", "cyan");
       const timeLab = document.createElement("div"); timeLab.style.cssText = "font-size:13px;color:var(--muted);width:100%";
@@ -13993,11 +14016,11 @@ BUILDERS.talk = (el) => TALK.build(el);
       const fieldRow = (label) => { const w = document.createElement("div"); w.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap"; const l = document.createElement("div"); l.style.cssText = "font-size:13px;min-width:150px"; l.textContent = label; w.appendChild(l); return { w, l }; };
       const numIn = () => { const i = document.createElement("input"); i.type = "number"; i.step = "0.1"; i.min = "0"; i.style.cssText = "width:96px;padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)"; return i; };
       const smallBtn = (label) => { const b = mkBtn(label); b.style.cssText = "flex:0 0 auto;min-width:0;min-height:40px"; return b; };
-      const fS = fieldRow("スタートの瞬間（秒）"), inS = numIn(), lsS = smallBtn("ここから聞く"), nowS = smallBtn("いまの位置にする");
-      const fR = fieldRow("結果アナウンスの始まり（秒）"), inR = numIn(), lsR = smallBtn("ここから聞く"), nowR = smallBtn("いまの位置にする");
+      const fS = fieldRow("スタートの瞬間（秒・空欄で自動）"), inS = numIn(), lsS = smallBtn("ここから聞く"), nowS = smallBtn("いまの位置にする");
+      const fR = fieldRow("結果アナウンスの始まり（秒・空欄で自動）"), inR = numIn(), lsR = smallBtn("ここから聞く"), nowR = smallBtn("いまの位置にする");
       fS.w.appendChild(inS); fS.w.appendChild(lsS); fS.w.appendChild(nowS); fR.w.appendChild(inR); fR.w.appendChild(lsR); fR.w.appendChild(nowR);
       const rcHint = document.createElement("div"); rcHint.style.cssText = "margin-top:8px;font-size:12.5px;color:var(--muted)";
-      rcHint.textContent = "上のプレーヤーで再生し、スタートの合図が聞こえた瞬間に止めて、『いまの位置にする』を押します。結果アナウンスの始まりも同じです（秒数は、あとで手で直せます）。";
+      rcHint.textContent = "空欄のままで大丈夫です（自動で探します）。手で入れるときは、上のプレーヤーで再生し、スタートの合図が聞こえた瞬間に止めて『いまの位置にする』を押します。結果アナウンスの始まりも同じです。";
       const bDel = mkBtn("音声を消す"); bDel.style.cssText += ";margin-top:10px;width:100%";
       const rcInfo = document.createElement("div"); rcInfo.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted)";
       [audioEl, rcInfo, rcHint, fS.w, fR.w, bDel].forEach((x) => rcBody.appendChild(x));
@@ -14011,7 +14034,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         rcFileLab.style.display = on ? "none" : "block";
         rcBody.style.display = rec.blob && !on ? "block" : "none";
         if (rec.blob) { inS.value = rec.start == null ? "" : rec.start.toFixed(1); inR.value = rec.result == null ? "" : rec.result.toFixed(1); }
-        rcInfo.textContent = rec.blob ? "音声：" + mmss(rec.dur) + "。使いたいレースの『動画をつくる』の上の『録音した実況を、このレースに使う』にチェックを入れてください。" : "";
+        rcInfo.textContent = rec.blob ? "音声：" + mmss(rec.dur) + "（スタート・結果の秒は空欄で自動）。使いたいレースの『動画をつくる』の上の『録音した実況を、このレースに使う』にチェックを入れてください。" : "";
         if (!on) timeLab.textContent = "";
         syncRecChecks();
       }
@@ -14032,7 +14055,8 @@ BUILDERS.talk = (el) => TALK.build(el);
           const part = rec.pcm.subarray(Math.floor(from * sr), Math.ceil(to * sr));
           return { data: await blobToDataURL(wavBlob(part, sr)), start: rec.start - from, result: rec.result - from };
         }
-        return { data: await blobToDataURL(rec.blob), start: rec.start, result: rec.result };
+        if (rec.blob.size > 24 * 1024 * 1024) throw new Error("録音が長すぎます（約12分まで）。録画を短くするか、スタートの瞬間と結果アナウンスの秒を入れてください");
+        return { data: await blobToDataURL(rec.blob), start: rec.start, result: rec.result };      // 秒が空欄(null)なら、サービスが自動で見つける
       }
       async function startRec() {
         if (state.busy) return;
@@ -14082,7 +14106,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       const useAudioAsIs = (f) => {
         const u = URL.createObjectURL(f), a = new Audio();
         a.preload = "metadata";
-        a.onloadedmetadata = () => { URL.revokeObjectURL(u); rec.start = rec.result = null; setBlob(f, isFinite(a.duration) ? a.duration : 0); rcStat.style.display = "none"; toast("音声ファイルを読み込みました。スタートの瞬間と結果アナウンスの秒を入れてください"); };
+        a.onloadedmetadata = () => { URL.revokeObjectURL(u); rec.start = rec.result = null; setBlob(f, isFinite(a.duration) ? a.duration : 0); rcStat.style.display = "none"; toast("音声ファイルを読み込みました。秒は空欄のままで、自動で探します"); };
         a.onerror = () => { URL.revokeObjectURL(u); rcStat.className = "err"; rcStat.textContent = "この音声ファイルは読み込めませんでした"; };
         a.src = u;
       };
@@ -14095,7 +14119,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           rec.start = rec.result = null;
           setBlob(wavBlob(x.pcm, x.sr), x.pcm.length / x.sr, x.pcm, x.sr);
           rcStat.style.display = "none";
-          toast("音声だけを取り出しました（" + mmss(x.pcm.length / x.sr) + "）。スタートの瞬間と結果アナウンスの秒を入れてください");
+          toast("音声だけを取り出しました（" + mmss(x.pcm.length / x.sr) + "）。秒は空欄のままで、自動で探します");
         } catch (e) {
           if (!looksVideo) { useAudioAsIs(f); return; }
           rcStat.className = "err"; rcStat.textContent = String(e.message || e);
@@ -14107,11 +14131,18 @@ BUILDERS.talk = (el) => TALK.build(el);
     return { enabled, build };
   })();
   BUILDERS.racevideo = (el) => RACEVID.build(el);
-  /* OFFのままなら、メニューにも出さない（既存の画面・動作には一切触れない） */
+  /* ?racevideo=0 でOFFにした端末だけ、メニューに出さない（既存の画面・動作には一切触れない） */
   if (RACEVID.enabled()) {
-    TABS.push({ id: "racevideo", num: "", label: "高配当動画" });
+    if (!TABS.some((t) => t && t.id === "racevideo")) TABS.push({ id: "racevideo", num: "", label: "高配当動画" });
+    /* X画面：「投稿」の一番左 ／ Instagram画面：「制作」の一番左（SNS切替でどちらを開いていても、メニューに出る） */
     const _pg = NAV_GROUPS.find((g) => g.id === "post");
-    if (_pg && _pg.tabs.indexOf("racevideo") < 0) _pg.tabs.push("racevideo");
+    if (_pg && _pg.tabs.indexOf("racevideo") < 0) _pg.tabs.unshift("racevideo"); /* 先頭に置く（スマホは右側のタブが画面の外に隠れるため） */
+    try {
+      if (typeof NAV_GROUPS_IG !== "undefined") {
+        const _ig = NAV_GROUPS_IG.find((g) => g.id === "ig_make");
+        if (_ig && _ig.tabs.indexOf("racevideo") < 0) _ig.tabs.unshift("racevideo");
+      }
+    } catch (e) {}
   }
   } catch (e) {
     try { console.warn("高配当動画タブを読み込めませんでした（他の機能には影響しません）", e); } catch (_) {}
