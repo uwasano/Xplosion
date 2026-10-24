@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "373";
+const APP_VERSION = "375";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v369 高配当動画（v2.2：朝・昼・夕方・ナイターの背景／エンディング画像は作った直後に消える） =================
+/* ================= v375 高配当動画（v2.8：的中実績カードを自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／エンディング画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13574,6 +13574,8 @@ BUILDERS.talk = (el) => TALK.build(el);
    スタート／結果アナウンスの秒は空欄でよい（録音のゴール後の無音から、サービスが自動で見つける）。
    音声・選手写真は保存しない：端末では画面を開いている間だけ、サービスでは処理が終わるとすぐ、できた動画も最長1時間（遅くとも翌日まで）で消える。
    エンディング画像：動画ができた直後に、この端末からも消える（サービスは受け取った画像を動画にはめ込むだけで、処理が終わるとすぐ消す）。次の動画に使うときは選び直す。
+   的中実績カード（v2.8）：オープニング画像を、サービスが自動でつくる。そのレースの払戻金（100円あたり）から倍率（例 36,360円→363.6倍）を出し、色は数十通りからランダム。
+     エンディング画像（的中明細のスクリーンショット）を選んでいれば、その表をカードの右上に自動ではめ込む（最後の画面は従来どおり）。実際に的中したレースにだけ使う前提。
    背景：レースの締切時刻（公式の締切予定時刻）と競艇場の位置から太陽の高さを求め、朝・昼・夕方・ナイターの空・水・客席の照明にする。天気（晴・曇・雨など）も反映。 */
 (function () {
   try {
@@ -13581,13 +13583,15 @@ BUILDERS.talk = (el) => TALK.build(el);
   if (typeof BUILDERS === "undefined" || typeof TABS === "undefined" || typeof NAV_GROUPS === "undefined"
     || typeof head !== "function" || typeof inp !== "function" || typeof toast !== "function" || typeof esc !== "function") return;
   const RACEVID = (() => {
-    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode", K_JOB = "xpl_rv_job", K_RR = "xpl_rv_rr";
+    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode", K_JOB = "xpl_rv_job", K_RR = "xpl_rv_rr", K_HIT = "xpl_rv_hit";
     const JOB_LIMIT_MS = 25 * 60 * 1000;                     // 動画づくりを待つ上限（これを過ぎたら中止）。サーバーの記録も、動画ができてから1時間で消える
     const ls = {
       get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
       set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
       del(k) { try { localStorage.removeItem(k); } catch (e) {} },
     };
+    /* 的中実績カード：チェックを入れた（"1"）か、まだ触っておらず（null）エンディング画像（的中明細のスクリーンショット）が設定されているとき。外した（"0"）ときは使わない */
+    const hitOn = () => { const v = ls.get(K_HIT); return v === "1" || (v === null && !!ls.get(K_END)); };
     try {
       const m = /[?&]racevideo=([01])(?:&|#|$)/.exec(location.search);
       if (m) { if (m[1] === "1") ls.del(K_ON); else ls.set(K_ON, "0"); }
@@ -13746,9 +13750,9 @@ BUILDERS.talk = (el) => TALK.build(el);
     const PHASE_TXT = (v) => {
       const f = v.frac != null ? Math.round(v.frac * 100) : null;
       switch (v.phase) {
-        case "open": return "公式のリプレイを開いています…（このあと約3分、実況を録音します）";
+        case "open": return "公式のリプレイを開いています…（このあと約5分、実況を録音します）";
         case "prepare": return "公式プレイヤーの再生を準備しています…";
-        case "record": return "公式リプレイの実況を録音しています…" + (f != null ? f + "％" : "") + "（録音は等倍で進むため約3分かかります。画面を閉じても続きます）";
+        case "record": return "公式リプレイの実況を録音しています…" + (f != null ? f + "％" : "") + "（録音は等倍で進むため約5分かかります。画面を閉じても続きます）";
         case "check": return "録音を確認しています…";
         case "render": return "動画をつくっています…";
         default: return "つくっています…";
@@ -13796,9 +13800,9 @@ BUILDERS.talk = (el) => TALK.build(el);
       head(el, "高配当動画", "BOAT RACEのレースを選んで、そのレースだけ縦型の再現動画（約30秒）をつくります。スマホだけで使えます。押さなければ何もつくりません。", [
         "最初に、いちばん下の『動画サービスの設定』へ、動画サービスのURLと合言葉を入れて保存します（1回だけ）。",
         "『レースを選ぶ』で、日付 → 競艇場 → レース番号の順に選びます。『高配当TOP10』に切り替えると、その日の上位10レースから選べます。",
-        "ほしいレースの『動画をつくる』を押します（約2〜3分。公式の実況を自動で使う設定のときは、約4〜5分かかります。通信が途切れても自動でつなぎ直します。画面を開いたままお待ちください）。",
+        "ほしいレースの『動画をつくる』を押します（約2〜3分。公式の実況を自動で使う設定のときは、約6〜8分かかります。通信が途切れても自動でつなぎ直します。画面を開いたままお待ちください）。",
         "できあがったら『保存する』を押すと、共有メニューが開きます（iPhoneは『ビデオを保存』）。パソコンでは自動で保存されます。",
-        "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、サービスが公式リプレイから自動で録音して入れます（下の『音声』の項目。約5分長くなります）。自分の録音（画面収録）を使うこともできます。",
+        "的中実績カード（オープニングの自動づくり）・オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、サービスが公式リプレイから自動で録音して入れます（下の『音声』の項目。約5分長くなります）。自分の録音（画面収録）を使うこともできます。",
       ]);
       const touch = isTouch();
       const box = document.createElement("div"); el.appendChild(box);
@@ -14004,12 +14008,14 @@ BUILDERS.talk = (el) => TALK.build(el);
           if (v.state === "error") throw new Error(v.message || "動画を生成できませんでした");
           run.st.phase = "できました。動画を受け取っています…"; run.tick();
           const blob = await fetchVideo(c, id, v.size, o, (f) => { run.st.phase = "動画を受け取っています…" + Math.round(f * 100) + "％"; run.tick(); });
-          return { blob, name: v.name || meta.fb, hdr: (k) => (v.headers && v.headers[k]) || null };
+          const jid = id;
+          return { blob, name: v.name || meta.fb, hdr: (k) => (v.headers && v.headers[k]) || null,
+            card: async () => { const rs = await fetch(c.url + "/api/render/" + encodeURIComponent(jid) + "/card", { headers: { "X-API-Key": c.key } }); if (!rs.ok) throw new Error("card"); return rs.blob(); } };
         }
       }
       /* 動画ができたあとの表示（どの経路でも同じ）。r.hdr(名前) は、選手写真・音声・背景の付随情報 */
       function showResult(r, o) {
-        const { blob, name, hdr } = r, { note, out, t0, endi, rr } = o;
+        const { blob, name, hdr } = r, { note, out, t0, endi, rr, hit } = o;
         const url = URL.createObjectURL(blob);
         out.innerHTML = '<video controls playsinline preload="metadata" style="width:100%;max-width:300px;margin-top:10px;border-radius:10px;background:#000;display:block"></video>';
         out.querySelector("video").src = url;
@@ -14040,6 +14046,47 @@ BUILDERS.talk = (el) => TALK.build(el);
         }
         const al = /^(auto|manual);([\d.]+);([\d.]+)$/.exec(hdr("X-Audio-Align") || "");
         if (au === "real" && al) line("実況の位置：" + (al[1] === "auto" ? "自動で見つけました" : "入れた秒どおりです") + "（スタート" + al[2] + "秒／結果発表" + al[3] + "秒）" + (al[1] === "auto" ? "。ずれていたら、下の録音のところに秒を入れて、作り直せます。" : ""));
+        /* 所要時間の内訳（遅いときに、どこで時間がかかったかを読み取れるようにする） */
+        try {
+          const tmj = JSON.parse(decodeURIComponent(hdr("X-Timing") || "null"));
+          if (tmj && tmj.total != null) {
+            const PHN = { open: "開く", prepare: "準備", record: "録音", check: "確認" };
+            const parts = ["所要の内訳（秒）：全体" + Math.round(tmj.total) + (tmj.race ? "（レース" + Math.round(tmj.race) + "秒）" : "")];
+            if (tmj.render) parts.push("描画 " + Math.round(tmj.render[0]) + "→" + Math.round(tmj.render[1]));
+            if (tmj.wait != null) parts.push("描画のあとの音声待ち " + Math.round(tmj.wait));
+            (tmj.rec || []).forEach((r, i) => {
+              const phs = Object.keys(r.ph || {}).map((k) => (PHN[k] || k) + Math.round(r.ph[k])).join("・");
+              parts.push("録音" + (i + 1) + "回目（" + (r.skip ? "頭を" + r.skip + "秒飛ばし" : "頭から") + "・" + Math.round(r.t0) + "→" + Math.round(r.t1 || 0) + "：" + phs + (r.align === "ng" ? "・位置が合わず録り直し" : "") + (r.fail ? "・失敗" : "") + (r.dur ? "・リプレイ全体" + Math.round(r.dur) : "") + (r.a_start != null ? "・スタート" + r.a_start + "結果" + r.a_result : "") + "）");
+            });
+            const d = document.createElement("div"); d.textContent = parts.join("／"); d.style.cssText = "opacity:.7;font-size:12px"; info.appendChild(d);
+          }
+        } catch (e) { /* 内訳が読めなくても、動画の受け取りには影響しない */ }
+        /* 的中実績カード（v2.8）：倍率・色・表の状態を表示し、カードの画像を保存できるようにする */
+        const hx = (hdr("X-Hitcard") || "").split(";");
+        if (hx[0] === "error") {
+          let why = hx.slice(1).join(";"); try { why = decodeURIComponent(why); } catch (e) {}
+          line("的中実績カード：つくれなかったため、オープニングなしの動画になりました（" + why + "）", true);
+        } else if (hx.length >= 4) {
+          let pn = hx[0]; try { pn = decodeURIComponent(hx[0]); } catch (e) {}
+          line("的中実績カード：" + hx[1] + "倍（配色：" + pn + "）　右上の表：" + (hx[2] === "ok" ? "スクリーンショットからはめ込みました" : hx[2] === "unreadable" ? "スクリーンショットから表を読み取れなかったため、表なしのカードにしました（的中明細の画面全体のスクリーンショットを選んでください）" : "なし（エンディング画像が未設定のため、表なしのカードです）") + (hx[4] === "still" ? "。数字が揺れる動きはつくれなかったため、止まったカードになりました" : "。数字は激しく揺れます"), hx[2] === "unreadable" || hx[4] === "still");
+          if (r.card) {
+            const cw = document.createElement("div"); cw.style.cssText = "margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap";
+            info.appendChild(cw);
+            r.card().then((cb) => {
+              const cu = URL.createObjectURL(cb);
+              const im = document.createElement("img"); im.src = cu; im.alt = "的中実績カード"; im.style.cssText = "width:120px;height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--border-strong)";
+              const sv2 = mkBtn("カード画像を保存（X投稿用）", "cyan"); sv2.style.cssText += ";flex:0 1 auto";
+              sv2.onclick = async () => {
+                const nm = "的中実績カード_" + hx[1] + "倍.jpg";
+                try { const f = new File([cb], nm, { type: "image/jpeg" }); if (touch && navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: nm }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+                saveBlob(cb, nm);
+              };
+              cw.appendChild(im); cw.appendChild(sv2);
+            }).catch(() => { cw.remove(); });
+          }
+        } else if (hit) {
+          line("的中実績カード：この動画サービスの版では使えません（導入キットを新しい版に入れ替えてください）。オープニングなしでつくりました。", true);
+        }
         /* 背景（朝・昼・夕方・ナイター）が何を根拠にできたか */
         const sc = (hdr("X-Scene") || "").split(";");
         if (sc.length === 4) {
@@ -14063,8 +14110,10 @@ BUILDERS.talk = (el) => TALK.build(el);
           const body = { date: dateIn.value, commentary: ls.get(K_CM) !== "0" };
           if (t.mode === "rank") body.rank = t.rank;
           else { body.jcd = t.jcd; body.race = t.race; body.expect_combo = t.combo; body.expect_payout = t.payout; }   // 一覧で見た内容と結果ページが食い違えば、サーバーが作らない
-          const intro = ls.get(K_INTRO); if (intro) body.intro_image = intro;
           const endi = ls.get(K_END); if (endi) body.ending_image = endi;
+          const hit = hitOn();
+          if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; }   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
+          else { const intro = ls.get(K_INTRO); if (intro) body.intro_image = intro; }
           if (body.commentary && rec.blob && t.recBox && t.recBox.checked) {                   // 録音した本物の実況を、チェックしたこのレースに使う
             if ((rec.start == null) !== (rec.result == null)) throw new Error("『スタートの瞬間』と『結果アナウンスの始まり』は、どちらも空欄（自動で探します）か、どちらも秒を入れてください");
             const up = await audioForUpload();
@@ -14076,7 +14125,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           const fb = t.mode === "rank" ? "高配当" + t.rank + "位_" + dateIn.value + ".mp4" : (t.venue || "") + t.race + "R_" + dateIn.value + ".mp4";
           const lab = t.mode === "rank" ? "高配当" + t.rank + "位（" + (t.venue || "") + t.race + "R）" : (t.venue || "") + t.race + "R";
           const r = await renderJob(c, body, run, { label: lab + "　" + dateIn.value, endi: !!endi, t0, fb });
-          showResult(r, { note, out, t0, endi, rr });
+          showResult(r, { note, out, t0, endi, rr, hit });
         } catch (e) {
           if (!run.me.gone) {
             note.className = "err";
@@ -14133,7 +14182,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       c1.appendChild(saveCfg); c1.appendChild(cfgMsg);
 
       /* ---- 画像の差し込み（オープニング / エンディング。どちらも任意） ---- */
-      const imgSec = section("オープニング／エンディング画像（任意）", false);
+      const imgSec = section("オープニング／エンディング（的中実績カード・画像／任意）", false);
       slotRefresh = {};                                       // 画像の枠ごとの表示更新（動画ができたあと、エンディング画像を消したときに使う）
       const imageSlot = (key, title, desc, maxSide, okMsg, onText) => {
         const c = document.createElement("div"); c.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid var(--border)";
@@ -14148,7 +14197,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         const refresh = () => {
           const v = ls.get(key);
           img.style.display = v ? "block" : "none"; if (v) img.src = v;
-          st.textContent = v ? onText : "未設定";
+          st.textContent = v ? (typeof onText === "function" ? onText() : onText) : "未設定";
           rm.style.display = v ? "block" : "none";
         };
         file.onchange = async () => {
@@ -14158,18 +14207,66 @@ BUILDERS.talk = (el) => TALK.build(el);
             if (!ls.set(key, data)) { toast("画像を保存できませんでした（端末の保存容量が足りません）", "err"); file.value = ""; return; }
             toast(okMsg);
           } catch (e) { toast(String(e.message || e), "err"); }
-          file.value = ""; refresh();
+          file.value = ""; (slotRefresh[key] || refresh)();
         };
-        rm.onclick = () => { ls.del(key); refresh(); toast("画像を外しました"); };
+        rm.onclick = () => { ls.del(key); (slotRefresh[key] || refresh)(); toast("画像を外しました"); };
         c.appendChild(file); c.appendChild(rm); refresh();
         slotRefresh[key] = refresh;
       };
+      /* ---- 的中実績カード（v2.8）：オープニングを自動でつくる。エンディング画像（的中明細のスクリーンショット）を1枚の元にする ---- */
+      const hitBlock = document.createElement("div"); hitBlock.style.cssText = "padding-bottom:10px;border-bottom:1px solid var(--border)";
+      hitBlock.innerHTML = '<div style="font-weight:800;margin-bottom:4px">的中実績カード（オープニングを自動でつくる）</div>'
+        + '<div style="color:var(--muted);font-size:13px">そのレースの<b>払戻金（100円あたり）から倍率を自動で計算</b>して（例：36,360円→<b>363.6倍</b>、55,770円→<b>557.7倍</b>）、オープニングの『的中実績』の画像をつくります。数字は<b>斜めがけの太い文字で、激しく揺れます</b>（約1.5秒。そのぶんオープニングが少し長くなります）。色の組み合わせは<b>数十通りから、つくるたびにランダム</b>です。'
+        + '下の『エンディング画像』に<b>的中明細のスクリーンショット</b>を選んでおくと、その表を<b>カードの右上に自動ではめ込みます</b>（同じスクリーンショットが、これまでどおり最後の画面にも使われます。最後のトランジションは変わりません）。'
+        + '<b>実際に的中したレースにだけ</b>お使いください。</div>';
+      imgSec.appendChild(hitBlock);
+      const hitLab = document.createElement("label"); hitLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:14px;font-weight:700";
+      const hitBox = document.createElement("input"); hitBox.type = "checkbox"; hitBox.style.marginTop = "5px";
+      const hitTxt = document.createElement("span"); hitLab.appendChild(hitBox); hitLab.appendChild(hitTxt); hitBlock.appendChild(hitLab);
+      const hitSt = document.createElement("div"); hitSt.style.cssText = "margin-top:4px;font-size:13px;color:var(--muted)"; hitBlock.appendChild(hitSt);
+      const refreshHit = () => {
+        const on = hitOn(), explicit = ls.get(K_HIT);
+        hitBox.checked = on;
+        hitTxt.textContent = "オープニングを、的中実績カードにする";
+        hitSt.textContent = on ? (explicit === "1" ? "オンです。つくるたびに、倍率と色が自動で入れ替わります。" : "エンディング画像（スクリーンショット）が設定されているため、自動でオンにしています。動画ができるとその画像は消えるので、次回は自動でオフに戻ります（ずっとオンにしたいときは、チェックを入れ直してください）。")
+          : "オフです（オープニング画像を設定していれば、それを使います）。";
+        if (slotRefresh[K_INTRO]) slotRefresh[K_INTRO]();
+      };
+      hitBox.onchange = () => { ls.set(K_HIT, hitBox.checked ? "1" : "0"); toast(hitBox.checked ? "的中実績カードをオープニングにします" : "的中実績カードをやめます"); refreshHit(); };
+      const hitRow = document.createElement("div"); hitRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center";
+      const hitPay = document.createElement("input"); hitPay.type = "number"; hitPay.inputMode = "numeric"; hitPay.min = "100"; hitPay.step = "10"; hitPay.placeholder = "払戻金（円）例 36360";
+      hitPay.style.cssText = "flex:1 1 150px;min-width:130px;padding:10px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)";
+      const hitPrev = mkBtn("カードを先に確認する（約5秒）", "cyan"); hitPrev.style.cssText += ";flex:1 1 180px";
+      hitRow.appendChild(hitPay); hitRow.appendChild(hitPrev); hitBlock.appendChild(hitRow);
+      const hitOut = document.createElement("div"); hitOut.style.cssText = "margin-top:8px;font-size:13px;line-height:1.7;display:none"; hitBlock.appendChild(hitOut);
+      hitPrev.onclick = async () => {
+        const c = needCfg(); if (!c) { toast("先に、『動画サービスの設定』を保存してください", "err"); return; }
+        const pay = Math.round(Number(hitPay.value));
+        if (!(pay >= 100)) { toast("払戻金（100円あたりの円。例：36360）を入れてください", "err"); return; }
+        hitPrev.disabled = true; hitOut.style.display = "block"; hitOut.className = ""; hitOut.textContent = "つくっています…（約5秒）";
+        try {
+          const body = { payout: pay }; const endi = ls.get(K_END); if (endi) body.screenshot = endi;
+          let res; try { res = await fetch(c.url + "/api/hitcard", { method: "POST", headers: { "X-API-Key": c.key, "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+          catch (e) { throw new Error("動画サービスにつながりません。URL・合言葉・電波の状態を確かめてください"); }
+          if (res.status === 404 || res.status === 405) throw new Error("この動画サービスの版では、カードの確認ができません（導入キットを新しい版に入れ替えてください）");
+          if (!res.ok) throw new Error(await errText(res));
+          const hx = (res.headers.get("X-Hitcard") || "").split(";"); let pn = hx[0] || ""; try { pn = decodeURIComponent(pn); } catch (e) {}
+          const cb = await res.blob(), cu = URL.createObjectURL(cb);
+          hitOut.innerHTML = "";
+          const im = document.createElement("img"); im.src = cu; im.alt = "的中実績カードの見本"; im.style.cssText = "width:100%;max-width:320px;border-radius:10px;border:1px solid var(--border-strong);display:block";
+          const cap = document.createElement("div"); cap.textContent = (hx[1] || "") + "倍（配色：" + pn + "）　右上の表：" + (hx[2] === "ok" ? "はめ込みました" : hx[2] === "unreadable" ? "スクリーンショットから表を読み取れませんでした" : "なし（エンディング画像が未設定）") + "。これは止まった見本です。実際の動画では、数字が約1.5秒激しく揺れ、色が毎回入れ替わります。";
+          hitOut.appendChild(im); hitOut.appendChild(cap);
+        } catch (e) { hitOut.className = "err"; hitOut.textContent = String(e.message || e); }
+        hitPrev.disabled = false;
+      };
       imageSlot(K_INTRO, "オープニング画像",
         "未設定なら、これまでどおりそのまま始まります。設定すると、動画の最初にこの画像を1秒見せてから、スライドで本編に切り替わります（その分、動画は1秒長くなります）。縦長（9:16）がいちばんきれいです。",
-        1920, "オープニング画像を設定しました", "設定中：最初にこの画像を1秒出します");
-      imageSlot(K_END, "エンディング画像（的中画面など）",
-        "未設定なら、これまでどおりそのまま終わります。的中画面などのスクリーンショットを入れておくと、動画の最後にトランジションで切り替わり、約3秒間、スマホの画面としてその画像を見せます（見出し・払戻金・着順などの文字はレースごとに自動で入れ替わります。その分、動画は3秒長くなります）。画面まわりの黒い余白は自動で切り取ります。動画ができた直後に、この画像は端末から自動で消えます（保存しません。次の動画に使うときは、もう一度選んでください）。",
+        1920, "オープニング画像を設定しました", () => (hitOn() ? "設定中：ただし、的中実績カードがオンの間は使われません（カードが優先されます）" : "設定中：最初にこの画像を1秒出します"));
+      imageSlot(K_END, "エンディング画像（的中明細のスクリーンショット）",
+        "未設定なら、これまでどおりそのまま終わります。的中明細などのスクリーンショットを入れておくと（上の『的中実績カード』がオンなら、同じ画像の表がオープニングのカードの右上にも自動ではめ込まれます。1枚で、最初と最後を統一できます）、動画の最後にトランジションで切り替わり、約3秒間、スマホの画面としてその画像を見せます（見出し・払戻金・着順などの文字はレースごとに自動で入れ替わります。その分、動画は3秒長くなります）。画面まわりの黒い余白は自動で切り取ります。動画ができた直後に、この画像は端末から自動で消えます（保存しません。次の動画に使うときは、もう一度選んでください）。",
         2560, "エンディング画像を設定しました", "設定中：最後にスマホ画面として約3秒見せます（動画ができたら、この画像は端末から自動で消えます）");
+      { const _re = slotRefresh[K_END]; slotRefresh[K_END] = () => { _re(); refreshHit(); }; }          // エンディング画像が変わったら、的中実績カードの表示（自動オン）も更新する
+      refreshHit();
 
       /* ---- 実況（合成音声）。初期状態はつける ---- */
       const cmCard = section("音声（実況・BGM・効果音）", false);
@@ -14182,8 +14279,8 @@ BUILDERS.talk = (el) => TALK.build(el);
       /* ---- 公式リプレイの実況を、サービスが自動で録音して使う（v2.6）。端末は何もしなくてよい ---- */
       const rrLab = document.createElement("label"); rrLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px;font-weight:700";
       const rrBox = document.createElement("input"); rrBox.type = "checkbox"; rrBox.checked = ls.get(K_RR) !== "0"; rrBox.style.marginTop = "5px";
-      rrBox.onchange = () => { ls.set(K_RR, rrBox.checked ? "1" : "0"); toast(rrBox.checked ? "公式リプレイの実況を自動で使います（約4〜5分かかります）" : "公式の実況は使わず、合成音声にします"); };
-      rrLab.appendChild(rrBox); rrLab.appendChild(document.createTextNode("公式リプレイの実況を、サービスが自動で録音して使う（動画づくりは約4〜5分かかります）")); cmCard.appendChild(rrLab);
+      rrBox.onchange = () => { ls.set(K_RR, rrBox.checked ? "1" : "0"); toast(rrBox.checked ? "公式リプレイの実況を自動で使います（約6〜8分かかります）" : "公式の実況は使わず、合成音声にします"); };
+      rrLab.appendChild(rrBox); rrLab.appendChild(document.createTextNode("公式リプレイの実況を、サービスが自動で録音して使う（動画づくりは約6〜8分かかります）")); cmCard.appendChild(rrLab);
       cmCard.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px;margin-top:4px">BOATCASTの公式リプレイを、<b>サービス側のブラウザ</b>が再生して、実況の<b>音声だけ</b>を録ります。パソコンもスマホも、開いたままにする必要はありません（動画ができたら受け取るだけ）。'
         + '録れなかったとき（リプレイがまだ無い・公式側で再生できない等）は、合成音声の動画をつくり、その理由を結果に表示します。下の『実況の録音』で自分の録音を選んだレースは、そちらを優先します。録った音声は動画づくりの間だけ使い、保存しません。</div>');
       const prBtn = mkBtn("公式リプレイを録音できるか確認する（約30秒）", "cyan"); prBtn.style.cssText += ";margin-top:10px;width:100%";
