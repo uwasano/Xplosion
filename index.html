@@ -1800,7 +1800,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "370";
+const APP_VERSION = "372";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13566,7 +13566,8 @@ BUILDERS.talk = (el) => TALK.build(el);
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
    初期状態からON（X画面は「投稿」、Instagram画面は「制作」を押すと、いちばん左に『高配当動画』が出る）。
    隠したいときだけ、URLに ?racevideo=0 を付けて開く（この端末だけOFF。?racevideo=1 で戻る）。動画づくりは別サービス（race-video/）が行う。
-   本物の実況：画面収録などの録画ファイルから、この端末の中で音声だけを取り出し（映像は取り込まない）、チェックを入れたレースの動画に入れる。
+   本物の実況（v2.6・自動）：サービスのブラウザが、BOATCASTの公式リプレイを再生して実況の音声だけを録り、動画に使う（端末は何もしなくてよい。録れなければ合成音声）。
+   本物の実況（手動）：画面収録などの録画ファイルから、この端末の中で音声だけを取り出し（映像は取り込まない）、チェックを入れたレースの動画に入れる。
    スタート／結果アナウンスの秒は空欄でよい（録音のゴール後の無音から、サービスが自動で見つける）。
    音声・選手写真は保存しない：端末では画面を開いている間だけ、サービスでは処理が終わるとすぐ、できた動画も最長1時間（遅くとも翌日まで）で消える。
    エンディング画像：動画ができた直後に、この端末からも消える（サービスは受け取った画像を動画にはめ込むだけで、処理が終わるとすぐ消す）。次の動画に使うときは選び直す。
@@ -13577,7 +13578,8 @@ BUILDERS.talk = (el) => TALK.build(el);
   if (typeof BUILDERS === "undefined" || typeof TABS === "undefined" || typeof NAV_GROUPS === "undefined"
     || typeof head !== "function" || typeof inp !== "function" || typeof toast !== "function" || typeof esc !== "function") return;
   const RACEVID = (() => {
-    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode";
+    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode", K_JOB = "xpl_rv_job", K_RR = "xpl_rv_rr";
+    const JOB_LIMIT_MS = 25 * 60 * 1000;                     // 動画づくりを待つ上限（これを過ぎたら中止）。サーバーの記録も、動画ができてから1時間で消える
     const ls = {
       get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
       set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
@@ -13674,11 +13676,13 @@ BUILDERS.talk = (el) => TALK.build(el);
     }
     /* つくっている間、画面が消えて通信が止まらないようにする（対応している端末だけ） */
     const wake = {
-      l: null, want: false,
-      async on() { this.want = true; try { if (navigator.wakeLock && !this.l) { this.l = await navigator.wakeLock.request("screen"); this.l.addEventListener("release", () => { this.l = null; }); } } catch (e) { this.l = null; } },
-      off() { this.want = false; try { if (this.l) this.l.release(); } catch (e) {} this.l = null; },
+      l: null, n: 0,                                       // n＝画面を消さないでほしい動画づくりの数（画面が作り直されて古い追いかけが終わっても、新しい方の分は解除しない）
+      get want() { return this.n > 0; },
+      async acq() { try { if (navigator.wakeLock && !this.l) { this.l = await navigator.wakeLock.request("screen"); this.l.addEventListener("release", () => { this.l = null; }); } } catch (e) { this.l = null; } },
+      async on() { this.n++; await this.acq(); },
+      off() { this.n = Math.max(0, this.n - 1); if (this.n === 0) { try { if (this.l) this.l.release(); } catch (e) {} this.l = null; } },
     };
-    try { document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && wake.want) wake.on(); }); } catch (e) {}
+    try { document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && wake.want) wake.acq(); }); } catch (e) {}
 
     async function getJson(c, path, params) {
       const q = Object.keys(params).map((k) => k + "=" + encodeURIComponent(params[k])).join("&");
@@ -13689,13 +13693,109 @@ BUILDERS.talk = (el) => TALK.build(el);
       return res.json();
     }
 
+
+    /* ======== 通信が切れても続けるための部品（v2.5） ========
+       つくる作業はサーバーに頼んだまま（start）、短い問い合わせ（status）で進み具合を聞き、できたら少しずつ（file）受け取る。
+       どの通信も数十秒で終わるので、電波が切れても、つなぎ直すだけで続きから進む。 */
+    const stoppedErr = () => { const e = new Error("中止しました"); e.name = "AbortError"; return e; };
+    /* 待つ。ただし、電波が戻ったとき・画面が戻ったときは、すぐ打ち切って次へ進む */
+    function napUntilBack(ms) {
+      return new Promise((resolve) => {
+        let done = false, t = null;
+        const fin = () => { if (done) return; done = true; clearTimeout(t); try { window.removeEventListener("online", fin); document.removeEventListener("visibilitychange", vis); } catch (e) {} resolve(); };
+        const vis = () => { if (document.visibilityState === "visible") fin(); };
+        t = setTimeout(fin, ms);
+        try { window.addEventListener("online", fin); document.addEventListener("visibilitychange", vis); } catch (e) {}
+      });
+    }
+    /* 短い通信を、切れても何度でもやり直す。やめるのは、画面が止めたとき（o.sig）と、期限（o.deadline）を過ぎたときだけ。
+       サーバーの一時的な不調（429・502・503・504）もつなぎ直す。それ以外の応答（400・401・404・422 など）は、そのまま返す。
+       read があれば、中身の受け取りまで含めてやり直す（途中で切れても最初からやり直せる）。 */
+    async function reliable(url, init, o, read) {
+      let n = 0;
+      for (;;) {
+        if ((o.sig && o.sig.aborted) || Date.now() > o.deadline) throw stoppedErr();
+        const ctl = new AbortController(), t0 = Date.now();
+        let woke = false;
+        const to = setTimeout(() => ctl.abort(), o.timeoutMs || 45000);
+        const onAbort = () => ctl.abort();
+        /* 電波が戻った／画面が戻ったときは、止まったままの通信を捨てて、すぐやり直す */
+        const onWake = () => { if (document.visibilityState === "visible" && Date.now() - t0 > 8000) { woke = true; ctl.abort(); } };
+        if (o.sig) o.sig.addEventListener("abort", onAbort, { once: true });
+        try { window.addEventListener("online", onWake); document.addEventListener("visibilitychange", onWake); } catch (e) {}
+        let out = null;
+        try {
+          const res = await fetch(url, Object.assign({}, init, { signal: ctl.signal }));
+          if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) { try { await res.arrayBuffer(); } catch (e) {} }
+          else out = { res, data: read ? await read(res) : null };
+        } catch (e) { out = null; }
+        clearTimeout(to);
+        if (o.sig) o.sig.removeEventListener("abort", onAbort);
+        try { window.removeEventListener("online", onWake); document.removeEventListener("visibilitychange", onWake); } catch (e) {}
+        if (out) { if (o.onOk) o.onOk(); return out; }
+        if (o.sig && o.sig.aborted) throw stoppedErr();
+        if (woke) continue;
+        n++; if (o.onRetry) o.onRetry(n);
+        await napUntilBack(Math.min(1000 * n, 5000));
+      }
+    }
+    /* つくっている間の表示。公式リプレイの実況を録っているときは、その段階も出す（v2.6） */
+    const PHASE_TXT = (v) => {
+      const f = v.frac != null ? Math.round(v.frac * 100) : null;
+      switch (v.phase) {
+        case "open": return "公式のリプレイを開いています…（このあと約4分、実況を録音します）";
+        case "prepare": return "公式プレイヤーの再生を準備しています…";
+        case "record": return "公式リプレイの実況を録音しています…" + (f != null ? f + "％" : "") + "（録音は等倍で進むため約4分かかります。画面を閉じても続きます）";
+        case "check": return "録音を確認しています…";
+        case "render": return "動画をつくっています…";
+        default: return "つくっています…";
+      }
+    };
+    /* 動画づくりを頼む。古いサービス（v2.4まで）には頼む口がないので、null を返す（従来の方式に切りかえる） */
+    async function startJob(c, body, o) {
+      const { res, data } = await reliable(c.url + "/api/render/start", { method: "POST", headers: { "X-API-Key": c.key, "Content-Type": "application/json" }, body: JSON.stringify(body) },
+        Object.assign({ timeoutMs: 120000 }, o), (r) => (r.ok ? r.json() : null));
+      if (res.status === 404 || res.status === 405) return null;
+      if (!res.ok) throw new Error(await errText(res));
+      return data;
+    }
+    /* できる（done）か失敗する（error）まで、短い問い合わせを繰り返す。サーバーが記録を失っていたら { state: "lost" } */
+    async function waitJob(c, id, o, onState) {
+      for (;;) {
+        const { res, data } = await reliable(c.url + "/api/render/" + encodeURIComponent(id) + "?wait=20", { headers: { "X-API-Key": c.key } },
+          Object.assign({ timeoutMs: 45000 }, o), (r) => (r.ok ? r.json() : null));
+        if (res.status === 404) return { state: "lost" };
+        if (!res.ok) throw new Error(await errText(res));
+        if (onState) onState(data);
+        if (data.state === "done" || data.state === "error") return data;
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    /* できた動画を、2MBずつ受け取る。途中で切れても、そのかたまりだけやり直す */
+    async function fetchVideo(c, id, size, o, onProg) {
+      const CH = 2 * 1024 * 1024, parts = [];
+      for (let pos = 0; pos < size;) {
+        const end = Math.min(size, pos + CH) - 1, want = end - pos + 1;
+        const { res, data } = await reliable(c.url + "/api/render/" + encodeURIComponent(id) + "/file", { headers: { "X-API-Key": c.key, "Range": "bytes=" + pos + "-" + end } },
+          Object.assign({ timeoutMs: 60000 }, o), async (r) => {
+            if (r.status === 206) { const b = await r.arrayBuffer(); if (b.byteLength !== want) throw new Error("short"); return b; }
+            return r.status === 200 ? r.blob() : null;
+          });
+        if (res.status === 200) return data;                         // 分割に対応していないサービスなら、全体がそのまま来る
+        if (res.status !== 206) throw new Error(await errText(res));
+        parts.push(data); pos = end + 1;
+        if (onProg) onProg(pos / size);
+      }
+      return new Blob(parts, { type: "video/mp4" });
+    }
+
     function build(el) {
       head(el, "高配当動画", "BOAT RACEのレースを選んで、そのレースだけ縦型の再現動画（約30秒）をつくります。スマホだけで使えます。押さなければ何もつくりません。", [
         "最初に、いちばん下の『動画サービスの設定』へ、動画サービスのURLと合言葉を入れて保存します（1回だけ）。",
         "『レースを選ぶ』で、日付 → 競艇場 → レース番号の順に選びます。『高配当TOP10』に切り替えると、その日の上位10レースから選べます。",
-        "ほしいレースの『動画をつくる』を押します（2〜5分。画面を開いたままお待ちください）。",
+        "ほしいレースの『動画をつくる』を押します（2〜5分。公式の実況を自動で使う設定のときは、さらに約5分かかります。通信が途切れても自動でつなぎ直します。画面を開いたままお待ちください）。",
         "できあがったら『保存する』を押すと、共有メニューが開きます（iPhoneは『ビデオを保存』）。パソコンでは自動で保存されます。",
-        "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、レースの画面収録から音声だけを取り出して使えます（スマホでも可）。",
+        "オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、サービスが公式リプレイから自動で録音して入れます（下の『音声』の項目。約5分長くなります）。自分の録音（画面収録）を使うこともできます。",
       ]);
       const touch = isTouch();
       const box = document.createElement("div"); el.appendChild(box);
@@ -13843,16 +13943,119 @@ BUILDERS.talk = (el) => TALK.build(el);
       let slotRefresh = {};
       const SC_WX = { clear: "晴れ", cloudy: "曇り", rain: "雨", snow: "雪", fog: "霧" };
       const SC_SRC = { official: "公式の締切予定時刻", band: "開催区分から推定した時刻（公式の時刻を取得できませんでした）", day: "通常開催の標準時刻から推定（公式の時刻を取得できませんでした）" };
+      /* つくっている間の表示（経過秒・状況・通信の状態）と、待つ上限 */
+      function trackRun(note, t0) {
+        const st = { phase: "つくっています…", net: "" }, ctl = new AbortController(), me = { gone: false };
+        const tick = () => { note.textContent = (st.net || st.phase) + " " + Math.round((Date.now() - t0) / 1000) + "秒経過（目安：2〜5分。通信が切れても自動でつなぎ直します。画面を開いたまま、お待ちください）"; };
+        tick();
+        /* メニューを切り替えるとこの画面は作り直される。古い画面の追いかけは止める（記録は残すので、新しい画面が続きから受け取る） */
+        const watch = () => { if (!note.isConnected && !me.gone) { me.gone = true; ctl.abort(); } else tick(); };
+        const timer = setInterval(watch, 1000), kill = setTimeout(() => ctl.abort(), Math.max(1000, t0 + JOB_LIMIT_MS - Date.now()));
+        return { st, tick, me, sig: ctl.signal, deadline: t0 + JOB_LIMIT_MS, stop() { clearInterval(timer); clearTimeout(kill); } };
+      }
+      const saveJob = (rec) => { ls.set(K_JOB, JSON.stringify(rec)); };
+      /* 古いサービス（v2.4まで）向けの、従来の方式（1本の通信で最後まで待つ）。電波が途切れたときは2回までつなぎ直す */
+      async function renderLegacy(c, body, run, fb) {
+        const payload = JSON.stringify(body);
+        let res = null, tries = 0;
+        for (;;) {
+          try { res = await fetch(c.url + "/api/render", { method: "POST", signal: run.sig, headers: { "X-API-Key": c.key, "Content-Type": "application/json" }, body: payload }); break; }
+          catch (e) {
+            if (e && e.name === "AbortError") throw e;
+            if (++tries > 2) throw new Error("通信が途切れました。電波のよい場所で、もう一度お試しください。");
+            run.st.net = "通信が途切れました。つなぎ直しています（" + tries + "/2）…"; run.tick(); await new Promise((r) => setTimeout(r, 3000));
+          }
+        }
+        run.st.net = "";
+        if (!res.ok) throw new Error(await errText(res));
+        const blob = await res.blob();
+        return { blob, name: fileNameOf(res, fb), hdr: (k) => res.headers.get(k) };
+      }
+      /* 動画づくりを頼み、できるまで待って、受け取る。meta: { label, endi, t0, fb（名前の予備）, resumeId（開き直したとき：前回の番号） } */
+      async function renderJob(c, body, run, meta) {
+        const o = {
+          sig: run.sig, deadline: run.deadline,
+          onRetry: (n) => { run.st.net = "通信が途切れました。つなぎ直しています（" + n + "回目）。そのままお待ちください…"; run.tick(); },
+          onOk: () => { if (run.st.net) { run.st.net = ""; run.tick(); } },
+        };
+        const applyState = (v) => {
+          if (v.state === "queued") run.st.phase = v.ahead ? "順番待ちです（前に" + v.ahead + "本）…" : "順番待ちです…";
+          else if (v.state === "running") run.st.phase = PHASE_TXT(v);
+          run.tick();
+        };
+        let id = meta.resumeId || null, restarts = 0;
+        for (;;) {
+          if (!id) {
+            if (!body) throw new Error("つくりかけの動画は、サービス側で見つかりませんでした。もう一度『動画をつくる』を押してください。");
+            const v = await startJob(c, body, o);
+            if (v === null) return renderLegacy(c, body, run, meta.fb);            // 古いサービス
+            id = v.job;
+            saveJob({ id, url: c.url, t0: meta.t0, label: meta.label, endi: !!meta.endi });          // 画面を閉じても、開き直したときに続きから受け取れる
+            applyState(v);
+          }
+          const v = await waitJob(c, id, o, applyState);
+          if (v.state === "lost") {                                                    // サーバーが入れ替わるなどで記録が消えた → 同じ内容で頼み直す
+            if (!body || ++restarts > 2) throw new Error("サービスが入れ替わり、つくりかけの動画の記録が消えました。もう一度『動画をつくる』を押してください。");
+            run.st.phase = "サービスが入れ替わったため、頼み直しています…"; run.tick(); id = null; continue;
+          }
+          if (v.state === "error") throw new Error(v.message || "動画を生成できませんでした");
+          run.st.phase = "できました。動画を受け取っています…"; run.tick();
+          const blob = await fetchVideo(c, id, v.size, o, (f) => { run.st.phase = "動画を受け取っています…" + Math.round(f * 100) + "％"; run.tick(); });
+          return { blob, name: v.name || meta.fb, hdr: (k) => (v.headers && v.headers[k]) || null };
+        }
+      }
+      /* 動画ができたあとの表示（どの経路でも同じ）。r.hdr(名前) は、選手写真・音声・背景の付随情報 */
+      function showResult(r, o) {
+        const { blob, name, hdr } = r, { note, out, t0, endi, rr } = o;
+        const url = URL.createObjectURL(blob);
+        out.innerHTML = '<video controls playsinline preload="metadata" style="width:100%;max-width:300px;margin-top:10px;border-radius:10px;background:#000;display:block"></video>';
+        out.querySelector("video").src = url;
+        const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px";
+        if (touch) {
+          const sv = mkBtn("保存する（共有メニューを開く）", "primary"); sv.style.cssText += ";min-height:48px;font-size:15px";
+          sv.onclick = async () => { const x = await shareOrSave(blob, name); if (x === "download") toast("ダウンロードしました"); };
+          const dl = mkBtn("ファイルとしてダウンロード", "cyan"); dl.onclick = () => saveBlob(blob, name);
+          row.appendChild(sv); row.appendChild(dl);
+          note.textContent = "できました（" + Math.round((Date.now() - t0) / 1000) + "秒）。下の『保存する』を押してください：" + name;
+        } else {
+          const again = mkBtn("もう一度保存する", "cyan"); again.onclick = () => saveBlob(blob, name); row.appendChild(again);
+          note.textContent = "できました（" + Math.round((Date.now() - t0) / 1000) + "秒）。自動で保存します：" + name;
+        }
+        note.className = "okmsg"; out.appendChild(row);
+        /* 選手写真・音声が実際にどうなったかを、必ず表示する */
+        const ph = /^(\d+)\/(\d+)$/.exec(hdr("X-Photos") || ""), au = hdr("X-Audio");
+        const info = document.createElement("div"); info.style.cssText = "margin-top:8px;font-size:13px;line-height:1.7";
+        const line = (txt, bad) => { const d = document.createElement("div"); d.textContent = txt; if (bad) d.className = "err"; info.appendChild(d); };
+        if (ph) { const ok = +ph[1], tot = +ph[2]; if (tot && ok === tot) line("選手写真：" + ok + "/" + tot + "枚（公式サイトから取得）"); else line("選手写真：" + ok + "/" + tot + "枚しか取得できませんでした。取得できなかった艇は、艇番の丸印で描いています。", true); }
+        const rp = (hdr("X-Replay") || "").split(";");
+        if (au) line(au === "real" ? (rp[0] === "ok" ? "実況：公式リプレイの本物の実況を、サービスが自動で録音して使いました" : "実況：録音した本物の実況を使いました") : au === "synth" ? "実況：合成音声（BGM・効果音つき）" : "音声：なし（無音）");
+        if (rp[0] === "fail") {
+          let why = rp.slice(2).join(";"); try { why = decodeURIComponent(why); } catch (e) {}
+          line("公式の実況：自動で録音できなかったため、合成音声でつくりました。理由：" + (why || rp[1] || "不明") + "（下の『音声』の項目で、動作確認ができます）", true);
+        } else if (rr && !rp[0] && au !== "real") {
+          line("公式の実況：この動画サービスの版では、自動取得を使えません（導入キットを新しい版に入れ替えてください）。合成音声でつくりました。", true);
+        }
+        const al = /^(auto|manual);([\d.]+);([\d.]+)$/.exec(hdr("X-Audio-Align") || "");
+        if (au === "real" && al) line("実況の位置：" + (al[1] === "auto" ? "自動で見つけました" : "入れた秒どおりです") + "（スタート" + al[2] + "秒／結果発表" + al[3] + "秒）" + (al[1] === "auto" ? "。ずれていたら、下の録音のところに秒を入れて、作り直せます。" : ""));
+        /* 背景（朝・昼・夕方・ナイター）が何を根拠にできたか */
+        const sc = (hdr("X-Scene") || "").split(";");
+        if (sc.length === 4) {
+          let ph2 = sc[0]; try { ph2 = decodeURIComponent(sc[0]); } catch (e) {}
+          line("背景：" + ph2 + "（" + sc[1] + "・" + (SC_SRC[sc[3]] || sc[3]) + "）／天気：" + (SC_WX[sc[2]] || sc[2]), false);
+        }
+        /* エンディング画像は、動画ができた直後に消す（端末の保存からも外す。サービス側は処理が終わるとすぐ消している） */
+        if (endi) { ls.del(K_END); if (slotRefresh[K_END]) slotRefresh[K_END](); line("エンディング画像：動画にはめ込んだので、この端末から消しました。次の動画に使うときは、もう一度選んでください。", false); }
+        out.insertBefore(info, out.firstChild);
+        if (!touch) saveBlob(blob, name);                    // スマホは、押してもらった瞬間にしか共有メニューを開けないので、自動保存はしない
+      }
       async function makeVideo(t, b, note, out, c) {
         if (state.busy) return;
         setBusy(true);
         const label = b.textContent; b.textContent = "つくっています…";
         note.style.display = "block"; note.className = ""; out.innerHTML = "";
-        const t0 = Date.now(); let extra = "";
-        const tick = () => { note.textContent = (extra || "つくっています…") + " " + Math.round((Date.now() - t0) / 1000) + "秒経過（目安：2〜5分。画面を開いたまま、お待ちください）"; };
-        tick(); const timer = setInterval(tick, 1000);
+        const t0 = Date.now();
+        const run = trackRun(note, t0);
         wake.on();
-        const ctl = new AbortController(), kill = setTimeout(() => ctl.abort(), 16 * 60 * 1000);
         try {
           const body = { date: dateIn.value, commentary: ls.get(K_CM) !== "0" };
           if (t.mode === "rank") body.rank = t.rank;
@@ -13865,59 +14068,39 @@ BUILDERS.talk = (el) => TALK.build(el);
             body.commentary_audio = up.data;
             if (up.start != null) { body.audio_start = up.start; body.audio_result = up.result; }         // 空欄なら送らない → サービスが自動で見つける
           }
-          const payload = JSON.stringify(body);
-          let res = null, tries = 0;
-          for (;;) {                                           // 電波が途切れたときは、2回までつなぎ直す（サーバーが同じ動画を保持していれば、すぐ返る）
-            try { res = await fetch(c.url + "/api/render", { method: "POST", signal: ctl.signal, headers: { "X-API-Key": c.key, "Content-Type": "application/json" }, body: payload }); break; }
-            catch (e) {
-              if (e && e.name === "AbortError") throw e;
-              if (++tries > 2) throw new Error("通信が途切れました。電波のよい場所で、もう一度お試しください。");
-              extra = "通信が途切れました。つなぎ直しています（" + tries + "/2）…"; await new Promise((r) => setTimeout(r, 3000));
-            }
-          }
-          if (!res.ok) throw new Error(await errText(res));
-          const blob = await res.blob();
+          let rr = false;
+          if (body.commentary && !body.commentary_audio && ls.get(K_RR) !== "0") { body.real_commentary = true; rr = true; }     // 自分の録音を渡さないときは、サービスが公式リプレイから実況を録る
           const fb = t.mode === "rank" ? "高配当" + t.rank + "位_" + dateIn.value + ".mp4" : (t.venue || "") + t.race + "R_" + dateIn.value + ".mp4";
-          const name = fileNameOf(res, fb);
-          const url = URL.createObjectURL(blob);
-          out.innerHTML = '<video controls playsinline preload="metadata" style="width:100%;max-width:300px;margin-top:10px;border-radius:10px;background:#000;display:block"></video>';
-          out.querySelector("video").src = url;
-          const row = document.createElement("div"); row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px";
-          if (touch) {
-            const sv = mkBtn("保存する（共有メニューを開く）", "primary"); sv.style.cssText += ";min-height:48px;font-size:15px";
-            sv.onclick = async () => { const r = await shareOrSave(blob, name); if (r === "download") toast("ダウンロードしました"); };
-            const dl = mkBtn("ファイルとしてダウンロード", "cyan"); dl.onclick = () => saveBlob(blob, name);
-            row.appendChild(sv); row.appendChild(dl);
-            note.textContent = "できました（" + Math.round((Date.now() - t0) / 1000) + "秒）。下の『保存する』を押してください：" + name;
-          } else {
-            const again = mkBtn("もう一度保存する", "cyan"); again.onclick = () => saveBlob(blob, name); row.appendChild(again);
-            note.textContent = "できました（" + Math.round((Date.now() - t0) / 1000) + "秒）。自動で保存します：" + name;
-          }
-          note.className = "okmsg"; out.appendChild(row);
-          /* 選手写真・音声が実際にどうなったかを、必ず表示する */
-          const ph = /^(\d+)\/(\d+)$/.exec(res.headers.get("X-Photos") || ""), au = res.headers.get("X-Audio");
-          const info = document.createElement("div"); info.style.cssText = "margin-top:8px;font-size:13px;line-height:1.7";
-          const line = (txt, bad) => { const d = document.createElement("div"); d.textContent = txt; if (bad) d.className = "err"; info.appendChild(d); };
-          if (ph) { const ok = +ph[1], tot = +ph[2]; if (tot && ok === tot) line("選手写真：" + ok + "/" + tot + "枚（公式サイトから取得）"); else line("選手写真：" + ok + "/" + tot + "枚しか取得できませんでした。取得できなかった艇は、艇番の丸印で描いています。", true); }
-          if (au) line(au === "real" ? "実況：録音した本物の実況を使いました" : au === "synth" ? "実況：合成音声（BGM・効果音つき）" : "音声：なし（無音）");
-          const al = /^(auto|manual);([\d.]+);([\d.]+)$/.exec(res.headers.get("X-Audio-Align") || "");
-          if (au === "real" && al) line("実況の位置：" + (al[1] === "auto" ? "自動で見つけました" : "入れた秒どおりです") + "（スタート" + al[2] + "秒／結果発表" + al[3] + "秒）" + (al[1] === "auto" ? "。ずれていたら、下の録音のところに秒を入れて、作り直せます。" : ""));
-          /* 背景（朝・昼・夕方・ナイター）が何を根拠にできたか */
-          const sc = (res.headers.get("X-Scene") || "").split(";");
-          if (sc.length === 4) {
-            let ph2 = sc[0]; try { ph2 = decodeURIComponent(sc[0]); } catch (e) {}
-            line("背景：" + ph2 + "（" + sc[1] + "・" + (SC_SRC[sc[3]] || sc[3]) + "）／天気：" + (SC_WX[sc[2]] || sc[2]), false);
-          }
-          /* エンディング画像は、動画ができた直後に消す（端末の保存からも外す。サービス側は処理が終わるとすぐ消している） */
-          if (endi) { ls.del(K_END); if (slotRefresh[K_END]) slotRefresh[K_END](); line("エンディング画像：動画にはめ込んだので、この端末から消しました。次の動画に使うときは、もう一度選んでください。", false); }
-          out.insertBefore(info, out.firstChild);
-          if (!touch) saveBlob(blob, name);                    // スマホは、押してもらった瞬間にしか共有メニューを開けないので、自動保存はしない
+          const lab = t.mode === "rank" ? "高配当" + t.rank + "位（" + (t.venue || "") + t.race + "R）" : (t.venue || "") + t.race + "R";
+          const r = await renderJob(c, body, run, { label: lab + "　" + dateIn.value, endi: !!endi, t0, fb });
+          showResult(r, { note, out, t0, endi, rr });
         } catch (e) {
-          note.className = "err";
-          note.textContent = e.name === "AbortError" ? "時間がかかりすぎたため中止しました。もう一度お試しください。" : String(e.message || e);
+          if (!run.me.gone) {
+            note.className = "err";
+            note.textContent = e.name === "AbortError" ? "時間がかかりすぎたため中止しました。もう一度お試しください。" : String(e.message || e);
+          }
         }
-        clearInterval(timer); clearTimeout(kill); wake.off();
+        if (!run.me.gone) ls.del(K_JOB);                     // 画面が作り直されていたら記録を残す（新しい画面が続きから受け取る）
+        run.stop(); wake.off();
         b.textContent = label; setBusy(false);
+      }
+      /* 画面を閉じた・開き直したときに、前回の動画づくりが残っていれば、続きから受け取る（サービスは頼まれた動画をつくり続けている） */
+      function resumeIfAny() {
+        const c = needCfg(), raw = ls.get(K_JOB);
+        if (!raw || !c) return;
+        let r0 = null; try { r0 = JSON.parse(raw); } catch (e) {}
+        if (!r0 || !r0.id || r0.url !== c.url || !(Date.now() - r0.t0 < JOB_LIMIT_MS)) { ls.del(K_JOB); return; }
+        if (state.busy) return;
+        const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:12px;font-size:14px;line-height:1.75";
+        d.innerHTML = '<div style="font-weight:800">前回の動画づくりを続けています' + (r0.label ? "：" + esc(r0.label) : "") + "</div>";
+        const note = document.createElement("div"); note.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted)";
+        const out = document.createElement("div"); d.appendChild(note); d.appendChild(out); box.insertBefore(d, box.firstChild);
+        setBusy(true); wake.on();
+        const run = trackRun(note, r0.t0);
+        renderJob(c, null, run, { resumeId: r0.id, label: r0.label, endi: r0.endi, t0: r0.t0, fb: "高配当動画.mp4" })
+          .then((r) => { if (!run.me.gone) showResult(r, { note, out, t0: r0.t0, endi: r0.endi }); })
+          .catch((e) => { if (run.me.gone) return; note.className = "err"; note.textContent = e.name === "AbortError" ? "時間がかかりすぎたため中止しました。もう一度お試しください。" : String(e.message || e); })
+          .then(() => { if (!run.me.gone) ls.del(K_JOB); run.stop(); wake.off(); setBusy(false); });
       }
 
       /* ================= 設定・オプション（下） ================= */
@@ -13992,6 +14175,31 @@ BUILDERS.talk = (el) => TALK.build(el);
       const cmBox = document.createElement("input"); cmBox.type = "checkbox"; cmBox.checked = ls.get(K_CM) !== "0";
       cmBox.onchange = () => { ls.set(K_CM, cmBox.checked ? "1" : "0"); toast(cmBox.checked ? "音声（実況・BGM・効果音）をつけます" : "音声なし（無音）にします"); };
       cmLab.appendChild(cmBox); cmLab.appendChild(document.createTextNode("音声（実況・BGM・効果音）をつける")); cmCard.appendChild(cmLab);
+
+      /* ---- 公式リプレイの実況を、サービスが自動で録音して使う（v2.6）。端末は何もしなくてよい ---- */
+      const rrLab = document.createElement("label"); rrLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px;font-weight:700";
+      const rrBox = document.createElement("input"); rrBox.type = "checkbox"; rrBox.checked = ls.get(K_RR) !== "0"; rrBox.style.marginTop = "5px";
+      rrBox.onchange = () => { ls.set(K_RR, rrBox.checked ? "1" : "0"); toast(rrBox.checked ? "公式リプレイの実況を自動で使います（約5分長くなります）" : "公式の実況は使わず、合成音声にします"); };
+      rrLab.appendChild(rrBox); rrLab.appendChild(document.createTextNode("公式リプレイの実況を、サービスが自動で録音して使う（動画づくりが約5分長くなります）")); cmCard.appendChild(rrLab);
+      cmCard.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px;margin-top:4px">BOATCASTの公式リプレイを、<b>サービス側のブラウザ</b>が再生して、実況の<b>音声だけ</b>を録ります。パソコンもスマホも、開いたままにする必要はありません（動画ができたら受け取るだけ）。'
+        + '録れなかったとき（リプレイがまだ無い・公式側で再生できない等）は、合成音声の動画をつくり、その理由を結果に表示します。下の『実況の録音』で自分の録音を選んだレースは、そちらを優先します。録った音声は動画づくりの間だけ使い、保存しません。</div>');
+      const prBtn = mkBtn("公式リプレイを録音できるか確認する（約30秒）", "cyan"); prBtn.style.cssText += ";margin-top:10px;width:100%";
+      const prOut = document.createElement("div"); prOut.style.cssText = "margin-top:8px;font-size:13px;line-height:1.7;display:none";
+      cmCard.appendChild(prBtn); cmCard.appendChild(prOut);
+      prBtn.onclick = async () => {
+        const c = needCfg(); if (!c) { toast("先に、『動画サービスの設定』を保存してください", "err"); return; }
+        if (state.busy) { toast("動画をつくっている間は、確認できません", "err"); return; }
+        prBtn.disabled = true; prOut.style.display = "block"; prOut.className = ""; prOut.textContent = "確認しています…（約30秒）";
+        try {
+          const vj = await getJson(c, "/api/venues", { date: dateIn.value });
+          const v0 = vj.venues && vj.venues[0];
+          if (!v0) { prOut.textContent = dateIn.value + " は開催がありません。上の日付を開催のある日にして、もう一度押してください。"; prBtn.disabled = false; return; }
+          const p = await getJson(c, "/api/replay/probe", { date: dateIn.value, jcd: v0.jcd, race: 1 });
+          if (p.ok) { prOut.className = "okmsg"; prOut.textContent = "確認できました：" + v0.venue + "1Rの公式リプレイ（約" + Math.round(p.dur) + "秒）を開けて、音声を取り出せます（" + p.sec + "秒）。『動画をつくる』で、実況が自動で入ります。"; }
+          else { prOut.className = "err"; prOut.textContent = "録音できませんでした：" + (p.message || p.stage || "不明") + "　この状態でも動画はつくれます（実況は合成音声になります）。"; }
+        } catch (e) { prOut.className = "err"; prOut.textContent = String(e.message || e); }
+        prBtn.disabled = false;
+      };
 
       /* ---- 実況の録音（本物の実況・任意）。音声だけを使う（映像は取り込まず、保存も送信もしない）。①録画から取り出す（スマホ可） ②パソコンのタブの音声を録音 ---- */
       const rec = { blob: null, url: "", dur: 0, start: null, result: null, pcm: null, sr: 0, mr: null, stream: null, t0: 0, timer: null, kill: null };
@@ -14127,6 +14335,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       };
       rcRefresh();
       refreshMode();
+      resumeIfAny();
     }
     return { enabled, build };
   })();
