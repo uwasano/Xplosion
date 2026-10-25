@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "381";
+const APP_VERSION = "382";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v381 高配当動画（v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
+/* ================= v382 高配当動画（v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13612,6 +13612,11 @@ BUILDERS.talk = (el) => TALK.build(el);
     /* 選べるのは「本日」と「昨日」だけ（日本時間）。本日分は、結果が出たレースだけが動画にできる */
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
+    /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
+    const SERVER_NEED = "2.8.8";
+    const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
+    const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
+    const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
     const isTouch = () => { try { return matchMedia("(pointer: coarse)").matches || /iPhone|iPad|Android/i.test(navigator.userAgent); } catch (e) { return false; } };
 
     /* 画像を、長辺maxSidepx以内のJPEGにそろえる（端末の保存容量と送信量を抑える） */
@@ -13850,6 +13855,35 @@ BUILDERS.talk = (el) => TALK.build(el);
         audStat.appendChild(on);
       };
       refreshAudStat();
+      /* 動画サービスの版の表示（v2.8.8）：古いままなら、赤字で知らせ、入れ替えのコマンドを出す */
+      const svStat = document.createElement("div"); svStat.style.cssText = "margin-top:12px;padding:0 4px;font-size:13px;line-height:1.7"; box.insertBefore(svStat, main);       // 画面のいちばん上（見落とさないように）
+      const showOldServer = (el, build) => {
+        el.textContent = ""; el.className = "err";
+        const t = document.createElement("div");
+        t.textContent = "動画サービスが古い版のままです（" + (build ? "v" + build : "v2.8.3 以前") + "）。画面だけ新しくなっても、公式実況の録音・表の読み取りなどの直しは、サービスを入れ替えないと反映されません。パソコンの Cloud Shell に、新しい導入キット（v" + SERVER_NEED + "）のzipをアップロードして、次の1行を貼り付けて実行してください。";
+        el.appendChild(t);
+        const code = document.createElement("div"); code.textContent = UPDATE_CMD;
+        code.style.cssText = "margin-top:6px;padding:8px 10px;border-radius:8px;background:rgba(127,127,127,.15);font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;word-break:break-all;color:var(--text,inherit)";
+        el.appendChild(code);
+        const cp = mkBtn("コマンドをコピー", "cyan"); cp.style.cssText += ";margin-top:6px;width:100%;min-height:44px";
+        cp.onclick = async () => { try { await navigator.clipboard.writeText(UPDATE_CMD); toast("コマンドをコピーしました"); } catch (e) { toast("コピーできませんでした。上の文字を長押しして選んでください", "err"); } };
+        el.appendChild(cp);
+      };
+      let svSeq = 0;
+      const checkServer = async () => {
+        const c = needCfg(), my = ++svSeq;
+        svStat.textContent = ""; svStat.className = "";
+        if (!c) return;
+        svStat.style.color = "var(--muted)"; svStat.textContent = "動画サービスの版を確認しています…";
+        try {
+          const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 10000);
+          const rs = await fetch(c.url + "/health", { signal: ac.signal }); clearTimeout(tm);
+          if (!rs.ok) throw new Error("http " + rs.status);
+          const j = await rs.json(); if (my !== svSeq) return;
+          if (verLt(j && j.build, SERVER_NEED)) { svStat.style.color = ""; showOldServer(svStat, j && j.build); }
+          else { svStat.style.color = "var(--muted)"; svStat.className = ""; svStat.textContent = "動画サービスの版：v" + j.build + "（最新です）"; }
+        } catch (e) { if (my !== svSeq) return; svStat.style.color = "var(--muted)"; svStat.className = ""; svStat.textContent = "動画サービスの版：確認できませんでした（通信を確認してください）"; }
+      };
       const list = document.createElement("div"); box.appendChild(list);
 
       const needCfg = () => { const c = cfg(); return c.url && c.key ? c : null; };
@@ -14056,6 +14090,8 @@ BUILDERS.talk = (el) => TALK.build(el);
         /* 選手写真・音声が実際にどうなったかを、必ず表示する */
         const ph = /^(\d+)\/(\d+)$/.exec(hdr("X-Photos") || ""), au = hdr("X-Audio");
         const info = document.createElement("div"); info.style.cssText = "margin-top:8px;font-size:13px;line-height:1.7";
+        /* 古い版のサービスでつくられた動画は、いちばん上に赤字で知らせる（直した機能が使われていないため） */
+        { const sv = hdr("X-Server"); if (verLt(sv, SERVER_NEED)) { const d = document.createElement("div"); d.className = "err"; d.textContent = "この動画は、古い版の動画サービス（" + (sv ? "v" + sv : "v2.8.3 以前") + "）でつくられました。公式実況の録音・表の読み取りなどの直しは、サービスを入れ替えるまで反映されません。画面の上のほうの赤字の案内にあるコマンドで、入れ替えてください。"; info.appendChild(d); } }
         const line = (txt, bad) => { const d = document.createElement("div"); d.textContent = txt; if (bad) d.className = "err"; info.appendChild(d); };
         if (ph) { const ok = +ph[1], tot = +ph[2]; if (tot && ok === tot) line("選手写真：" + ok + "/" + tot + "枚（公式サイトから取得）"); else line("選手写真：" + ok + "/" + tot + "枚しか取得できませんでした。取得できなかった艇は、艇番の丸印で描いています。", true); }
         const rp = (hdr("X-Replay") || "").split(";");
@@ -14202,7 +14238,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         const url = urlIn.value.trim().replace(/\/+$/, "");
         if (url && !/^https:\/\//i.test(url) && !/^http:\/\/(localhost|127\.0\.0\.1)/i.test(url)) { toast("URLは https:// から入力してください", "err"); return; }
         ls.set(K_CFG, JSON.stringify({ url, key: keyIn.value.trim() }));
-        cfgMsg.textContent = "保存しました"; cfgMsg.style.display = "block"; toast("保存しました"); refreshMode();
+        cfgMsg.textContent = "保存しました"; cfgMsg.style.display = "block"; toast("保存しました"); refreshMode(); checkServer();
       };
       c1.appendChild(saveCfg); c1.appendChild(cfgMsg);
 
@@ -14451,6 +14487,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       };
       rcRefresh();
       refreshMode();
+      checkServer();
       resumeIfAny();
     }
     return { enabled, build };
