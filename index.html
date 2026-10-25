@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "378";
+const APP_VERSION = "380";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v378 高配当動画（v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
+/* ================= v380 高配当動画（v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13591,12 +13591,12 @@ BUILDERS.talk = (el) => TALK.build(el);
       del(k) { try { localStorage.removeItem(k); } catch (e) {} },
     };
     /* 的中実績カード：的中画像（的中明細のスクリーンショット）を1枚選んでいるときだけ */
-    /* オープニングの見せ方（どれも、当たった倍率の数字は激しく揺れる）。tilt＝斜め飛び込み（既定）／digits＝数字のみ揺れ／phone＝スマホ横揺れ */
+    /* オープニングの見せ方（どれも、当たった倍率の数字は激しく揺れる）。digits＝数字のみ揺れ（既定・いちばん上）／tilt＝斜め飛び込み／phone＝スマホ横揺れ */
     const HIT_STYLES = [
-      ["tilt", "オープニング斜め飛び込みVer", "カードが斜めに回りながら飛び込み、倍率の数字が激しく揺れます。"],
       ["digits", "数字のみ揺れVer", "カードはまっすぐ置いたまま、倍率の数字だけが激しく揺れます。"],
+      ["tilt", "オープニング斜め飛び込みVer", "カードが斜めに回りながら飛び込み、倍率の数字が激しく揺れます。"],
       ["phone", "スマホ横揺れVer", "右上に、選んだ画像をエンディングのようなスマホ画面にして斜めに置き、横に揺らします（倍率の数字も激しく揺れます）。"]];
-    const hitStyle = () => { const v = ls.get(K_HITSTY); return HIT_STYLES.some((x) => x[0] === v) ? v : "tilt"; };
+    const hitStyle = () => { const v = ls.get(K_HITSTY); return HIT_STYLES.some((x) => x[0] === v) ? v : "digits"; };
     /* オープニングのカードの色（v2.8.3）。1色を選ぶと、背景・ふち・衣装も数字も、その色でそろう（統一）。『おまかせ』なら、毎回ランダム（金×赤などの52通り）。色の名前は、サーバー（hitcard.ACCENTS）と同じもの */
     const HIT_COLORS = ["赤", "橙", "緑", "ティール", "水色", "青", "紫", "マゼンタ", "ピンク"];
     const hitColor = () => { const v = ls.get(K_HITCOL); return HIT_COLORS.includes(v) ? v : null; };
@@ -13837,6 +13837,19 @@ BUILDERS.talk = (el) => TALK.build(el);
       const show = document.createElement("button"); show.type = "button"; show.className = "mini primary"; show.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
       main.appendChild(show); fixedEls.push(show);
       const cfgHint = document.createElement("div"); cfgHint.className = "err"; cfgHint.style.display = "none"; main.appendChild(cfgHint);
+      /* 実況の状態（v2.8.5）：動画をつくる前に、いまの設定で実況が『公式の本物』か『合成音声（AI音声）』かを、いつも表示する。オフのまま合成音声になるのを防ぐ */
+      const audStat = document.createElement("div"); audStat.style.cssText = "margin-top:10px;font-size:13px;line-height:1.7"; main.appendChild(audStat);
+      const refreshAudStat = () => {
+        audStat.textContent = ""; audStat.className = "";
+        if (ls.get(K_CM) === "0") { audStat.style.color = "var(--muted)"; audStat.textContent = "実況：なし（音声・実況・BGM・効果音をつけない設定です）"; return; }
+        if (ls.get(K_RR) !== "0") { audStat.style.color = "var(--muted)"; audStat.textContent = "実況：公式リプレイの本物の実況を、サービスが自動で録音して使います（動画づくりは約6〜8分）"; return; }
+        audStat.style.color = ""; audStat.className = "err";
+        audStat.appendChild(document.createTextNode("実況：合成音声（AI音声）になります。設定の『公式リプレイの実況を、サービスが自動で録音して使う』がオフです。"));
+        const on = document.createElement("button"); on.type = "button"; on.className = "mini cyan"; on.textContent = "本物の実況をオンにする"; on.style.cssText = "display:block;margin-top:6px;min-height:44px;width:100%";
+        on.onclick = () => { ls.set(K_RR, "1"); if (typeof rrBox !== "undefined" && rrBox) rrBox.checked = true; refreshAudStat(); toast("公式リプレイの実況を自動で使います（約6〜8分かかります）"); };
+        audStat.appendChild(on);
+      };
+      refreshAudStat();
       const list = document.createElement("div"); box.appendChild(list);
 
       const needCfg = () => { const c = cfg(); return c.url && c.key ? c : null; };
@@ -14024,7 +14037,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       }
       /* 動画ができたあとの表示（どの経路でも同じ）。r.hdr(名前) は、選手写真・音声・背景の付随情報 */
       function showResult(r, o) {
-        const { blob, name, hdr } = r, { note, out, t0, endi, rr, hit } = o;
+        const { blob, name, hdr } = r, { note, out, t0, endi, rr, rrOff, hit } = o;
         const url = URL.createObjectURL(blob);
         out.innerHTML = '<video controls playsinline preload="metadata" style="width:100%;max-width:300px;margin-top:10px;border-radius:10px;background:#000;display:block"></video>';
         out.querySelector("video").src = url;
@@ -14050,6 +14063,8 @@ BUILDERS.talk = (el) => TALK.build(el);
         if (rp[0] === "fail") {
           let why = rp.slice(2).join(";"); try { why = decodeURIComponent(why); } catch (e) {}
           line("公式の実況：自動で録音できなかったため、合成音声でつくりました。理由：" + (why || rp[1] || "不明") + "（下の『音声』の項目で、動作確認ができます）", true);
+        } else if (au === "synth" && rrOff) {
+          line("公式の実況：設定の『公式リプレイの実況を、サービスが自動で録音して使う』がオフだったため、合成音声（AI音声）でつくりました。設定でオンにして、作り直してください。", true);
         } else if (rr && !rp[0] && au !== "real") {
           line("公式の実況：この動画サービスの版では、自動取得を使えません（導入キットを新しい版に入れ替えてください）。合成音声でつくりました。", true);
         }
@@ -14121,19 +14136,19 @@ BUILDERS.talk = (el) => TALK.build(el);
           else { body.jcd = t.jcd; body.race = t.race; body.expect_combo = t.combo; body.expect_payout = t.payout; }   // 一覧で見た内容と結果ページが食い違えば、サーバーが作らない
           const endi = ls.get(K_END); if (endi) body.ending_image = endi;
           const hit = hitOn();
-          if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; if (ls.get(K_HITTBL) === "0") body.hit_table = false; if (hitStyle() !== "tilt") body.hit_style = hitStyle(); if (hitColor()) body.hit_color = hitColor(); }   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
+          if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; if (ls.get(K_HITTBL) === "0") body.hit_table = false; body.hit_style = hitStyle(); /* 見せ方は、いつも明示して送る（サーバーの既定は従来どおり tilt のまま。画面の既定は数字のみ揺れVer） */ if (hitColor()) body.hit_color = hitColor(); }   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
           if (body.commentary && rec.blob && t.recBox && t.recBox.checked) {                   // 録音した本物の実況を、チェックしたこのレースに使う
             if ((rec.start == null) !== (rec.result == null)) throw new Error("『スタートの瞬間』と『結果アナウンスの始まり』は、どちらも空欄（自動で探します）か、どちらも秒を入れてください");
             const up = await audioForUpload();
             body.commentary_audio = up.data;
             if (up.start != null) { body.audio_start = up.start; body.audio_result = up.result; }         // 空欄なら送らない → サービスが自動で見つける
           }
-          let rr = false;
-          if (body.commentary && !body.commentary_audio && ls.get(K_RR) !== "0") { body.real_commentary = true; rr = true; }     // 自分の録音を渡さないときは、サービスが公式リプレイから実況を録る
+          let rr = false, rrOff = false;
+          if (body.commentary && !body.commentary_audio) { if (ls.get(K_RR) !== "0") { body.real_commentary = true; rr = true; } else rrOff = true; }     // 自分の録音を渡さないときは、サービスが公式リプレイから実況を録る
           const fb = t.mode === "rank" ? "高配当" + t.rank + "位_" + dateIn.value + ".mp4" : (t.venue || "") + t.race + "R_" + dateIn.value + ".mp4";
           const lab = t.mode === "rank" ? "高配当" + t.rank + "位（" + (t.venue || "") + t.race + "R）" : (t.venue || "") + t.race + "R";
           const r = await renderJob(c, body, run, { label: lab + "　" + dateIn.value, endi: !!endi, t0, fb });
-          showResult(r, { note, out, t0, endi, rr, hit });
+          showResult(r, { note, out, t0, endi, rr, rrOff, hit });
         } catch (e) {
           if (!run.me.gone) {
             note.className = "err";
@@ -14272,13 +14287,13 @@ BUILDERS.talk = (el) => TALK.build(el);
       cmCard.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px">レース中はBGMが流れ、決め場面に実況の声と画面下のテロップがつきます。配当の発表では、倍率が大きいほど派手な効果音が鳴ります。声は合成音声です。切ると、これまでどおりの無音の動画になります。</div>');
       const cmLab = document.createElement("label"); cmLab.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px";
       const cmBox = document.createElement("input"); cmBox.type = "checkbox"; cmBox.checked = ls.get(K_CM) !== "0";
-      cmBox.onchange = () => { ls.set(K_CM, cmBox.checked ? "1" : "0"); toast(cmBox.checked ? "音声（実況・BGM・効果音）をつけます" : "音声なし（無音）にします"); };
+      cmBox.onchange = () => { ls.set(K_CM, cmBox.checked ? "1" : "0"); refreshAudStat(); toast(cmBox.checked ? "音声（実況・BGM・効果音）をつけます" : "音声なし（無音）にします"); };
       cmLab.appendChild(cmBox); cmLab.appendChild(document.createTextNode("音声（実況・BGM・効果音）をつける")); cmCard.appendChild(cmLab);
 
       /* ---- 公式リプレイの実況を、サービスが自動で録音して使う（v2.6）。端末は何もしなくてよい ---- */
       const rrLab = document.createElement("label"); rrLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px;font-weight:700";
       const rrBox = document.createElement("input"); rrBox.type = "checkbox"; rrBox.checked = ls.get(K_RR) !== "0"; rrBox.style.marginTop = "5px";
-      rrBox.onchange = () => { ls.set(K_RR, rrBox.checked ? "1" : "0"); toast(rrBox.checked ? "公式リプレイの実況を自動で使います（約6〜8分かかります）" : "公式の実況は使わず、合成音声にします"); };
+      rrBox.onchange = () => { ls.set(K_RR, rrBox.checked ? "1" : "0"); refreshAudStat(); toast(rrBox.checked ? "公式リプレイの実況を自動で使います（約6〜8分かかります）" : "公式の実況は使わず、合成音声にします"); };
       rrLab.appendChild(rrBox); rrLab.appendChild(document.createTextNode("公式リプレイの実況を、サービスが自動で録音して使う（動画づくりは約6〜8分かかります）")); cmCard.appendChild(rrLab);
       cmCard.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px;margin-top:4px">BOATCASTの公式リプレイを、<b>サービス側のブラウザ</b>が再生して、実況の<b>音声だけ</b>を録ります。パソコンもスマホも、開いたままにする必要はありません（動画ができたら受け取るだけ）。'
         + '録れなかったとき（リプレイがまだ無い・公式側で再生できない等）は、合成音声の動画をつくり、その理由を結果に表示します。下の『実況の録音』で自分の録音を選んだレースは、そちらを優先します。録った音声は動画づくりの間だけ使い、保存しません。</div>');
