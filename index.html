@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "375";
+const APP_VERSION = "378";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v375 高配当動画（v2.8：的中実績カードを自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／エンディング画像は作った直後に消える） =================
+/* ================= v378 高配当動画（v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13573,9 +13573,9 @@ BUILDERS.talk = (el) => TALK.build(el);
    本物の実況（手動）：画面収録などの録画ファイルから、この端末の中で音声だけを取り出し（映像は取り込まない）、チェックを入れたレースの動画に入れる。
    スタート／結果アナウンスの秒は空欄でよい（録音のゴール後の無音から、サービスが自動で見つける）。
    音声・選手写真は保存しない：端末では画面を開いている間だけ、サービスでは処理が終わるとすぐ、できた動画も最長1時間（遅くとも翌日まで）で消える。
-   エンディング画像：動画ができた直後に、この端末からも消える（サービスは受け取った画像を動画にはめ込むだけで、処理が終わるとすぐ消す）。次の動画に使うときは選び直す。
-   的中実績カード（v2.8）：オープニング画像を、サービスが自動でつくる。そのレースの払戻金（100円あたり）から倍率（例 36,360円→363.6倍）を出し、色は数十通りからランダム。
-     エンディング画像（的中明細のスクリーンショット）を選んでいれば、その表をカードの右上に自動ではめ込む（最後の画面は従来どおり）。実際に的中したレースにだけ使う前提。
+   的中画像（エンディング画像と同じ）：動画ができた直後に、この端末からも消える（サービスは受け取った画像を動画にはめ込むだけで、処理が終わるとすぐ消す）。次の動画に使うときは選び直す。
+   的中実績カード（v2.8）：選ぶ画像は1枚だけ（的中明細のスクリーンショット）。選ぶと、最初＝的中実績カード（そのレースの払戻金から倍率を自動で出し、数字が約1.5秒激しく揺れ、色は数十通りからランダム。表はカードの右上にはめ込む）、最後＝その画像のスマホ画面（従来どおり）。
+     選ばなければ従来どおり。実際に的中したレースにだけ使う前提。
    背景：レースの締切時刻（公式の締切予定時刻）と競艇場の位置から太陽の高さを求め、朝・昼・夕方・ナイターの空・水・客席の照明にする。天気（晴・曇・雨など）も反映。 */
 (function () {
   try {
@@ -13583,15 +13583,24 @@ BUILDERS.talk = (el) => TALK.build(el);
   if (typeof BUILDERS === "undefined" || typeof TABS === "undefined" || typeof NAV_GROUPS === "undefined"
     || typeof head !== "function" || typeof inp !== "function" || typeof toast !== "function" || typeof esc !== "function") return;
   const RACEVID = (() => {
-    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode", K_JOB = "xpl_rv_job", K_RR = "xpl_rv_rr", K_HIT = "xpl_rv_hit";
+    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode", K_JOB = "xpl_rv_job", K_RR = "xpl_rv_rr", K_HIT = "xpl_rv_hit", K_HITTBL = "xpl_rv_hittbl", K_HITSTY = "xpl_rv_hitstyle", K_HITCOL = "xpl_rv_hitcolor";
     const JOB_LIMIT_MS = 25 * 60 * 1000;                     // 動画づくりを待つ上限（これを過ぎたら中止）。サーバーの記録も、動画ができてから1時間で消える
     const ls = {
       get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
       set(k, v) { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } },
       del(k) { try { localStorage.removeItem(k); } catch (e) {} },
     };
-    /* 的中実績カード：チェックを入れた（"1"）か、まだ触っておらず（null）エンディング画像（的中明細のスクリーンショット）が設定されているとき。外した（"0"）ときは使わない */
-    const hitOn = () => { const v = ls.get(K_HIT); return v === "1" || (v === null && !!ls.get(K_END)); };
+    /* 的中実績カード：的中画像（的中明細のスクリーンショット）を1枚選んでいるときだけ */
+    /* オープニングの見せ方（どれも、当たった倍率の数字は激しく揺れる）。tilt＝斜め飛び込み（既定）／digits＝数字のみ揺れ／phone＝スマホ横揺れ */
+    const HIT_STYLES = [
+      ["tilt", "オープニング斜め飛び込みVer", "カードが斜めに回りながら飛び込み、倍率の数字が激しく揺れます。"],
+      ["digits", "数字のみ揺れVer", "カードはまっすぐ置いたまま、倍率の数字だけが激しく揺れます。"],
+      ["phone", "スマホ横揺れVer", "右上に、選んだ画像をエンディングのようなスマホ画面にして斜めに置き、横に揺らします（倍率の数字も激しく揺れます）。"]];
+    const hitStyle = () => { const v = ls.get(K_HITSTY); return HIT_STYLES.some((x) => x[0] === v) ? v : "tilt"; };
+    /* オープニングのカードの色（v2.8.3）。1色を選ぶと、背景・ふち・衣装も数字も、その色でそろう（統一）。『おまかせ』なら、毎回ランダム（金×赤などの52通り）。色の名前は、サーバー（hitcard.ACCENTS）と同じもの */
+    const HIT_COLORS = ["赤", "橙", "緑", "ティール", "水色", "青", "紫", "マゼンタ", "ピンク"];
+    const hitColor = () => { const v = ls.get(K_HITCOL); return HIT_COLORS.includes(v) ? v : null; };
+    const hitOn = () => !!ls.get(K_END);                  // 的中画像（スクリーンショット）を1枚選んでいれば、最初（的中実績カード）と最後（スマホ画面）の両方に使う。選んでいなければ、これまでどおり
     try {
       const m = /[?&]racevideo=([01])(?:&|#|$)/.exec(location.search);
       if (m) { if (m[1] === "1") ls.del(K_ON); else ls.set(K_ON, "0"); }
@@ -13600,9 +13609,9 @@ BUILDERS.talk = (el) => TALK.build(el);
     const enabled = () => ls.get(K_ON) !== "0";
     const cfg = () => { try { return Object.assign({ url: "", key: "" }, JSON.parse(ls.get(K_CFG) || "{}")); } catch (e) { return { url: "", key: "" }; } };
     const yen = (n) => "¥" + Number(n).toLocaleString("ja-JP");
-    /* 読み取れるのは「昨日まで」（日本時間）。当日分は結果が出そろっていないため */
+    /* 選べるのは「本日」と「昨日」だけ（日本時間）。本日分は、結果が出たレースだけが動画にできる */
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
-    const yesterday = () => daysAgoJst(1);
+    const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     const isTouch = () => { try { return matchMedia("(pointer: coarse)").matches || /iPhone|iPad|Android/i.test(navigator.userAgent); } catch (e) { return false; } };
 
     /* 画像を、長辺maxSidepx以内のJPEGにそろえる（端末の保存容量と送信量を抑える） */
@@ -13802,7 +13811,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         "『レースを選ぶ』で、日付 → 競艇場 → レース番号の順に選びます。『高配当TOP10』に切り替えると、その日の上位10レースから選べます。",
         "ほしいレースの『動画をつくる』を押します（約2〜3分。公式の実況を自動で使う設定のときは、約6〜8分かかります。通信が途切れても自動でつなぎ直します。画面を開いたままお待ちください）。",
         "できあがったら『保存する』を押すと、共有メニューが開きます（iPhoneは『ビデオを保存』）。パソコンでは自動で保存されます。",
-        "的中実績カード（オープニングの自動づくり）・オープニング画像・エンディング画像・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、サービスが公式リプレイから自動で録音して入れます（下の『音声』の項目。約5分長くなります）。自分の録音（画面収録）を使うこともできます。",
+        "的中画像（1枚選ぶだけで、最初の的中実績カードと最後の画面ができます）・音声・実況の録音は、下の各項目にあります（どれも任意）。本物の実況は、サービスが公式リプレイから自動で録音して入れます（下の『音声』の項目。約5分長くなります）。自分の録音（画面収録）を使うこともできます。",
       ]);
       const touch = isTouch();
       const box = document.createElement("div"); el.appendChild(box);
@@ -13819,12 +13828,12 @@ BUILDERS.talk = (el) => TALK.build(el);
       [segPick, segTop].forEach((b, i) => { b.type = "button"; b.className = "chip"; b.style.cssText = "flex:1;min-height:44px;text-align:center"; b.textContent = i === 0 ? "レースを選ぶ" : "高配当TOP10"; seg.appendChild(b); fixedEls.push(b); });
       main.appendChild(seg);
       const hint = document.createElement("div"); hint.style.cssText = "margin-top:8px;font-size:13px;color:var(--muted)"; main.appendChild(hint);
-      const dateIn = inp(main, "", "date"); dateIn.style.marginTop = "10px"; dateIn.value = yesterday(); dateIn.max = yesterday(); fixedEls.push(dateIn);
+      const dateIn = inp(main, "", "date"); dateIn.style.marginTop = "10px"; dateIn.value = today(); dateIn.max = today(); dateIn.min = yesterday(); fixedEls.push(dateIn);
       const quick = document.createElement("div"); quick.style.cssText = "display:flex;gap:8px;margin-top:8px";
-      const bYest = mkBtn("昨日"), bTwo = mkBtn("一昨日"); quick.appendChild(bYest); quick.appendChild(bTwo); main.appendChild(quick);
-      fixedEls.push(bYest, bTwo);
-      bYest.onclick = () => { dateIn.value = daysAgoJst(1); show.click(); };
-      bTwo.onclick = () => { dateIn.value = daysAgoJst(2); show.click(); };
+      const bToday = mkBtn("本日"), bYest = mkBtn("昨日"); quick.appendChild(bToday); quick.appendChild(bYest); main.appendChild(quick);
+      fixedEls.push(bToday, bYest);
+      bToday.onclick = () => { dateIn.value = today(); show.click(); };
+      bYest.onclick = () => { dateIn.value = yesterday(); show.click(); };
       const show = document.createElement("button"); show.type = "button"; show.className = "mini primary"; show.style.cssText = "margin-top:10px;width:100%;min-height:48px;font-size:15px";
       main.appendChild(show); fixedEls.push(show);
       const cfgHint = document.createElement("div"); cfgHint.className = "err"; cfgHint.style.display = "none"; main.appendChild(cfgHint);
@@ -13834,8 +13843,8 @@ BUILDERS.talk = (el) => TALK.build(el);
       const refreshMode = () => {
         segPick.className = "chip" + (state.mode === "pick" ? " on" : ""); segTop.className = "chip" + (state.mode === "rank" ? " on" : "");
         hint.textContent = state.mode === "pick"
-          ? "日付（昨日まで）を選んで『開催場を表示』を押し、競艇場 → レース番号の順に選びます。結果の出ているレースならどれでも動画にできます。"
-          : "その日（昨日まで）の高配当の上位10レースから選びます（公式の高配当ベスト10）。";
+          ? "日付（本日・昨日）を選んで『開催場を表示』を押し、競艇場 → レース番号の順に選びます。結果の出ているレースならどれでも動画にできます（本日分は、結果が出たレースだけです）。"
+          : "その日（本日・昨日）の高配当の上位10レースから選びます（公式の高配当ベスト10。本日分は、結果が出たレースだけです）。";
         show.textContent = state.mode === "pick" ? "開催場を表示" : "TOP10を表示";
         cfgHint.style.display = needCfg() ? "none" : "block";
         cfgHint.textContent = needCfg() ? "" : "先に、いちばん下の『動画サービスの設定』を保存してください。";
@@ -13862,7 +13871,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         if (state.busy) return;
         const c = needCfg(); if (!c) { refreshMode(); toast("先に『動画サービスの設定』を保存してください", "err"); openCfg(); return; }
         if (!dateIn.value) { toast("日付を選んでください", "err"); return; }
-        if (dateIn.value > yesterday()) { dateIn.value = yesterday(); toast("読み取れるのは昨日までです（当日分は結果が出そろっていないため）"); }
+        if (dateIn.value > today() || dateIn.value < yesterday()) { dateIn.value = dateIn.value > today() ? today() : yesterday(); toast("選べるのは、本日と昨日だけです"); }
         clearList(); msgCard("読み込み中…（最初の1回は、サービスの起動に数秒かかることがあります）");
         setBusy(true);
         try {
@@ -14068,7 +14077,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           line("的中実績カード：つくれなかったため、オープニングなしの動画になりました（" + why + "）", true);
         } else if (hx.length >= 4) {
           let pn = hx[0]; try { pn = decodeURIComponent(hx[0]); } catch (e) {}
-          line("的中実績カード：" + hx[1] + "倍（配色：" + pn + "）　右上の表：" + (hx[2] === "ok" ? "スクリーンショットからはめ込みました" : hx[2] === "unreadable" ? "スクリーンショットから表を読み取れなかったため、表なしのカードにしました（的中明細の画面全体のスクリーンショットを選んでください）" : "なし（エンディング画像が未設定のため、表なしのカードです）") + (hx[4] === "still" ? "。数字が揺れる動きはつくれなかったため、止まったカードになりました" : "。数字は激しく揺れます"), hx[2] === "unreadable" || hx[4] === "still");
+          line("的中実績カード：" + hx[1] + "倍（配色：" + pn + "）　右上の表：" + (hx[2] === "ok" ? "スクリーンショットからはめ込みました" : hx[2] === "unreadable" ? "スクリーンショットから表を読み取れなかったため、表なしのカードにしました（的中明細の画面全体のスクリーンショットを選んでください）" : "なし（表を入れない設定のため、数字だけのカードです）") + (hx[4] === "still" ? "。数字が揺れる動きはつくれなかったため、止まったカードになりました" : "。数字は激しく揺れます"), hx[2] === "unreadable" || hx[4] === "still");
           if (r.card) {
             const cw = document.createElement("div"); cw.style.cssText = "margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap";
             info.appendChild(cw);
@@ -14094,7 +14103,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           line("背景：" + ph2 + "（" + sc[1] + "・" + (SC_SRC[sc[3]] || sc[3]) + "）／天気：" + (SC_WX[sc[2]] || sc[2]), false);
         }
         /* エンディング画像は、動画ができた直後に消す（端末の保存からも外す。サービス側は処理が終わるとすぐ消している） */
-        if (endi) { ls.del(K_END); if (slotRefresh[K_END]) slotRefresh[K_END](); line("エンディング画像：動画にはめ込んだので、この端末から消しました。次の動画に使うときは、もう一度選んでください。", false); }
+        if (endi) { ls.del(K_END); if (slotRefresh[K_END]) slotRefresh[K_END](); line("的中画像：動画にはめ込んだので、この端末から消しました。次の動画に使うときは、もう一度選んでください。", false); }
         out.insertBefore(info, out.firstChild);
         if (!touch) saveBlob(blob, name);                    // スマホは、押してもらった瞬間にしか共有メニューを開けないので、自動保存はしない
       }
@@ -14112,8 +14121,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           else { body.jcd = t.jcd; body.race = t.race; body.expect_combo = t.combo; body.expect_payout = t.payout; }   // 一覧で見た内容と結果ページが食い違えば、サーバーが作らない
           const endi = ls.get(K_END); if (endi) body.ending_image = endi;
           const hit = hitOn();
-          if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; }   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
-          else { const intro = ls.get(K_INTRO); if (intro) body.intro_image = intro; }
+          if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; if (ls.get(K_HITTBL) === "0") body.hit_table = false; if (hitStyle() !== "tilt") body.hit_style = hitStyle(); if (hitColor()) body.hit_color = hitColor(); }   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
           if (body.commentary && rec.blob && t.recBox && t.recBox.checked) {                   // 録音した本物の実況を、チェックしたこのレースに使う
             if ((rec.start == null) !== (rec.result == null)) throw new Error("『スタートの瞬間』と『結果アナウンスの始まり』は、どちらも空欄（自動で探します）か、どちらも秒を入れてください");
             const up = await audioForUpload();
@@ -14181,9 +14189,9 @@ BUILDERS.talk = (el) => TALK.build(el);
       };
       c1.appendChild(saveCfg); c1.appendChild(cfgMsg);
 
-      /* ---- 画像の差し込み（オープニング / エンディング。どちらも任意） ---- */
-      const imgSec = section("オープニング／エンディング（的中実績カード・画像／任意）", false);
-      slotRefresh = {};                                       // 画像の枠ごとの表示更新（動画ができたあと、エンディング画像を消したときに使う）
+      /* ---- 的中画像（v2.8）：選ぶのは1枚だけ。その1枚を、最初（的中実績カード）と最後（スマホ画面）の両方に使う ---- */
+      const imgSec = section("的中画像（1枚だけ選びます）", false);
+      slotRefresh = {};                                       // 画像の枠の表示更新（動画ができたあと、画像を消したときに使う）
       const imageSlot = (key, title, desc, maxSide, okMsg, onText) => {
         const c = document.createElement("div"); c.style.cssText = "margin-top:10px;padding-top:10px;border-top:1px solid var(--border)";
         c.innerHTML = '<div style="font-weight:800;margin-bottom:4px">' + title + '</div><div style="color:var(--muted);font-size:13px">' + desc + '</div>';
@@ -14213,60 +14221,51 @@ BUILDERS.talk = (el) => TALK.build(el);
         c.appendChild(file); c.appendChild(rm); refresh();
         slotRefresh[key] = refresh;
       };
-      /* ---- 的中実績カード（v2.8）：オープニングを自動でつくる。エンディング画像（的中明細のスクリーンショット）を1枚の元にする ---- */
-      const hitBlock = document.createElement("div"); hitBlock.style.cssText = "padding-bottom:10px;border-bottom:1px solid var(--border)";
-      hitBlock.innerHTML = '<div style="font-weight:800;margin-bottom:4px">的中実績カード（オープニングを自動でつくる）</div>'
-        + '<div style="color:var(--muted);font-size:13px">そのレースの<b>払戻金（100円あたり）から倍率を自動で計算</b>して（例：36,360円→<b>363.6倍</b>、55,770円→<b>557.7倍</b>）、オープニングの『的中実績』の画像をつくります。数字は<b>斜めがけの太い文字で、激しく揺れます</b>（約1.5秒。そのぶんオープニングが少し長くなります）。色の組み合わせは<b>数十通りから、つくるたびにランダム</b>です。'
-        + '下の『エンディング画像』に<b>的中明細のスクリーンショット</b>を選んでおくと、その表を<b>カードの右上に自動ではめ込みます</b>（同じスクリーンショットが、これまでどおり最後の画面にも使われます。最後のトランジションは変わりません）。'
-        + '<b>実際に的中したレースにだけ</b>お使いください。</div>';
-      imgSec.appendChild(hitBlock);
-      const hitLab = document.createElement("label"); hitLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:14px;font-weight:700";
-      const hitBox = document.createElement("input"); hitBox.type = "checkbox"; hitBox.style.marginTop = "5px";
-      const hitTxt = document.createElement("span"); hitLab.appendChild(hitBox); hitLab.appendChild(hitTxt); hitBlock.appendChild(hitLab);
-      const hitSt = document.createElement("div"); hitSt.style.cssText = "margin-top:4px;font-size:13px;color:var(--muted)"; hitBlock.appendChild(hitSt);
-      const refreshHit = () => {
-        const on = hitOn(), explicit = ls.get(K_HIT);
-        hitBox.checked = on;
-        hitTxt.textContent = "オープニングを、的中実績カードにする";
-        hitSt.textContent = on ? (explicit === "1" ? "オンです。つくるたびに、倍率と色が自動で入れ替わります。" : "エンディング画像（スクリーンショット）が設定されているため、自動でオンにしています。動画ができるとその画像は消えるので、次回は自動でオフに戻ります（ずっとオンにしたいときは、チェックを入れ直してください）。")
-          : "オフです（オープニング画像を設定していれば、それを使います）。";
-        if (slotRefresh[K_INTRO]) slotRefresh[K_INTRO]();
+      ls.del(K_INTRO); ls.del(K_HIT);                         // 以前の『オープニング画像』『カードのオン／オフ』の保存は使わなくなったので、消す
+      imageSlot(K_END, "的中明細のスクリーンショット（1枚）",
+        "1枚選ぶだけで、動画の<b>最初</b>（倍率が<b>激しく揺れる</b>『的中実績』。倍率は払戻金から自動、色は、下で選ばなければ毎回ランダム。見せ方・色は下で選べます）と、<b>最後</b>（スマホ画面）の両方に使います。選ばなければ、これまでどおりの動画です。<b>実際に的中したレースにだけ</b>お使いください。動画ができると、この画像は端末から自動で消えます。",
+        2560, "的中画像を設定しました", "設定中：最初（的中実績カード）と最後（スマホ画面）に使います（動画が約4.5秒長くなります）");
+      /* オープニングの見せ方（3つから1つ選ぶ） */
+      const styBox = document.createElement("div"); styBox.style.cssText = "margin-top:12px;padding-top:10px;border-top:1px solid var(--border)";
+      styBox.insertAdjacentHTML("beforeend", '<div style="font-size:14px;font-weight:700">オープニングの見せ方</div>');
+      const styRadios = [];
+      HIT_STYLES.forEach(([val, name, note]) => {
+        const lab = document.createElement("label"); lab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:14px";
+        const rd = document.createElement("input"); rd.type = "radio"; rd.name = "xpl_rv_hitstyle"; rd.value = val; rd.style.marginTop = "5px";
+        const tx = document.createElement("span"); tx.innerHTML = "<b>" + name + "</b><br><span style=\"font-size:13px;color:var(--muted)\">" + note + "</span>";
+        lab.appendChild(rd); lab.appendChild(tx); styBox.appendChild(lab); styRadios.push(rd);
+        rd.onchange = () => { if (rd.checked) { ls.set(K_HITSTY, val); toast("オープニング：" + name); } };
+      });
+      const refreshSty = () => { const cur = hitStyle(); styRadios.forEach((r) => { r.checked = r.value === cur; }); };
+      refreshSty(); imgSec.appendChild(styBox);
+      /* オープニングの色（1色を選ぶと、背景も数字も、その色でそろう。『おまかせ』なら、毎回ランダム） */
+      const colBox = document.createElement("div"); colBox.style.cssText = "margin-top:12px;padding-top:10px;border-top:1px solid var(--border)";
+      colBox.insertAdjacentHTML("beforeend", '<div style="font-size:14px;font-weight:700">オープニングの色</div>');
+      const colRow = document.createElement("label"); colRow.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:14px";
+      colRow.appendChild(document.createTextNode("色（背景も数字も、この色でそろえます）"));
+      const colSel = document.createElement("select"); colSel.id = "xpl_rv_hitcolor";
+      colSel.style.cssText = "margin-left:8px;padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:14px";
+      [["", "おまかせ（毎回ランダム）"], ...HIT_COLORS.map((n) => [n, n])].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; colSel.appendChild(o); });
+      colRow.appendChild(colSel); colBox.appendChild(colRow);
+      const colNote = document.createElement("div"); colNote.style.cssText = "margin-top:6px;font-size:13px;color:var(--muted)"; colBox.appendChild(colNote);
+      const refreshCol = () => {
+        const c = hitColor(); colSel.value = c || "";
+        colNote.textContent = c ? "いまの設定：" + c + "（背景も数字も" + c + "でそろえます）" : "いまの設定：おまかせ（動画をつくるたびに、色の組み合わせが毎回変わります）";
       };
-      hitBox.onchange = () => { ls.set(K_HIT, hitBox.checked ? "1" : "0"); toast(hitBox.checked ? "的中実績カードをオープニングにします" : "的中実績カードをやめます"); refreshHit(); };
-      const hitRow = document.createElement("div"); hitRow.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center";
-      const hitPay = document.createElement("input"); hitPay.type = "number"; hitPay.inputMode = "numeric"; hitPay.min = "100"; hitPay.step = "10"; hitPay.placeholder = "払戻金（円）例 36360";
-      hitPay.style.cssText = "flex:1 1 150px;min-width:130px;padding:10px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)";
-      const hitPrev = mkBtn("カードを先に確認する（約5秒）", "cyan"); hitPrev.style.cssText += ";flex:1 1 180px";
-      hitRow.appendChild(hitPay); hitRow.appendChild(hitPrev); hitBlock.appendChild(hitRow);
-      const hitOut = document.createElement("div"); hitOut.style.cssText = "margin-top:8px;font-size:13px;line-height:1.7;display:none"; hitBlock.appendChild(hitOut);
-      hitPrev.onclick = async () => {
-        const c = needCfg(); if (!c) { toast("先に、『動画サービスの設定』を保存してください", "err"); return; }
-        const pay = Math.round(Number(hitPay.value));
-        if (!(pay >= 100)) { toast("払戻金（100円あたりの円。例：36360）を入れてください", "err"); return; }
-        hitPrev.disabled = true; hitOut.style.display = "block"; hitOut.className = ""; hitOut.textContent = "つくっています…（約5秒）";
-        try {
-          const body = { payout: pay }; const endi = ls.get(K_END); if (endi) body.screenshot = endi;
-          let res; try { res = await fetch(c.url + "/api/hitcard", { method: "POST", headers: { "X-API-Key": c.key, "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
-          catch (e) { throw new Error("動画サービスにつながりません。URL・合言葉・電波の状態を確かめてください"); }
-          if (res.status === 404 || res.status === 405) throw new Error("この動画サービスの版では、カードの確認ができません（導入キットを新しい版に入れ替えてください）");
-          if (!res.ok) throw new Error(await errText(res));
-          const hx = (res.headers.get("X-Hitcard") || "").split(";"); let pn = hx[0] || ""; try { pn = decodeURIComponent(pn); } catch (e) {}
-          const cb = await res.blob(), cu = URL.createObjectURL(cb);
-          hitOut.innerHTML = "";
-          const im = document.createElement("img"); im.src = cu; im.alt = "的中実績カードの見本"; im.style.cssText = "width:100%;max-width:320px;border-radius:10px;border:1px solid var(--border-strong);display:block";
-          const cap = document.createElement("div"); cap.textContent = (hx[1] || "") + "倍（配色：" + pn + "）　右上の表：" + (hx[2] === "ok" ? "はめ込みました" : hx[2] === "unreadable" ? "スクリーンショットから表を読み取れませんでした" : "なし（エンディング画像が未設定）") + "。これは止まった見本です。実際の動画では、数字が約1.5秒激しく揺れ、色が毎回入れ替わります。";
-          hitOut.appendChild(im); hitOut.appendChild(cap);
-        } catch (e) { hitOut.className = "err"; hitOut.textContent = String(e.message || e); }
-        hitPrev.disabled = false;
+      colSel.onchange = () => { if (colSel.value) ls.set(K_HITCOL, colSel.value); else ls.del(K_HITCOL); refreshCol(); toast(colSel.value ? "オープニングの色：" + colSel.value : "オープニングの色：おまかせ（毎回ランダム）"); };
+      refreshCol(); imgSec.appendChild(colBox);
+      /* オープニングのカードに、的中明細の表を入れるか入れないか（入れなければ、自動の『的中実績』と数字だけのカード。スマホ横揺れVerは、表を入れない設定だとスマホが出ません） */
+      const optLab = document.createElement("label"); optLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:14px;font-weight:700";
+      const optBox = document.createElement("input"); optBox.type = "checkbox"; optBox.style.marginTop = "5px";
+      const optTxt = document.createElement("span"); optTxt.textContent = "オープニングにも、的中明細の表を入れる";
+      optLab.appendChild(optBox); optLab.appendChild(optTxt); imgSec.appendChild(optLab);
+      const optSub = document.createElement("div"); optSub.style.cssText = "margin-top:4px;font-size:13px;color:var(--muted)"; imgSec.appendChild(optSub);
+      const refreshOpt = () => {
+        const on = ls.get(K_HITTBL) !== "0"; optBox.checked = on;
+        optSub.textContent = on ? "オープニングのカードの右上に、選んだ画像がはまります（スマホ横揺れVerでは、スマホの画面になります）。" : "オープニングは、自動の『的中実績』と数字だけのカードになります（最後の画面は、選んだ画像のままです。スマホ横揺れVerを選んでいても、スマホは出ません）。";
       };
-      imageSlot(K_INTRO, "オープニング画像",
-        "未設定なら、これまでどおりそのまま始まります。設定すると、動画の最初にこの画像を1秒見せてから、スライドで本編に切り替わります（その分、動画は1秒長くなります）。縦長（9:16）がいちばんきれいです。",
-        1920, "オープニング画像を設定しました", () => (hitOn() ? "設定中：ただし、的中実績カードがオンの間は使われません（カードが優先されます）" : "設定中：最初にこの画像を1秒出します"));
-      imageSlot(K_END, "エンディング画像（的中明細のスクリーンショット）",
-        "未設定なら、これまでどおりそのまま終わります。的中明細などのスクリーンショットを入れておくと（上の『的中実績カード』がオンなら、同じ画像の表がオープニングのカードの右上にも自動ではめ込まれます。1枚で、最初と最後を統一できます）、動画の最後にトランジションで切り替わり、約3秒間、スマホの画面としてその画像を見せます（見出し・払戻金・着順などの文字はレースごとに自動で入れ替わります。その分、動画は3秒長くなります）。画面まわりの黒い余白は自動で切り取ります。動画ができた直後に、この画像は端末から自動で消えます（保存しません。次の動画に使うときは、もう一度選んでください）。",
-        2560, "エンディング画像を設定しました", "設定中：最後にスマホ画面として約3秒見せます（動画ができたら、この画像は端末から自動で消えます）");
-      { const _re = slotRefresh[K_END]; slotRefresh[K_END] = () => { _re(); refreshHit(); }; }          // エンディング画像が変わったら、的中実績カードの表示（自動オン）も更新する
-      refreshHit();
+      optBox.onchange = () => { ls.set(K_HITTBL, optBox.checked ? "1" : "0"); refreshOpt(); };
+      refreshOpt();
 
       /* ---- 実況（合成音声）。初期状態はつける ---- */
       const cmCard = section("音声（実況・BGM・効果音）", false);
