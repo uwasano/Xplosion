@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "384";
+const APP_VERSION = "386";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v382 高配当動画（v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
+/* ================= v382 高配当動画（v2.9.4：2投稿目に4枚目『通が見ている数字の裏側』を追加・ダウンロードしたら保管場所のファイルを自動削除〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.2：インスタ2投稿目に『なぜこの結果か』の裏付けを追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13613,7 +13613,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "2.9.1";
+    const SERVER_NEED = "2.9.4";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14511,11 +14511,12 @@ BUILDERS.talk = (el) => TALK.build(el);
   }
 })();
 
-/* ================= v383 インスタ3投稿（BOAT RACE JOURNAL v1：毎日18時に自動で作成／画像を一括ダウンロード） =================
-   毎日18時（日本時間）に、公式データから Instagram の3投稿ぶんを自動で作る。ここは、できたものを見て、まとめてダウンロードする画面。
-     1投稿目 明日の注目レース（表紙＋注目の理由＋注目の選手たち）／2投稿目 本日の勝負の裏側（表紙＋結果＋勝負の分岐点）／3投稿目 高配当動画（同じ色・同じ日付）
+/* ================= v383 インスタ3投稿（BOAT RACE JOURNAL v1：毎日19時に自動で作成／画像を一括ダウンロード） =================
+   毎日19時（日本時間）に、公式データから Instagram の3投稿ぶんを自動で作る。ここは、できたものを見て、まとめてダウンロードする画面。
+     1投稿目 明日の注目レース（表紙＋注目の理由＋注目の選手たち）／2投稿目 本日の勝負の裏側（表紙＋結果＋勝負の分岐点＋通が見ている数字の裏側）／3投稿目 高配当動画（同じ色・同じ日付）
    作るのは Supabase（Edge Function journal-daily ＋ Cron）と動画サービス（Cloud Run）。この画面は journal_sets を読むだけ（押さなければ何もつくらない）。
    自動で投稿するAPIは、あとで接続する。いまは、ダウンロードして手動で投稿する。
+   ダウンロードしたら（既定30分後に）保管場所のファイルを自動で削除する（端末に保存したものは消えない。設定でオフにできる）。
    隠したいときだけ、URLに ?journal=0 を付けて開く（この端末だけOFF。?journal=1 で戻る）。 */
 (function () {
   try {
@@ -14548,6 +14549,11 @@ BUILDERS.talk = (el) => TALK.build(el);
       partial: ["一部まだ（取り直し待ち）", "#d99a1c"], held: ["保留", "#d14b4b"], error: ["失敗", "#d14b4b"],
     };
     const COLS = "date,tomorrow,status,attempt,mode,started_at,style,hit_color,posts,gaps,images,zip_url,note,video_state,video_url,video_note,purged_at,updated_at";
+    const COLS_V2 = COLS + ",images_downloaded_at,images_purged_at,video_downloaded_at,video_purged_at";
+    /* 『全部の画像を保存した』を端末ごとに覚える（個別の『保存』を全部の枚数ぶん押したら、ダウンロードずみとして印を付けるため） */
+    const savedGet = (d, tag) => { try { const j = JSON.parse(ls.get("xpl_jn_saved_" + d) || "null"); return j && j.s === tag && Array.isArray(j.n) ? j.n : []; } catch (e) { return []; } };
+    const savedAdd = (d, tag, name) => { const n = savedGet(d, tag); if (n.indexOf(name) < 0) n.push(name); ls.set("xpl_jn_saved_" + d, JSON.stringify({ s: tag, n })); return n; };
+    const minLabel = (m) => (m >= 60 && m % 60 === 0 ? (m / 60) + "時間" : m + "分");
 
     const sbUrl = () => { try { return typeof SUPABASE_URL !== "undefined" ? String(SUPABASE_URL).replace(/\/+$/, "") : ""; } catch (e) { return ""; } };
     const sbKey = () => { try { return typeof SUPABASE_ANON !== "undefined" ? String(SUPABASE_ANON) : ""; } catch (e) { return ""; } };
@@ -14584,14 +14590,15 @@ BUILDERS.talk = (el) => TALK.build(el);
     }
 
     function build(el) {
-      head(el, "インスタ3投稿", "毎日18時（日本時間）に、公式データから『明日の注目レース』『本日の勝負の裏側』の画像と、高配当動画を自動でつくります。ここで確認して、まとめてダウンロードします。", [
-        "18時になると自動で作られます（出走表や結果が出そろっていないときは、30分後・1時間後にもう一度取りに行きます）。",
-        "『まとめてダウンロード（zip）』で6枚を一括保存できます。スマホは『写真に保存』が便利です。",
+      head(el, "インスタ3投稿", "毎日19時（日本時間）に、公式データから『明日の注目レース』『本日の勝負の裏側』の画像と、高配当動画を自動でつくります。ここで確認して、まとめてダウンロードします。", [
+        "19時になると自動で作られます（出走表や結果が出そろっていないときは、30分後・1時間後にもう一度取りに行きます）。",
+        "『まとめてダウンロード（zip）』で、画像（6〜7枚）を一括保存できます。スマホは『写真に保存』が便利です。",
         "公式データを確認できなかった投稿は『保留』になります（推測や見本の数字では作りません）。理由が下に出ます。",
         "3投稿目の動画は、できあがると下に出ます。投稿は、いまは手動です（自動投稿のAPIはあとで接続します）。",
+        "ダウンロードしたものは、30分後に保管場所から自動で削除されます（端末に保存したものは消えません。下の設定でオフにもできます）。",
       ]);
       const box = document.createElement("div"); el.appendChild(box);
-      const state = { rows: [], sel: ls.get(K_SEL) || "", conf: {}, loaded: false, err: null, busy: false };
+      const state = { rows: [], sel: ls.get(K_SEL) || "", conf: {}, loaded: false, err: null, busy: false, v2: true };
       const card = (parent, html) => { const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:12px;font-size:14px;line-height:1.75"; if (html) d.innerHTML = html; (parent || box).appendChild(d); return d; };
       const mk = (tag, css, text, parent) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text != null) n.textContent = text; if (parent) parent.appendChild(n); return n; };
       const btn = (label, cls, parent) => { const b = mk("button", "flex:1 1 auto;min-width:120px;min-height:46px;font-size:14px", label, parent); b.type = "button"; b.className = "mini " + (cls || ""); return b; };
@@ -14605,7 +14612,12 @@ BUILDERS.talk = (el) => TALK.build(el);
       async function load() {
         const my = ++loadSeq;
         try {
-          const rows = await rest("journal_sets?select=" + COLS + "&order=date.desc&limit=14");
+          let rows;
+          try { rows = await rest("journal_sets?select=" + COLS_V2 + "&order=date.desc&limit=14"); state.v2 = true; }
+          catch (e0) {
+            if (e0 && e0.status === 400) { rows = await rest("journal_sets?select=" + COLS + "&order=date.desc&limit=14"); state.v2 = false; }   // 追加SQL（journal_v2）が未実行
+            else throw e0;
+          }
           if (my !== loadSeq) return;
           state.rows = rows || []; state.err = null;
         } catch (e) { if (my !== loadSeq) return; state.err = e; }
@@ -14618,8 +14630,31 @@ BUILDERS.talk = (el) => TALK.build(el);
         paint();
       }
       const selRow = () => state.rows.find((r) => r.date === state.sel) || null;
-      const cutoffText = () => state.conf.cutoff || "18:00";
-      const cutoffMin = () => { const m = /^(\d+):(\d+)$/.exec(cutoffText()); return m ? +m[1] * 60 + +m[2] : 1080; };
+      const delOn = () => state.v2 && state.conf.delete_after_download !== "false";
+      const purgeMin = () => { const n = parseInt(state.conf.purge_after_min, 10); return n >= 5 && n <= 1440 ? n : 30; };
+      /* ダウンロードできたら印を付ける（消すのは、設定した分のあとに、毎分の見回りが行う）。失敗したときは何も消えない */
+      async function markDownloaded(kind, r) {
+        if (!delOn() || !r) return;
+        try {
+          const res = await rest("rpc/journal_mark_downloaded", { method: "POST", body: JSON.stringify({ p_date: r.date, p_kind: kind }) });
+          if (res && res.ok && !res.kept) {
+            const stamp = new Date().toISOString(), k = kind === "images" ? "images_downloaded_at" : "video_downloaded_at";
+            if (!r[k]) r[k] = stamp;
+            toast("ダウンロードを確認しました。保管場所のファイルは " + minLabel(res.purge_in_min || purgeMin()) + " 後に自動で削除します");
+            if (state.sel === r.date) paintDay();
+          }
+        } catch (e) {
+          if (e && e.code === "missing") state.v2 = false;          // 追加SQL（journal_v2）が未実行。ダウンロードそのものには影響しない
+        }
+      }
+      /* 削除までの案内文（ダウンロードずみ／削除ずみ） */
+      const purgeNote = (stamp, what) => {
+        const left = purgeMin() * 60000 - (Date.now() - new Date(stamp).getTime());
+        if (left <= 0) return "ダウンロードずみの" + what + "は、まもなく保管場所から削除されます（端末に保存したものは消えません）。";
+        return "ダウンロードずみの" + what + "は、あと約" + Math.max(1, Math.ceil(left / 60000)) + "分で保管場所から削除されます（端末に保存したものは消えません）。";
+      };
+      const cutoffText = () => state.conf.cutoff || "19:00";
+      const cutoffMin = () => { const m = /^(\d+):(\d+)$/.exec(cutoffText()); return m ? +m[1] * 60 + +m[2] : 1140; };
 
       /* ---------------- 日ごとの表示 ---------------- */
       function paintDay() {
@@ -14651,12 +14686,25 @@ BUILDERS.talk = (el) => TALK.build(el);
         const posts = r.posts || {}, p1 = posts.p1 || {}, p2 = posts.p2 || {}, p3 = posts.p3 || {};
         const imgs = Array.isArray(r.images) ? r.images : [];
         if (r.purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "保管日数をすぎたため、画像と動画のファイルは削除されています。", c);
+        else {
+          if (r.images_purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、画像とzipは保管場所から削除しました（端末に保存したものは残っています）。" + (d === jstToday() ? "必要なら、下の『今すぐ作り直す』で作り直せます。" : ""), c);
+          else if (r.images_downloaded_at) mk("div", "margin-top:8px;font-size:13px;color:#2f9e5b", purgeNote(r.images_downloaded_at, "画像とzip"), c);
+        }
 
         /* まとめてダウンロード */
         const acts = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:12px", "", c);
         if (r.zip_url && imgs.length) {
           const a = mk("a", "flex:1 1 auto;min-width:200px;min-height:50px;font-size:15px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-weight:800", imgs.length + "枚をまとめてダウンロード（zip）", acts);
           a.className = "mini primary"; a.href = r.zip_url; a.setAttribute("download", d + "_BOATRACE_JOURNAL.zip");
+          if (delOn()) {      // 取得できたことを確かめてから印を付ける。取得できなかったときはふつうのリンクにまかせる（何も消さない）
+            let zbusy = false;
+            a.onclick = async (ev) => {
+              ev.preventDefault(); if (zbusy) return; zbusy = true; const t0 = a.textContent; a.textContent = "ダウンロード中…";
+              try { const f = await fetchFile(r.zip_url, d + "_BOATRACE_JOURNAL.zip", "application/zip"); downloadBlob(f); markDownloaded("images", r); }
+              catch (e) { toast("ダウンロードに失敗しました。もう一度お試しください", "err"); }
+              zbusy = false; a.textContent = t0;
+            };
+          }
           if (isTouch()) {
             const sv = btn("写真に保存（" + imgs.length + "枚）", "cyan", acts); sv.style.minHeight = "50px";
             sv.onclick = async () => {
@@ -14665,7 +14713,7 @@ BUILDERS.talk = (el) => TALK.build(el);
                 const files = await Promise.all(imgs.map((x) => fetchFile(x.url, x.name, "image/jpeg")));
                 const res = await saveFiles(files);
                 if (res === "unsupported") toast("この端末では、まとめて写真に保存できません。zipで保存してください", "err");
-                else if (res !== "cancel") toast("共有メニューから『画像を保存』を選んでください");
+                else if (res !== "cancel") { toast("共有メニューから『画像を保存』を選んでください"); if (res === "shared" || res === "downloaded") markDownloaded("images", r); }
               } catch (e) { toast("保存の準備に失敗しました: " + String(e.message || e).slice(0, 80), "err"); }
               sv.disabled = false; sv.textContent = t0;
             };
@@ -14681,6 +14729,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           if (!post.ok && !items.length) { if (waiting) pill("作成中…", "#d99a1c", h); else if (r.status === "partial") pill("未作成（取り直し待ち）", "#d99a1c", h); else pill("保留", "#d14b4b", h); }
           if (post.ok && info) mk("div", "width:100%;font-size:13px;color:var(--muted)", info, h);
           if (!post.ok && post.reason && !waiting) mk("div", "margin-top:6px;font-size:13px;" + (r.status === "partial" ? "color:var(--muted)" : "color:#d14b4b"), (r.status === "partial" ? "いまの状況：" : "理由：") + post.reason, g);
+          if (!items.length && post.ok && r.images_purged_at) mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "（ダウンロードずみのため、画像は保管場所から削除しました）", g);
           if (items.length) {
             const grid = mk("div", "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px", "", g);
             items.forEach((x) => {
@@ -14691,8 +14740,16 @@ BUILDERS.talk = (el) => TALK.build(el);
               const sv = mk("button", "margin-top:4px;width:100%;min-height:36px;font-size:12px", "保存", cell); sv.type = "button"; sv.className = "mini";
               sv.onclick = async () => {
                 sv.disabled = true;
-                try { const f = await fetchFile(x.url, x.name, "image/jpeg"); const res = await saveFiles([f]); if (res === "shared") toast("共有メニューから『画像を保存』を選んでください"); }
-                catch (e) { toast("保存に失敗しました", "err"); }
+                try {
+                  const f = await fetchFile(x.url, x.name, "image/jpeg"); const res = await saveFiles([f]);
+                  if (res === "shared") toast("共有メニューから『画像を保存』を選んでください");
+                  if ((res === "shared" || res === "downloaded") && delOn()) {
+                    const got = savedAdd(d, r.started_at || "", x.name), all = imgs.map((y) => y.name);
+                    const left = all.filter((n) => got.indexOf(n) < 0).length;
+                    if (left === 0) markDownloaded("images", r);
+                    else if (res === "downloaded") toast("保存しました（あと" + left + "枚。全部保存すると、保管場所のファイルを自動で削除します）");
+                  }
+                } catch (e) { toast("保存に失敗しました", "err"); }
                 sv.disabled = false;
               };
             });
@@ -14713,15 +14770,30 @@ BUILDERS.talk = (el) => TALK.build(el);
           const v = mk("video", "width:100%;max-width:300px;margin-top:10px;border-radius:8px;background:#000;display:block", "", g3); v.controls = true; v.playsInline = true; v.preload = "metadata"; v.src = r.video_url;
           const row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px", "", g3);
           const a = mk("a", "flex:1 1 auto;min-width:160px;min-height:46px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:14px", "動画をダウンロード", row); a.className = "mini cyan"; a.href = r.video_url; a.setAttribute("download", d + "_BOATRACE_video.mp4");
+          if (delOn()) {
+            let vbusy = false;
+            a.onclick = async (ev) => {
+              ev.preventDefault(); if (vbusy) return; vbusy = true; const t0 = a.textContent; a.textContent = "ダウンロード中…";
+              try { const f = await fetchFile(r.video_url, d + "_BOATRACE_video.mp4", "video/mp4"); downloadBlob(f); markDownloaded("video", r); }
+              catch (e) { toast("ダウンロードに失敗しました。もう一度お試しください", "err"); }
+              vbusy = false; a.textContent = t0;
+            };
+          }
           if (isTouch()) {
             const sv = btn("写真に保存", "", row);
             sv.onclick = async () => {
               sv.disabled = true;
-              try { const f = await fetchFile(r.video_url, d + "_BOATRACE_video.mp4", "video/mp4"); const res = await saveFiles([f]); if (res === "shared") toast("共有メニューから『ビデオを保存』を選んでください"); }
-              catch (e) { toast("保存に失敗しました", "err"); }
+              try {
+                const f = await fetchFile(r.video_url, d + "_BOATRACE_video.mp4", "video/mp4"); const res = await saveFiles([f]);
+                if (res === "shared") toast("共有メニューから『ビデオを保存』を選んでください");
+                if (res === "shared" || res === "downloaded") markDownloaded("video", r);
+              } catch (e) { toast("保存に失敗しました", "err"); }
               sv.disabled = false;
             };
           }
+          if (r.video_downloaded_at) mk("div", "width:100%;font-size:12px;color:#2f9e5b", purgeNote(r.video_downloaded_at, "動画"), row);
+        } else if (r.video_purged_at && !r.video_url) {
+          mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、動画は保管場所から削除しました（端末に保存したものは残っています）。" + (d === jstToday() ? "必要なら『今すぐ作り直す』で作り直せます。" : ""), g3);
         } else {
           const vs = r.video_state, msg = vs === "running" ? "動画を作っています（約3〜8分）。できあがると、ここに出ます。"
             : vs === "wait" ? "本日の結果が出そろうのを待っています（出そろったら自動で作ります）。"
@@ -14778,7 +14850,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       let setSeq = 0;
       async function setConf(k, v) {
         const my = ++setSeq;
-        try { const c = await rest("rpc/journal_set_conf", { method: "POST", body: JSON.stringify({ p_key: k, p_value: String(v) }) }); if (c) state.conf = c; if (my === setSeq) toast("設定を保存しました"); }
+        try { const c = await rest("rpc/journal_set_conf", { method: "POST", body: JSON.stringify({ p_key: k, p_value: String(v) }) }); if (c) Object.assign(state.conf, c); if (my === setSeq) toast("設定を保存しました"); }      // 置き換えず中身だけ更新する（画面のボタンが古い設定を指したままにならないように）
         catch (e) { toast(String(e.message || e).slice(0, 120), "err"); load(); }
       }
       function paintSet() {
@@ -14796,13 +14868,13 @@ BUILDERS.talk = (el) => TALK.build(el);
         const l0 = line("毎日の自動作成");
         seg(l0, [["true", "オン"], ["false", "オフ（止める）"]], f.enabled === "false" ? "false" : "true", (v) => { f.enabled = v; setConf("enabled", v); paintSet(); });
 
-        const l1 = line("本日の最高配当を選ぶ『締切時刻』： " + (f.cutoff || "18:00") + "　（この時刻から作り始めます）");
+        const l1 = line("本日の最高配当を選ぶ『締切時刻』： " + (f.cutoff || "19:00") + "　（この時刻から作り始めます）");
         const rg = mk("input", "width:100%;margin-top:8px;min-height:36px", "", l1); rg.type = "range"; rg.min = "1080"; rg.max = "1200"; rg.step = "10";
-        const cur = (() => { const m = /^(\d+):(\d+)$/.exec(f.cutoff || "18:00"); return m ? +m[1] * 60 + +m[2] : 1080; })(); rg.value = String(cur);
+        const cur = (() => { const m = /^(\d+):(\d+)$/.exec(f.cutoff || "19:00"); return m ? +m[1] * 60 + +m[2] : 1140; })(); rg.value = String(cur);
         const fmt = (n) => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
         rg.oninput = () => { l1.firstChild.textContent = "本日の最高配当を選ぶ『締切時刻』： " + fmt(+rg.value) + "　（この時刻から作り始めます）"; };
         rg.onchange = () => { f.cutoff = fmt(+rg.value); setConf("cutoff", f.cutoff); };
-        mk("div", "font-size:12px;color:var(--muted)", "18:00〜20:00で選べます。遅くするほど、その日の最高配当が確定しやすくなります。", l1);
+        mk("div", "font-size:12px;color:var(--muted)", "18:00〜20:00で選べます（既定は19:00）。遅くするほど、その日の最高配当が確定しやすくなります。", l1);
 
         const l2 = line("明日の注目レースの選び方");
         seg(l2, [["auto", "荒れそうなレース（自動）"], ["random", "優勝戦・準優勝戦などからランダム"]], f.mode === "random" ? "random" : "auto", (v) => { f.mode = v; setConf("mode", v); paintSet(); });
@@ -14820,7 +14892,19 @@ BUILDERS.talk = (el) => TALK.build(el);
         const l4 = line("3投稿目の高配当動画");
         seg(l4, [["true", "いっしょに作る"], ["false", "作らない"]], f.video === "false" ? "false" : "true", (v) => { f.video = v; setConf("video", v); paintSet(); });
         if (f.video !== "false") seg(l4, [["false", "合成音声の実況"], ["true", "公式リプレイの本物の実況（約5分余計にかかる）"]], f.real_commentary === "true" ? "true" : "false", (v) => { f.real_commentary = v; setConf("real_commentary", v); paintSet(); });
-        mk("div", "margin-top:12px;font-size:12px;color:var(--muted)", "画像・zip・動画は " + (f.keep_days || "7") + " 日間保管し、過ぎたら自動で削除します。", c);
+        const l5 = line("ダウンロードしたら、保管場所のファイルを消す");
+        if (state.v2 && f.delete_after_download != null) {
+          seg(l5, [["true", "消す（おすすめ）"], ["false", "消さない"]], f.delete_after_download === "false" ? "false" : "true", (v) => { f.delete_after_download = v; setConf("delete_after_download", v); paintSet(); });
+          if (f.delete_after_download !== "false") {
+            const cur = parseInt(f.purge_after_min, 10) || 30, opts = [10, 30, 60];
+            if (opts.indexOf(cur) < 0) { opts.push(cur); opts.sort((x, y) => x - y); }
+            seg(l5, opts.map((m) => [String(m), minLabel(m) + "後"]), String(cur), (v) => { f.purge_after_min = v; setConf("purge_after_min", v); paintSet(); });
+          }
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "ダウンロード（zip・写真に保存・動画。個別の保存は全部そろったとき）を確認したら、設定した時間のあとに、Supabase の保管場所のコピーだけを自動で削除します。端末に保存した画像・動画は消えません。取り直したいときのために、少し時間をあけています。", l5);
+        } else {
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この機能を使うには、追加SQL（journal_v2_追加分）を Supabase の SQL Editor で1回実行してください。", l5);
+        }
+        mk("div", "margin-top:12px;font-size:12px;color:var(--muted)", "ダウンロードしなかった画像・zip・動画は " + (f.keep_days || "7") + " 日間保管し、過ぎたら自動で削除します。", c);
       }
 
       function paint() { paintDay(); paintHist(); paintSet(); }
