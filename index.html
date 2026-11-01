@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "391";
+const APP_VERSION = "393";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v382 高配当動画（v2.9.9：公式の実況の録音で『位置を自動で見つけられませんでした』となり合成音声に落ちていたのを改善（結果発表の声が録音に入っていなくても、レース中の本物の実況は使う／小さい声の結果発表も探す／録音を最後まで録る／原因を画面に出す）／v2.9.8：4枚目『通が見ている数字の裏側』の文章を、ふつうの言葉に書き直し（『129R中22R』→『129レース中22レース』『およそ6レースに1回』など）／v2.9.7：動画の最初の画面の日付・章ナビを、インスタのプロフィール格子（3:4）で切られない位置へ／v2.9.6：出走表の平均STが「-」（新人など）の選手がいるレースを読み落としていたのを修正／v2.9.5：明日の開催場が開催場一覧から読めないときは、出走表を直接探す／v2.9.4：2投稿目に4枚目『通が見ている数字の裏側』を追加・ダウンロードしたら保管場所のファイルを自動削除〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.2：インスタ2投稿目に『なぜこの結果か』の裏付けを追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
+/* ================= v382 高配当動画（v2.9.11：動画だけ作るときも、オープニングの色『おまかせ』は、その日の色（インスタ3投稿と同じ色）に自動でそろう。毎回変えたいときは『ランダム』／v2.9.10：インスタ3投稿の色を9色にし、同じ色を1週間（7日間）に2度使わない（サーバー側の変更）／動画だけ作るときのオープニングの色：選べる色を9→13色に、おまかせの組み合わせを52→126通りに増やした（枠・帯・日付は変えない）／v2.9.9：公式の実況の録音で『位置を自動で見つけられませんでした』となり合成音声に落ちていたのを改善（結果発表の声が録音に入っていなくても、レース中の本物の実況は使う／小さい声の結果発表も探す／録音を最後まで録る／原因を画面に出す）／v2.9.8：4枚目『通が見ている数字の裏側』の文章を、ふつうの言葉に書き直し（『129R中22R』→『129レース中22レース』『およそ6レースに1回』など）／v2.9.7：動画の最初の画面の日付・章ナビを、インスタのプロフィール格子（3:4）で切られない位置へ／v2.9.6：出走表の平均STが「-」（新人など）の選手がいるレースを読み落としていたのを修正／v2.9.5：明日の開催場が開催場一覧から読めないときは、出走表を直接探す／v2.9.4：2投稿目に4枚目『通が見ている数字の裏側』を追加・ダウンロードしたら保管場所のファイルを自動削除〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.2：インスタ2投稿目に『なぜこの結果か』の裏付けを追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13597,9 +13597,28 @@ BUILDERS.talk = (el) => TALK.build(el);
       ["tilt", "オープニング斜め飛び込みVer", "カードが斜めに回りながら飛び込み、倍率の数字が激しく揺れます。"],
       ["phone", "スマホ横揺れVer", "右上に、選んだ画像をエンディングのようなスマホ画面にして斜めに置き、横に揺らします（倍率の数字も激しく揺れます）。"]];
     const hitStyle = () => { const v = ls.get(K_HITSTY); return HIT_STYLES.some((x) => x[0] === v) ? v : "digits"; };
-    /* オープニングのカードの色（v2.8.3）。1色を選ぶと、背景・ふち・衣装も数字も、その色でそろう（統一）。『おまかせ』なら、毎回ランダム（金×赤などの52通り）。色の名前は、サーバー（hitcard.ACCENTS）と同じもの */
-    const HIT_COLORS = ["赤", "橙", "緑", "ティール", "水色", "青", "紫", "マゼンタ", "ピンク"];
+    /* オープニングのカードの色（v2.8.3）。1色を選ぶと、背景・ふち・衣装も数字も、その色でそろう（統一）。『おまかせ』なら、毎回ランダム（文字の色12色×イメージカラー13色の126通り）。色の名前は、サーバー（hitcard.ACCENTS）と同じもの */
+    const HIT_COLORS = ["赤", "橙", "緑", "ティール", "水色", "青", "紫", "マゼンタ", "ピンク", "黄", "ライム", "エメラルド", "インディゴ"];
     const hitColor = () => { const v = ls.get(K_HITCOL); return HIT_COLORS.includes(v) ? v : null; };
+    /* オープニングの色の設定（v2.9.11）。『おまかせ』（何も選ばない）＝その日の色（インスタ3投稿と同じ色）／『ランダム』＝毎回変わる／色の名前＝その色。保管の値：なし＝おまかせ、"ランダム"、色の名前 */
+    const HIT_RANDOM = "ランダム";
+    const THEME_HIT = { navy: "青", crimson: "赤", emerald: "ティール", violet: "紫", amber: "橙", ice: "水色", green: "緑", magenta: "マゼンタ", pink: "ピンク" };
+    const hitColorMode = () => { const v = ls.get(K_HITCOL); return v === HIT_RANDOM ? "random" : HIT_COLORS.includes(v) ? v : "day"; };
+    /* その日の3投稿に実際に使った色（journal_sets の style）。無い・読めないときは空＝サーバーが日付から同じ式で決める */
+    async function dayColor(date) {
+      try {
+        const u = typeof SUPABASE_URL !== "undefined" ? String(SUPABASE_URL).replace(/\/+$/, "") : "", k = typeof SUPABASE_ANON !== "undefined" ? String(SUPABASE_ANON) : "";
+        if (!u || !k || !/^\d{4}-\d{2}-\d{2}$/.test(String(date || ""))) return "";
+        const ac = new AbortController(), tm = setTimeout(() => ac.abort(), 6000);
+        try {
+          const r = await fetch(u + "/rest/v1/journal_sets?date=eq." + date + "&select=style&limit=1", { headers: { apikey: k, Authorization: "Bearer " + k }, signal: ac.signal });
+          if (!r.ok) return "";
+          const j = await r.json(); const st = j && j[0] && j[0].style;
+          const n = st && (HIT_COLORS.includes(st.hit) ? st.hit : THEME_HIT[st.theme]);
+          return HIT_COLORS.includes(n) ? n : "";
+        } finally { clearTimeout(tm); }
+      } catch (e) { return ""; }
+    }
     const hitOn = () => !!ls.get(K_END);                  // 的中画像（スクリーンショット）を1枚選んでいれば、最初（的中実績カード）と最後（スマホ画面）の両方に使う。選んでいなければ、これまでどおり
     try {
       const m = /[?&]racevideo=([01])(?:&|#|$)/.exec(location.search);
@@ -13613,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "2.9.9";
+    const SERVER_NEED = "2.9.11";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14177,7 +14196,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           else { body.jcd = t.jcd; body.race = t.race; body.expect_combo = t.combo; body.expect_payout = t.payout; }   // 一覧で見た内容と結果ページが食い違えば、サーバーが作らない
           const endi = ls.get(K_END); if (endi) body.ending_image = endi;
           const hit = hitOn();
-          if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; if (ls.get(K_HITTBL) === "0") body.hit_table = false; body.hit_style = hitStyle(); /* 見せ方は、いつも明示して送る（サーバーの既定は従来どおり tilt のまま。画面の既定は数字のみ揺れVer） */ if (hitColor()) body.hit_color = hitColor(); }   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
+          if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; if (ls.get(K_HITTBL) === "0") body.hit_table = false; body.hit_style = hitStyle(); /* 見せ方は、いつも明示して送る（サーバーの既定は従来どおり tilt のまま。画面の既定は数字のみ揺れVer） */ const hm = hitColorMode(); if (hm === "day") body.hit_color = (await dayColor(dateIn.value)) || "自動"; else if (hm !== "random") body.hit_color = hm; }   /* v2.9.11：おまかせ＝その日の色 */   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
           if (body.commentary && rec.blob && t.recBox && t.recBox.checked) {                   // 録音した本物の実況を、チェックしたこのレースに使う
             if ((rec.start == null) !== (rec.result == null)) throw new Error("『スタートの瞬間』と『結果アナウンスの始まり』は、どちらも空欄（自動で探します）か、どちらも秒を入れてください");
             const up = await audioForUpload();
@@ -14301,14 +14320,15 @@ BUILDERS.talk = (el) => TALK.build(el);
       colRow.appendChild(document.createTextNode("色（背景も数字も、この色でそろえます）"));
       const colSel = document.createElement("select"); colSel.id = "xpl_rv_hitcolor";
       colSel.style.cssText = "margin-left:8px;padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:14px";
-      [["", "おまかせ（毎回ランダム）"], ...HIT_COLORS.map((n) => [n, n])].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; colSel.appendChild(o); });
+      [["", "おまかせ（その日の色）"], [HIT_RANDOM, "ランダム（毎回変わる）"], ...HIT_COLORS.map((n) => [n, n])].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; colSel.appendChild(o); });
       colRow.appendChild(colSel); colBox.appendChild(colRow);
       const colNote = document.createElement("div"); colNote.style.cssText = "margin-top:6px;font-size:13px;color:var(--muted)"; colBox.appendChild(colNote);
       const refreshCol = () => {
-        const c = hitColor(); colSel.value = c || "";
-        colNote.textContent = c ? "いまの設定：" + c + "（背景も数字も" + c + "でそろえます）" : "いまの設定：おまかせ（動画をつくるたびに、色の組み合わせが毎回変わります）";
+        const m = hitColorMode(); colSel.value = m === "day" ? "" : m === "random" ? HIT_RANDOM : m;
+        colNote.textContent = m === "day" ? "いまの設定：おまかせ（その日の色。インスタ3投稿の画像・動画と同じ色になります）"
+          : m === "random" ? "いまの設定：ランダム（動画をつくるたびに、色の組み合わせが毎回変わります）" : "いまの設定：" + m + "（背景も数字も" + m + "でそろえます）";
       };
-      colSel.onchange = () => { if (colSel.value) ls.set(K_HITCOL, colSel.value); else ls.del(K_HITCOL); refreshCol(); toast(colSel.value ? "オープニングの色：" + colSel.value : "オープニングの色：おまかせ（毎回ランダム）"); };
+      colSel.onchange = () => { if (colSel.value) ls.set(K_HITCOL, colSel.value); else ls.del(K_HITCOL); refreshCol(); toast("オープニングの色：" + (colSel.value || "おまかせ（その日の色）")); };
       refreshCol(); imgSec.appendChild(colBox);
       /* オープニングのカードに、的中明細の表を入れるか入れないか（入れなければ、自動の『的中実績』と数字だけのカード。スマホ横揺れVerは、表を入れない設定だとスマホが出ません） */
       const optLab = document.createElement("label"); optLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:14px;font-weight:700";
@@ -14883,7 +14903,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         seg(l2, [["auto", "荒れそうなレース（自動）"], ["random", "優勝戦・準優勝戦などからランダム"]], f.mode === "random" ? "random" : "auto", (v) => { f.mode = v; setConf("mode", v); paintSet(); });
 
         const l3 = line("その日の色");
-        seg(l3, [["rotate", "日替わりで回す"], ["fixed", "色を固定する"]], f.style_mode === "fixed" ? "fixed" : "rotate", (v) => { f.style_mode = v; setConf("style_mode", v); paintSet(); });
+        seg(l3, [["rotate", "日替わり（同じ色は1週間あける）"], ["fixed", "色を固定する"]], f.style_mode === "fixed" ? "fixed" : "rotate", (v) => { f.style_mode = v; setConf("style_mode", v); paintSet(); });
         if (f.style_mode === "fixed") {
           const w = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px", "", l3);
           COLORS.forEach((n) => {
