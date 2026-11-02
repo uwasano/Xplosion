@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "393";
+const APP_VERSION = "400";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v382 高配当動画（v2.9.11：動画だけ作るときも、オープニングの色『おまかせ』は、その日の色（インスタ3投稿と同じ色）に自動でそろう。毎回変えたいときは『ランダム』／v2.9.10：インスタ3投稿の色を9色にし、同じ色を1週間（7日間）に2度使わない（サーバー側の変更）／動画だけ作るときのオープニングの色：選べる色を9→13色に、おまかせの組み合わせを52→126通りに増やした（枠・帯・日付は変えない）／v2.9.9：公式の実況の録音で『位置を自動で見つけられませんでした』となり合成音声に落ちていたのを改善（結果発表の声が録音に入っていなくても、レース中の本物の実況は使う／小さい声の結果発表も探す／録音を最後まで録る／原因を画面に出す）／v2.9.8：4枚目『通が見ている数字の裏側』の文章を、ふつうの言葉に書き直し（『129R中22R』→『129レース中22レース』『およそ6レースに1回』など）／v2.9.7：動画の最初の画面の日付・章ナビを、インスタのプロフィール格子（3:4）で切られない位置へ／v2.9.6：出走表の平均STが「-」（新人など）の選手がいるレースを読み落としていたのを修正／v2.9.5：明日の開催場が開催場一覧から読めないときは、出走表を直接探す／v2.9.4：2投稿目に4枚目『通が見ている数字の裏側』を追加・ダウンロードしたら保管場所のファイルを自動削除〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.2：インスタ2投稿目に『なぜこの結果か』の裏付けを追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
+/* ================= v382 高配当動画（v3.0.1：品質管理・フック指南書・3Dは的中実績のみ（サーバー側）／v3.0.0：AI編集長（サーバー側。この画面は版の確認のみ）／v2.9.11：動画だけ作るときも、オープニングの色『おまかせ』は、その日の色（インスタ3投稿と同じ色）に自動でそろう。毎回変えたいときは『ランダム』／v2.9.10：インスタ3投稿の色を9色にし、同じ色を1週間（7日間）に2度使わない（サーバー側の変更）／動画だけ作るときのオープニングの色：選べる色を9→13色に、おまかせの組み合わせを52→126通りに増やした（枠・帯・日付は変えない）／v2.9.9：公式の実況の録音で『位置を自動で見つけられませんでした』となり合成音声に落ちていたのを改善（結果発表の声が録音に入っていなくても、レース中の本物の実況は使う／小さい声の結果発表も探す／録音を最後まで録る／原因を画面に出す）／v2.9.8：4枚目『通が見ている数字の裏側』の文章を、ふつうの言葉に書き直し（『129R中22R』→『129レース中22レース』『およそ6レースに1回』など）／v2.9.7：動画の最初の画面の日付・章ナビを、インスタのプロフィール格子（3:4）で切られない位置へ／v2.9.6：出走表の平均STが「-」（新人など）の選手がいるレースを読み落としていたのを修正／v2.9.5：明日の開催場が開催場一覧から読めないときは、出走表を直接探す／v2.9.4：2投稿目に4枚目『通が見ている数字の裏側』を追加・ダウンロードしたら保管場所のファイルを自動削除〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.2：インスタ2投稿目に『なぜこの結果か』の裏付けを追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "2.9.11";
+    const SERVER_NEED = "3.0.4";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14534,7 +14534,7 @@ BUILDERS.talk = (el) => TALK.build(el);
   }
 })();
 
-/* ================= v383 インスタ3投稿（BOAT RACE JOURNAL v1：毎日19時に自動で作成／画像を一括ダウンロード） =================
+/* ================= v383 インスタ3投稿（v3.0.0：AI編集長（記事A＝2投稿目・記事B＝4投稿目）の表示と設定／v2.9.12：各投稿の最後に『フォローして見逃さない』のページ。設定にアカウント名を追加／BOAT RACE JOURNAL v1：毎日19時に自動で作成／画像を一括ダウンロード） =================
    毎日19時（日本時間）に、公式データから Instagram の3投稿ぶんを自動で作る。ここは、できたものを見て、まとめてダウンロードする画面。
      1投稿目 明日の注目レース（表紙＋注目の理由＋注目の選手たち）／2投稿目 本日の勝負の裏側（表紙＋結果＋勝負の分岐点＋通が見ている数字の裏側）／3投稿目 高配当動画（同じ色・同じ日付）
    作るのは Supabase（Edge Function journal-daily ＋ Cron）と動画サービス（Cloud Run）。この画面は journal_sets を読むだけ（押さなければ何もつくらない）。
@@ -14572,7 +14572,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       partial: ["一部まだ（取り直し待ち）", "#d99a1c"], held: ["保留", "#d14b4b"], error: ["失敗", "#d14b4b"],
     };
     const COLS = "date,tomorrow,status,attempt,mode,started_at,style,hit_color,posts,gaps,images,zip_url,note,video_state,video_url,video_note,purged_at,updated_at";
-    const COLS_V2 = COLS + ",images_downloaded_at,images_purged_at,video_downloaded_at,video_purged_at";
+    const COLS_V2 = COLS + ",images_downloaded_at,images_purged_at,video_downloaded_at,video_purged_at,editor:audit->editor";
     /* 『全部の画像を保存した』を端末ごとに覚える（個別の『保存』を全部の枚数ぶん押したら、ダウンロードずみとして印を付けるため） */
     const savedGet = (d, tag) => { try { const j = JSON.parse(ls.get("xpl_jn_saved_" + d) || "null"); return j && j.s === tag && Array.isArray(j.n) ? j.n : []; } catch (e) { return []; } };
     const savedAdd = (d, tag, name) => { const n = savedGet(d, tag); if (n.indexOf(name) < 0) n.push(name); ls.set("xpl_jn_saved_" + d, JSON.stringify({ s: tag, n })); return n; };
@@ -14779,12 +14779,22 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           return g;
         };
-        const i1 = imgs.filter((x) => x.post === 1), i2 = imgs.filter((x) => x.post === 2);
+        const i1 = imgs.filter((x) => x.post === 1), i2 = imgs.filter((x) => x.post === 2), i4 = imgs.filter((x) => x.post === 4);
+        const p4 = posts.p4 || {};
+        const ed = r.editor || null;                                            // AI編集長（v3.0）の記録（audit->editor）
         const rc1 = p1.race || {}, rc2 = p2.race || {};
         const info1 = rc1.venue ? rc1.venue + " " + rc1.race + "R" + (rc1.stage ? "　" + rc1.stage : "") + (rc1.arare ? "　荒れ度 " + rc1.arare.score : "") + (p1.pick && p1.pick.mode === "random" ? "　（ランダム選出）" : "") : "";
         const info2 = rc2.venue ? rc2.venue + " " + rc2.race + "R　3連単 " + (rc2.combo || []).join("-") + "　" + yen(rc2.payout) + (rc2.popularity ? "（" + rc2.popularity + "番人気）" : "") : "";
         group(1, "明日の注目レース（" + dlabel(r.tomorrow || d) + "）", p1, i1, info1);
-        group(2, "本日の勝負の裏側", p2, i2, info2);
+        const edNote = (() => {                                               // AI編集長の状態（記事A）
+          if (!ed) return "";
+          if (ed.ok) { const a = (ed.scores || []).filter((x) => x.role === "A").pop(); return a && a.program_score != null ? "　記事A " + a.program_score + "点（合格95）" : ""; }
+          const pend = (ed.pending || []).map((x) => "「" + x.headline + "」" + (x.program_score != null ? x.program_score + "点" : "")).join("、");
+          if (pend) return "　※AI編集長の記事は95点に届かず確認待ち（" + pend + "）。今日は分析ページで作りました";
+          return ed.errors && ed.errors.length ? "　※AI編集長は使えなかったため、分析ページで作りました（" + String(ed.errors[0]).slice(0, 80) + "）" : "";
+        })();
+        group(2, "本日の勝負の裏側" + (ed && ed.ok ? "（記事A：AI編集長）" : ""), p2, i2, info2 + edNote);
+        if (p4.ok || i4.length) group(4, "記事B（初心者向け・AI編集長）", p4.ok ? p4 : { ok: !!i4.length }, i4, p4.headline ? "見出し：" + p4.headline + (p4.hook ? "　フック：" + p4.hook : "") : "");
 
         /* 3投稿目：動画 */
         const g3 = mk("div", "margin-top:16px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
@@ -14915,6 +14925,34 @@ BUILDERS.talk = (el) => TALK.build(el);
         const l4 = line("3投稿目の高配当動画");
         seg(l4, [["true", "いっしょに作る"], ["false", "作らない"]], f.video === "false" ? "false" : "true", (v) => { f.video = v; setConf("video", v); paintSet(); });
         if (f.video !== "false") seg(l4, [["false", "合成音声の実況"], ["true", "公式リプレイの本物の実況（約5分余計にかかる）"]], f.real_commentary === "true" ? "true" : "false", (v) => { f.real_commentary = v; setConf("real_commentary", v); paintSet(); });
+        const l7 = line("AI編集長（記事の企画・文章・ページ構成を毎日設計）");
+        if (f.editor != null) {
+          seg(l7, [["true", "使う"], ["false", "使わない（分析ページで作る）"]], f.editor === "false" ? "false" : "true", (v) => { f.editor = v; setConf("editor", v); paintSet(); });
+          if (f.editor !== "false") {
+            seg(l7, [["2", "1日2記事（A＋B）"], ["1", "1日1記事（Aだけ）"]], f.articles_per_day === "1" ? "1" : "2", (v) => { f.articles_per_day = v; setConf("articles_per_day", v); paintSet(); });
+            const row = mk("div", "display:flex;gap:8px;align-items:center;margin-top:8px", "", l7);
+            mk("span", "font-size:13px;color:var(--muted);white-space:nowrap", "モデル", row);
+            const inp = mk("input", "flex:1;min-width:0;min-height:40px;padding:6px 10px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:14px", "", row);
+            inp.type = "text"; inp.value = String(f.editor_model || "claude-sonnet-4-6"); inp.autocapitalize = "off"; inp.spellcheck = false;
+            const sv = btn("保存", "cyan", row); sv.style.minHeight = "40px"; sv.style.flex = "0 0 auto"; sv.style.minWidth = "72px";
+            sv.onclick = () => { const v = inp.value.trim(); if (!/^[A-Za-z0-9._-]{3,60}$/.test(v)) { toast("モデル名は英数字・ピリオド・ハイフンで指定してください", "err"); return; } f.editor_model = v; setConf("editor_model", v); };
+          }
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝4投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
+        } else {
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.10 に、動画サービスを v3.0.4 にしてください。", l7);
+        }
+        const l6 = line("フォローのページに出すアカウント名（各投稿の最後の1枚）");
+        if (f.follow_handle != null) {
+          const row = mk("div", "display:flex;gap:8px;align-items:center;margin-top:8px", "", l6);
+          mk("span", "font-size:16px;color:var(--muted)", "@", row);
+          const inp = mk("input", "flex:1;min-height:40px;padding:6px 10px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:15px", "", row);
+          inp.type = "text"; inp.placeholder = "例：boatrace_journal（空なら名前なし）"; inp.maxLength = 31; inp.autocapitalize = "off"; inp.spellcheck = false; inp.value = String(f.follow_handle || "").replace(/^@/, "");
+          const sv = btn("保存", "cyan", row); sv.style.minHeight = "40px"; sv.style.flex = "0 0 auto"; sv.style.minWidth = "72px";
+          sv.onclick = () => { const v = inp.value.trim().replace(/^@/, ""); if (v && !/^[A-Za-z0-9._]{1,30}$/.test(v)) { toast("アカウント名は、英数字・ピリオド・アンダースコア（30字まで）で指定してください", "err"); return; } f.follow_handle = v; setConf("follow_handle", v); };
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "1投稿目・2投稿目の最後に『フォローして見逃さない』のページが付きます。ここに入れた名前が、そのページに大きく出ます。", l6);
+        } else {
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v3_追加分）を Supabase の SQL Editor で1回実行してください（実行するまでは、名前なしのフォローのページが付きます）。", l6);
+        }
         const l5 = line("ダウンロードしたら、保管場所のファイルを消す");
         if (state.v2 && f.delete_after_download != null) {
           seg(l5, [["true", "消す（おすすめ）"], ["false", "消さない"]], f.delete_after_download === "false" ? "false" : "true", (v) => { f.delete_after_download = v; setConf("delete_after_download", v); paintSet(); });
