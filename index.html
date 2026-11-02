@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "406";
+const APP_VERSION = "407";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.0.8";
+    const SERVER_NEED = "3.0.9";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14796,9 +14796,10 @@ BUILDERS.talk = (el) => TALK.build(el);
           if (!ed) return "";
           const ps = ed.pass_score || 95, nr = ed.refine_rounds || 0, tm = ed.elapsed ? "（編集長 " + (ed.elapsed / 60).toFixed(1) + "分）" : "";
           const pend = (ed.pending || []).map((x) => "記事" + (x.role || "") + "「" + x.headline + "」" + (x.program_score != null ? x.program_score + "点" : "") + (x.hook_pct != null && x.hook_pct < ps ? "（フックの審査 " + Math.round(x.hook_pct) + "点）" : "")).join("、");
+          const below = (ed.below_pass || []).map((x) => "記事" + (x.role || "") + " " + (x.program_score != null ? Math.round(x.program_score) + "点" : "") + (x.hook_pct != null && x.hook_pct < ps ? "（フック " + Math.round(x.hook_pct) + "）" : "")).join("、");
           if (ed.ok) {
             const a = (ed.scores || []).filter((x) => x.role === "A").pop();
-            const ok = (a && a.program_score != null ? "　記事A " + a.program_score + "点（合格" + ps + "）" : "") + (tm ? "　" + tm : "");
+            const ok = (a && a.program_score != null ? "　記事A " + a.program_score + "点（合格" + ps + "）" : "") + (tm ? "　" + tm : "") + (below ? "　※合格点（" + ps + "）に届かなかったため、最高点の版で画像にしました：" + below + "。足りない項目は『AI編集長の記事を読む』に出ます" : "");
             return ok + (pend ? "　※審査役の合格点（" + ps + "）に届かず確認待ち：" + pend + "。下の『AI編集長の記事を読む』で、どこが足りないか読めます" : "");
           }
           if (pend) return "　※AI編集長の記事は、審査役の指摘で" + (nr ? "最大" + nr + "回まで直しても" : "") + "合格点（" + ps + "）に届かず確認待ち（" + pend + "）。今日は分析ページで作りました" + tm + "。下の『AI編集長の記事を読む』で、どこが足りないか読めます";
@@ -14938,7 +14939,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       const failedChecks = (rv) => (rv.checks || []).filter((c) => c.r !== "○");
       function articleText(a) {
         const rv = a.review || {}, sc = rv.scores || {};
-        const t = [(a.role === "B" ? "【記事B】" : "【記事A】") + (a.status === "pending" ? "（確認待ち）" : "（画像にした）") + "　" + (a.score != null ? a.score + "点" : ""),
+        const t = [(a.role === "B" ? "【記事B】" : "【記事A】") + (a.status === "pending" ? "（確認待ち）" : ((a.review || {}).below_pass ? "（画像にした。合格点には届いていない）" : "（画像にした）")) + "　" + (a.score != null ? a.score + "点" : ""),
           "見出し：" + (a.headline || ""), "フック：" + (a.hook || "") + (a.hook_score != null ? "（フック " + a.hook_score + "点）" : "")];
         const scs = Object.keys(SC_LABEL).filter((k) => sc[k] != null).map((k) => SC_LABEL[k] + " " + sc[k] + "/" + SC_MAX[k]);
         if (scs.length) t.push((rv.checks ? "審査役の採点：" : "編集長の自己採点：") + scs.join("　"));
@@ -14966,7 +14967,8 @@ BUILDERS.talk = (el) => TALK.build(el);
           const card = mk("div", "margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.3)", "", box);
           const head = mk("div", "display:flex;gap:8px;align-items:center;flex-wrap:wrap", "", card);
           mk("span", "font-weight:800;font-size:14px", a.role === "B" ? "記事B（初心者向け）" : "記事A（ファン向け）", head);
-          pill(a.status === "pending" ? "確認待ち（画像にしていません）" : "画像にしました", a.status === "pending" ? "#d99a1c" : "#2f9e5b", head);
+          const rvb = a.review || {}, below = a.status !== "pending" && (rvb.below_pass === true || (rvb.program_notes || []).some((x) => String(x).indexOf("合格点（") === 0 && String(x).indexOf("届いていない") > 0));
+          pill(a.status === "pending" ? "確認待ち（画像にしていません）" : (below ? "画像にしました（合格点には届いていません）" : "画像にしました"), a.status === "pending" ? "#d99a1c" : (below ? "#c7811a" : "#2f9e5b"), head);
           if (a.score != null) mk("span", "font-size:13px;color:var(--muted)", a.score + "点", head);
           mk("div", "margin-top:8px;font-size:17px;font-weight:800;line-height:1.5", a.hook || "（フックなし）", card);
           mk("div", "margin-top:2px;font-size:12px;color:var(--muted)", "見出し：" + (a.headline || "") + (a.hook_score != null ? "　フック " + Math.round(a.hook_score) + "点" : ""), card);
@@ -15053,6 +15055,13 @@ BUILDERS.talk = (el) => TALK.build(el);
             } else {
               mk("div", "font-size:12px;color:var(--muted);margin-top:8px", "合格点を変えるには、追加SQL（journal_v5_追加分）を Supabase の SQL Editor で1回実行してください（いまは95点）。", l7);
             }
+            mk("div", "font-size:13px;font-weight:700;margin-top:10px", "合格点に届かなかった日", l7);
+            if (f.editor_fallback != null) {
+              seg(l7, [["best", "最高点の版で画像にする"], ["hold", "画像にしない（確認待ち）"]], f.editor_fallback === "hold" ? "hold" : "best", (v) => { f.editor_fallback = v; setConf("editor_fallback", v); paintSet(); });
+              mk("div", "font-size:12px;color:var(--muted);margin-top:4px", "『最高点の版で画像にする』は、書き直しても合格点に届かなかったとき、審査を受けた中でいちばん点の高い版を画像にします。点数と足りない項目は、そのまま正直に記録・表示します。数字や選手名の誤り・制作の裏側の言葉・事実誤認などの不合格の条件が残る版は、この設定でも画像にしません。", l7);
+            } else {
+              mk("div", "font-size:12px;color:var(--muted);margin-top:4px", "いまは『最高点の版で画像にする』（サービス v3.0.9 の既定）です。『画像にしない（確認待ち）』に切り替えるには、追加SQL（journal_v7_追加分）を Supabase の SQL Editor で1回実行してください。", l7);
+            }
             const row = mk("div", "display:flex;gap:8px;align-items:center;margin-top:8px", "", l7);
             mk("span", "font-size:13px;color:var(--muted);white-space:nowrap", "モデル", row);
             const inp = mk("input", "flex:1;min-width:0;min-height:40px;padding:6px 10px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:14px", "", row);
@@ -15062,7 +15071,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝3投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
         } else {
-          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.14 に、動画サービスを v3.0.8 にしてください。", l7);
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.15 に、動画サービスを v3.0.9 にしてください。", l7);
         }
         const l6 = line("フォローのページに出すアカウント名（各投稿の最後の1枚）");
         if (f.follow_handle != null) {
