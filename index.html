@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "405";
+const APP_VERSION = "406";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.0.7";
+    const SERVER_NEED = "3.0.8";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14615,11 +14615,11 @@ BUILDERS.talk = (el) => TALK.build(el);
     }
 
     function build(el) {
-      head(el, "インスタ3投稿", "毎日19時（日本時間）に、公式データから『明日の注目レース』『本日の勝負の裏側』の画像と、高配当動画を自動でつくります。ここで確認して、まとめてダウンロードします。", [
+      head(el, "インスタ3投稿", "毎日19時（日本時間）に、公式データから『明日の注目レース』『本日の勝負の裏側』と、初心者向けの記事の画像を自動でつくります（動画は、高配当動画のタブで作ります）。ここで確認して、まとめてダウンロードします。", [
         "19時になると自動で作られます（出走表や結果が出そろっていないときは、30分後・1時間後にもう一度取りに行きます）。",
         "『まとめてダウンロード（zip）』で、画像（6〜7枚）を一括保存できます。スマホは『写真に保存』が便利です。",
         "公式データを確認できなかった投稿は『保留』になります（推測や見本の数字では作りません）。理由が下に出ます。",
-        "3投稿目の動画は、できあがると下に出ます。投稿は、いまは手動です（自動投稿のAPIはあとで接続します）。",
+        "投稿は、いまは手動です（自動投稿のAPIはあとで接続します）。",
         "ダウンロードしたものは、30分後に保管場所から自動で削除されます（端末に保存したものは消えません。下の設定でオフにもできます）。",
       ]);
       const box = document.createElement("div"); el.appendChild(box);
@@ -14805,7 +14805,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           return ed.errors && ed.errors.length ? "　※AI編集長は使えなかったため、分析ページで作りました（" + String(ed.errors[0]).slice(0, 80) + "）" : "";
         })();
         group(2, "本日の勝負の裏側" + (ed && ed.ok ? "（記事A：AI編集長）" : ""), p2, i2, info2 + edNote);
-        if (p4.ok || i4.length) group(4, "記事B（初心者向け・AI編集長）", p4.ok ? p4 : { ok: !!i4.length }, i4, p4.headline ? "見出し：" + p4.headline + (p4.hook ? "　フック：" + p4.hook : "") : "");
+        if (p4.ok || i4.length) group(3, "記事B（初心者向け・AI編集長）", p4.ok ? p4 : { ok: !!i4.length }, i4, p4.headline ? "見出し：" + p4.headline + (p4.hook ? "　フック：" + p4.hook : "") : "");
 
         /* AI編集長の記事の中身（フック・本文・点数の理由）。確認待ちの記事もここで読める（v3.0.5） */
         const ab = mk("div", "margin-top:14px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
@@ -14813,45 +14813,47 @@ BUILDERS.talk = (el) => TALK.build(el);
         const abOut = mk("div", "", "", ab);
         abBtn.onclick = () => showArticles(abOut, d);
 
-        /* 3投稿目：動画 */
-        const g3 = mk("div", "margin-top:16px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
-        mk("div", "font-weight:800;font-size:15px", "3投稿目　高配当動画（2投稿目と同じレース・同じ色）", g3);
-        if (r.video_state === "done" && r.video_url) {
-          const v = mk("video", "width:100%;max-width:300px;margin-top:10px;border-radius:8px;background:#000;display:block", "", g3); v.controls = true; v.playsInline = true; v.preload = "metadata"; v.src = r.video_url;
-          const row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px", "", g3);
-          const a = mk("a", "flex:1 1 auto;min-width:160px;min-height:46px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:14px", "動画をダウンロード", row); a.className = "mini cyan"; a.href = r.video_url; a.setAttribute("download", d + "_BOATRACE_video.mp4");
-          if (delOn()) {
-            let vbusy = false;
-            a.onclick = async (ev) => {
-              ev.preventDefault(); if (vbusy) return; vbusy = true; const t0 = a.textContent; a.textContent = "ダウンロード中…";
-              try { const f = await fetchFile(r.video_url, d + "_BOATRACE_video.mp4", "video/mp4"); downloadBlob(f); markDownloaded("video", r); }
-              catch (e) { toast("ダウンロードに失敗しました。もう一度お試しください", "err"); }
-              vbusy = false; a.textContent = t0;
-            };
+        /* 動画：この画面ではもう作らない（高配当動画のタブで作る）。以前に作った動画がある日だけ、見られるようにしておく（v3.0.8） */
+        if (r.video_state === "done" || r.video_state === "running" || r.video_url || r.video_purged_at) {
+          const g3 = mk("div", "margin-top:16px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
+          mk("div", "font-weight:800;font-size:15px", "動画（以前に作ったぶん）", g3);
+          if (r.video_state === "done" && r.video_url) {
+            const v = mk("video", "width:100%;max-width:300px;margin-top:10px;border-radius:8px;background:#000;display:block", "", g3); v.controls = true; v.playsInline = true; v.preload = "metadata"; v.src = r.video_url;
+            const row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px", "", g3);
+            const a = mk("a", "flex:1 1 auto;min-width:160px;min-height:46px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:14px", "動画をダウンロード", row); a.className = "mini cyan"; a.href = r.video_url; a.setAttribute("download", d + "_BOATRACE_video.mp4");
+            if (delOn()) {
+              let vbusy = false;
+              a.onclick = async (ev) => {
+                ev.preventDefault(); if (vbusy) return; vbusy = true; const t0 = a.textContent; a.textContent = "ダウンロード中…";
+                try { const f = await fetchFile(r.video_url, d + "_BOATRACE_video.mp4", "video/mp4"); downloadBlob(f); markDownloaded("video", r); }
+                catch (e) { toast("ダウンロードに失敗しました。もう一度お試しください", "err"); }
+                vbusy = false; a.textContent = t0;
+              };
+            }
+            if (isTouch()) {
+              const sv = btn("写真に保存", "", row);
+              sv.onclick = async () => {
+                sv.disabled = true;
+                try {
+                  const f = await fetchFile(r.video_url, d + "_BOATRACE_video.mp4", "video/mp4"); const res = await saveFiles([f]);
+                  if (res === "shared") toast("共有メニューから『ビデオを保存』を選んでください");
+                  if (res === "shared" || res === "downloaded") markDownloaded("video", r);
+                } catch (e) { toast("保存に失敗しました", "err"); }
+                sv.disabled = false;
+              };
+            }
+            if (r.video_downloaded_at) mk("div", "width:100%;font-size:12px;color:#2f9e5b", purgeNote(r.video_downloaded_at, "動画"), row);
+          } else if (r.video_purged_at && !r.video_url) {
+            mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、動画は保管場所から削除しました（端末に保存したものは残っています）。" + (canRebuild(d) ? "必要なら、下のボタンで作り直せます。" : ""), g3);
+          } else {
+            const vs = r.video_state, msg = vs === "running" ? "動画を作っています（約3〜8分）。できあがると、ここに出ます。"
+              : vs === "wait" ? "本日の結果が出そろうのを待っています（出そろったら自動で作ります）。"
+                : vs === "error" ? "動画を作れませんでした：" + (r.video_note || "") + (canRebuild(d) ? "　下のボタンで作り直せます。" : "")
+                  : (r.status === "running" ? "画像ができたあとに、動画を作ります。" : (p3.ok === false ? "2投稿目の最高配当レースが決まっていないため、動画も保留です。" : (r.purged_at ? "" : "動画はまだありません。")));
+            if (msg) mk("div", "margin-top:6px;font-size:13px;color:" + (vs === "error" ? "#d14b4b" : "var(--muted)"), msg, g3);
           }
-          if (isTouch()) {
-            const sv = btn("写真に保存", "", row);
-            sv.onclick = async () => {
-              sv.disabled = true;
-              try {
-                const f = await fetchFile(r.video_url, d + "_BOATRACE_video.mp4", "video/mp4"); const res = await saveFiles([f]);
-                if (res === "shared") toast("共有メニューから『ビデオを保存』を選んでください");
-                if (res === "shared" || res === "downloaded") markDownloaded("video", r);
-              } catch (e) { toast("保存に失敗しました", "err"); }
-              sv.disabled = false;
-            };
-          }
-          if (r.video_downloaded_at) mk("div", "width:100%;font-size:12px;color:#2f9e5b", purgeNote(r.video_downloaded_at, "動画"), row);
-        } else if (r.video_purged_at && !r.video_url) {
-          mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、動画は保管場所から削除しました（端末に保存したものは残っています）。" + (canRebuild(d) ? "必要なら、下のボタンで作り直せます。" : ""), g3);
-        } else {
-          const vs = r.video_state, msg = vs === "running" ? "動画を作っています（約3〜8分）。できあがると、ここに出ます。"
-            : vs === "wait" ? "本日の結果が出そろうのを待っています（出そろったら自動で作ります）。"
-              : vs === "error" ? "動画を作れませんでした：" + (r.video_note || "") + (canRebuild(d) ? "　下のボタンで作り直せます。" : "")
-                : (r.status === "running" ? "画像ができたあとに、動画を作ります。" : (p3.ok === false ? "2投稿目の最高配当レースが決まっていないため、動画も保留です。" : (r.purged_at ? "" : "動画はまだありません。")));
-          if (msg) mk("div", "margin-top:6px;font-size:13px;color:" + (vs === "error" ? "#d14b4b" : "var(--muted)"), msg, g3);
-        }
 
+        }
         /* 取りこぼし・エラー */
         const gaps = r.gaps || {}, notes = [];
         if (gaps.tomorrow_skipped) notes.push("明日の出走表で読めなかったレースが " + gaps.tomorrow_skipped + " あります（まだ公開されていない場など）。");
@@ -14932,7 +14934,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         if (p.teaser) t.push("次へ：" + p.teaser);
         return t.join("\n");
       }
-      const roundsText = (rv) => (rv.rounds || []).map((e) => "審査" + ((e.round || 0) + 1) + "回目 " + e.total + "点（フック" + Math.round(e.hook_pct) + "）" + ((e.failed || []).length ? " ○でない項目：" + e.failed.join("・") : " 合格")).join("\n");
+      const roundsText = (rv) => (rv.rounds || []).map((e) => "審査" + ((e.round || 0) + 1) + "回目 " + e.total + "点（フック" + Math.round(e.hook_pct) + "）" + ((e.failed || []).length ? " ○でない項目：" + e.failed.join("・") : " 合格") + (e.stop ? "\n　→ " + e.stop : "")).join("\n");
       const failedChecks = (rv) => (rv.checks || []).filter((c) => c.r !== "○");
       function articleText(a) {
         const rv = a.review || {}, sc = rv.scores || {};
@@ -15039,9 +15041,6 @@ BUILDERS.talk = (el) => TALK.build(el);
             b.onclick = () => { f.fixed_theme = n; setConf("fixed_theme", n); paintSet(); };
           });
         }
-        const l4 = line("3投稿目の高配当動画");
-        seg(l4, [["true", "いっしょに作る"], ["false", "作らない"]], f.video === "false" ? "false" : "true", (v) => { f.video = v; setConf("video", v); paintSet(); });
-        if (f.video !== "false") seg(l4, [["false", "合成音声の実況"], ["true", "公式リプレイの本物の実況（約5分余計にかかる）"]], f.real_commentary === "true" ? "true" : "false", (v) => { f.real_commentary = v; setConf("real_commentary", v); paintSet(); });
         const l7 = line("AI編集長（記事の企画・文章・ページ構成を毎日設計）");
         if (f.editor != null) {
           seg(l7, [["true", "使う"], ["false", "使わない（分析ページで作る）"]], f.editor === "false" ? "false" : "true", (v) => { f.editor = v; setConf("editor", v); paintSet(); });
@@ -15061,9 +15060,9 @@ BUILDERS.talk = (el) => TALK.build(el);
             const sv = btn("保存", "cyan", row); sv.style.minHeight = "40px"; sv.style.flex = "0 0 auto"; sv.style.minWidth = "72px";
             sv.onclick = () => { const v = inp.value.trim(); if (!/^[A-Za-z0-9._-]{3,60}$/.test(v)) { toast("モデル名は英数字・ピリオド・ハイフンで指定してください", "err"); return; } f.editor_model = v; setConf("editor_model", v); };
           }
-          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝4投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝3投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
         } else {
-          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.13 に、動画サービスを v3.0.7 にしてください。", l7);
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.14 に、動画サービスを v3.0.8 にしてください。", l7);
         }
         const l6 = line("フォローのページに出すアカウント名（各投稿の最後の1枚）");
         if (f.follow_handle != null) {
