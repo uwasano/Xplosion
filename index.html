@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "403";
+const APP_VERSION = "405";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -14564,6 +14564,8 @@ BUILDERS.talk = (el) => TALK.build(el);
     const WD = ["日", "月", "火", "水", "木", "金", "土"];
     const dlabel = (d) => { const wd = new Date(d + "T12:00:00Z").getUTCDay(); return (+d.slice(5, 7)) + "/" + (+d.slice(8, 10)) + "（" + WD[wd] + "）"; };
     const jstToday = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+    const jstYesterday = () => new Date(Date.now() + 9 * 3600e3 - 86400e3).toISOString().slice(0, 10);
+    const CATCHUP_MIN = 12 * 60;                              // 日付が変わってから正午までは、昨日ぶんも作り直せる（追加SQL journal_v6）
     const jstMinutes = () => { const t = new Date(Date.now() + 9 * 3600e3); return t.getUTCHours() * 60 + t.getUTCMinutes(); };
     const yen = (n) => "¥" + Number(n).toLocaleString("ja-JP");
     const isTouch = () => { try { return matchMedia("(pointer: coarse)").matches || /iPhone|iPad|Android/i.test(navigator.userAgent); } catch (e) { return false; } };
@@ -14621,7 +14623,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         "ダウンロードしたものは、30分後に保管場所から自動で削除されます（端末に保存したものは消えません。下の設定でオフにもできます）。",
       ]);
       const box = document.createElement("div"); el.appendChild(box);
-      const state = { rows: [], sel: ls.get(K_SEL) || "", conf: {}, loaded: false, err: null, busy: false, v2: true };
+      const state = { rows: [], sel: "", picked: false, pickDay: "", conf: {}, loaded: false, err: null, busy: false, v2: true };
       const card = (parent, html) => { const d = document.createElement("div"); d.className = "card"; d.style.cssText = "padding:14px;margin-top:12px;font-size:14px;line-height:1.75"; if (html) d.innerHTML = html; (parent || box).appendChild(d); return d; };
       const mk = (tag, css, text, parent) => { const n = document.createElement(tag); if (css) n.style.cssText = css; if (text != null) n.textContent = text; if (parent) parent.appendChild(n); return n; };
       const btn = (label, cls, parent) => { const b = mk("button", "flex:1 1 auto;min-width:120px;min-height:46px;font-size:14px", label, parent); b.type = "button"; b.className = "mini " + (cls || ""); return b; };
@@ -14646,12 +14648,16 @@ BUILDERS.talk = (el) => TALK.build(el);
         } catch (e) { if (my !== loadSeq) return; state.err = e; }
         try { const c = await rest("rpc/journal_get_conf", { method: "POST", body: "{}" }); if (my === loadSeq && c) state.conf = c; } catch (e) {}
         state.loaded = true;
-        if (!state.sel || !state.rows.some((r) => r.date === state.sel)) {
-          const t = jstToday();
-          state.sel = state.rows.some((r) => r.date === t) ? t : (state.rows[0] ? state.rows[0].date : t);
-        }
+        /* 表示する日：ふだんは『今日』（JST）。ただし、日付が変わってから正午までで、今日の記録がまだ無く昨日の記録があるときは、
+           『昨日』を自動で表示する（昨日ぶんの作り直しができる）。履歴から日を自分で選んだときだけ、その日のまま（日付が変わったら選び直し）。
+           以前は、前回見た日を覚えていたため、0時を過ぎても前日の画面のまま固まっていた */
+        const t = jstToday(), y = jstYesterday();
+        if (state.picked && state.pickDay !== t) state.picked = false;
+        const def = (!state.rows.some((r) => r.date === t) && state.rows.some((r) => r.date === y) && jstMinutes() < CATCHUP_MIN) ? y : t;
+        if (!state.picked || (state.sel !== t && !state.rows.some((r) => r.date === state.sel))) { state.sel = def; state.picked = false; }
         paint();
       }
+      const canRebuild = (d) => d === jstToday() || (d === jstYesterday() && jstMinutes() < CATCHUP_MIN);
       const selRow = () => state.rows.find((r) => r.date === state.sel) || null;
       const delOn = () => state.v2 && state.conf.delete_after_download !== "false";
       const purgeMin = () => { const n = parseInt(state.conf.purge_after_min, 10); return n >= 5 && n <= 1440 ? n : 30; };
@@ -14710,7 +14716,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         const imgs = Array.isArray(r.images) ? r.images : [];
         if (r.purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "保管日数をすぎたため、画像と動画のファイルは削除されています。", c);
         else {
-          if (r.images_purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、画像とzipは保管場所から削除しました（端末に保存したものは残っています）。" + (d === jstToday() ? "必要なら、下の『今すぐ作り直す』で作り直せます。" : ""), c);
+          if (r.images_purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、画像とzipは保管場所から削除しました（端末に保存したものは残っています）。" + (canRebuild(d) ? "必要なら、下のボタンで作り直せます。" : "（この日は作り直せません）"), c);
           else if (r.images_downloaded_at) mk("div", "margin-top:8px;font-size:13px;color:#2f9e5b", purgeNote(r.images_downloaded_at, "画像とzip"), c);
         }
 
@@ -14837,11 +14843,11 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           if (r.video_downloaded_at) mk("div", "width:100%;font-size:12px;color:#2f9e5b", purgeNote(r.video_downloaded_at, "動画"), row);
         } else if (r.video_purged_at && !r.video_url) {
-          mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、動画は保管場所から削除しました（端末に保存したものは残っています）。" + (d === jstToday() ? "必要なら『今すぐ作り直す』で作り直せます。" : ""), g3);
+          mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、動画は保管場所から削除しました（端末に保存したものは残っています）。" + (canRebuild(d) ? "必要なら、下のボタンで作り直せます。" : ""), g3);
         } else {
           const vs = r.video_state, msg = vs === "running" ? "動画を作っています（約3〜8分）。できあがると、ここに出ます。"
             : vs === "wait" ? "本日の結果が出そろうのを待っています（出そろったら自動で作ります）。"
-              : vs === "error" ? "動画を作れませんでした：" + (r.video_note || "") + "　『今すぐ作る』で作り直せます。"
+              : vs === "error" ? "動画を作れませんでした：" + (r.video_note || "") + (canRebuild(d) ? "　下のボタンで作り直せます。" : "")
                 : (r.status === "running" ? "画像ができたあとに、動画を作ります。" : (p3.ok === false ? "2投稿目の最高配当レースが決まっていないため、動画も保留です。" : (r.purged_at ? "" : "動画はまだありません。")));
           if (msg) mk("div", "margin-top:6px;font-size:13px;color:" + (vs === "error" ? "#d14b4b" : "var(--muted)"), msg, g3);
         }
@@ -14855,24 +14861,44 @@ BUILDERS.talk = (el) => TALK.build(el);
       }
 
       function actions(c, r) {
-        const today = jstToday();
-        if (state.sel !== today) return;                         // 作り直せるのは、本日ぶんだけ
+        const today = jstToday(), isY = state.sel === jstYesterday() && canRebuild(state.sel);
+        const md = (d) => (+d.slice(5, 7)) + "/" + (+d.slice(8, 10));
+        const goToday = (parent) => {
+          const go = btn("今日（" + md(today) + "）の画面へ", isY ? "" : "cyan", parent);
+          go.onclick = () => { state.sel = today; state.picked = true; state.pickDay = today; paint(); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {} };
+        };
+        if (state.sel !== today && !isY) {                       // 作り直せるのは、本日ぶん（と、日付が変わってから正午までの昨日ぶん）だけ
+          const back = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:14px", "", c);
+          const yd = state.sel === jstYesterday();
+          mk("div", "width:100%;font-size:13px;color:var(--muted)", yd
+            ? "昨日ぶんの作り直しは、日付が変わってから正午までです（いまは過ぎています）。『今すぐ作り直す』は、今日（" + md(today) + "）の画面にあります。"
+            : "いま見ているのは過去の日です。『今すぐ作り直す』は、今日（" + md(today) + "）の画面にあります。", back);
+          goToday(back);
+          return;
+        }
         const row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:14px", "", c);
+        if (isY) mk("div", "width:100%;font-size:13px;color:var(--muted)", "日付が変わったため、昨日（" + md(state.sel) + "）ぶんを表示しています。昨日ぶんは、正午まで作り直せます（今日の結果はまだ少ないため）。", row);
+        const day = state.sel, who = isY ? "昨日（" + md(day) + "）ぶんの" : "";
         const run = async (mode, label) => {
           if (state.busy) return;
           state.busy = true; b1.disabled = b2.disabled = true;
           try {
-            await rest("rpc/journal_run_now", { method: "POST", body: JSON.stringify({ p_mode: mode }) });
-            toast(label + "を始めました。AI編集長が書いて審査するため、10〜15分ほどかかります。進み具合はこの画面に出ます");
+            if (isY) await rest("rpc/journal_run_day", { method: "POST", body: JSON.stringify({ p_date: day, p_mode: mode }) });
+            else await rest("rpc/journal_run_now", { method: "POST", body: JSON.stringify({ p_mode: mode }) });
+            toast(who + label + "を始めました。AI編集長が書いて審査するため、10〜15分ほどかかります。進み具合はこの画面に出ます");
             setTimeout(load, 4000);
-          } catch (e) { toast(String(e.message || e).slice(0, 120), "err"); }
+          } catch (e) {
+            if (isY && e && e.code === "missing") toast("昨日ぶんを作り直すには、追加SQL（journal_v6）を Supabase の SQL Editor で1回実行してください", "err");
+            else toast(String(e.message || e).slice(0, 120), "err");
+          }
           state.busy = false; b1.disabled = b2.disabled = false;
         };
-        const b1 = btn(r ? "今すぐ作り直す" : "今すぐ作る", "cyan", row);
-        const b2 = btn("明日のレースをランダムで選び直す", "", row);
+        const b1 = btn(isY ? "昨日（" + md(day) + "）ぶんを作り直す" : (r ? "今すぐ作り直す" : "今すぐ作る"), "cyan", row);
+        const b2 = btn(isY ? "昨日ぶんの注目レースをランダムで選び直す" : "明日のレースをランダムで選び直す", "", row);
         b1.onclick = () => run(null, "作成");
         b2.onclick = () => run("random", "ランダム選出");
-        mk("div", "width:100%;font-size:12px;color:var(--muted)", "『ランダム』は、明日の優勝戦・準優勝戦などから1レースを選び直します（無ければ荒れそうなレース）。続けて押せるのは2分に1回です。", row);
+        mk("div", "width:100%;font-size:12px;color:var(--muted)", "『ランダム』は、" + (isY ? "昨日ぶんの『明日の注目レース』（＝今日のレース）を" : "明日の優勝戦・準優勝戦などから1レースを") + "選び直します（無ければ荒れそうなレース）。続けて押せるのは2分に1回です。", row);
+        if (isY) goToday(row);
       }
 
       /* ---------------- 履歴 ---------------- */
@@ -14882,11 +14908,13 @@ BUILDERS.talk = (el) => TALK.build(el);
         c.style.display = "";
         mk("div", "font-weight:800;font-size:15px;margin-bottom:8px", "これまで", c);
         const wrap = mk("div", "display:flex;gap:8px;flex-wrap:wrap", "", c);
-        state.rows.forEach((r) => {
+        const tdy = jstToday();
+        const list = state.rows.some((r) => r.date === tdy) ? state.rows : [{ date: tdy, status: "none" }].concat(state.rows);
+        list.forEach((r) => {
           const b = mk("button", "min-height:44px;padding:4px 12px;font-size:13px;line-height:1.3", "", wrap); b.type = "button"; b.className = "chip" + (r.date === state.sel ? " on" : "");
-          const st = ST[r.status] || ["", "#888"];
+          const st = r.status === "none" ? ["まだありません", "#888"] : (ST[r.status] || ["", "#888"]);
           b.innerHTML = esc(dlabel(r.date)) + '<br><span style="font-size:11px;color:' + st[1] + '">' + esc(st[0].replace("…", "").replace("（一部取りこぼしあり）", "")) + "</span>";
-          b.onclick = () => { state.sel = r.date; ls.set(K_SEL, r.date); paint(); };
+          b.onclick = () => { state.sel = r.date; state.picked = true; state.pickDay = jstToday(); paint(); };
         });
       }
 
@@ -14931,7 +14959,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           return;
         }
         box.textContent = "";
-        if (!rows || !rows.length) { mk("div", "font-size:13px;color:var(--muted);margin-top:8px", "この日のAI編集長の記事は、まだ記録されていません。追加SQL（journal_v4）を入れる前に作った日、または編集長が動かなかった日です。SQLと Edge Function を入れたあと、『今すぐ作り直す』を押すと記録されます。", box); return; }
+        if (!rows || !rows.length) { mk("div", "font-size:13px;color:var(--muted);margin-top:8px", "この日のAI編集長の記事は、まだ記録されていません。追加SQL（journal_v4）を入れる前に作った日、または編集長が動かなかった日です。" + (canRebuild(state.sel) ? "SQLと Edge Function を入れたあと、下のボタンで作り直すと記録されます。" : "この日は作り直せないため、記録できません。今日の画面で作り直すと、今日ぶんから記録されます。"), box); return; }
         rows.forEach((a) => {
           const card = mk("div", "margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.3)", "", box);
           const head = mk("div", "display:flex;gap:8px;align-items:center;flex-wrap:wrap", "", card);
@@ -15075,6 +15103,8 @@ BUILDERS.talk = (el) => TALK.build(el);
       };
       mk("div", "color:var(--muted);font-size:13px;padding:6px 0", "読み込んでいます…", dayCard);
       load().then(() => setTimeout(tick, state.rows.some((r) => r.status === "running" || r.video_state === "running") ? 10000 : 60000));
+      /* アプリに戻ってきたとき（0時をまたいだ場合など）は、すぐ読み直して今日の画面にする */
+      document.addEventListener("visibilitychange", () => { if (el.isConnected && !document.hidden) load(); });
       lead.textContent = "公式（boatrace.jp）のデータだけから作ります。取れなかった投稿は、推測で埋めずに保留にします。";
     }
     return { enabled, build };
