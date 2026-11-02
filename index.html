@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "400";
+const APP_VERSION = "401";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.0.4";
+    const SERVER_NEED = "3.0.5";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14788,13 +14788,19 @@ BUILDERS.talk = (el) => TALK.build(el);
         group(1, "明日の注目レース（" + dlabel(r.tomorrow || d) + "）", p1, i1, info1);
         const edNote = (() => {                                               // AI編集長の状態（記事A）
           if (!ed) return "";
-          if (ed.ok) { const a = (ed.scores || []).filter((x) => x.role === "A").pop(); return a && a.program_score != null ? "　記事A " + a.program_score + "点（合格95）" : ""; }
+          if (ed.ok) { const a = (ed.scores || []).filter((x) => x.role === "A").pop(); return a && a.program_score != null ? "　記事A " + a.program_score + "点（合格" + (ed.pass_score || 95) + "）" : ""; }
           const pend = (ed.pending || []).map((x) => "「" + x.headline + "」" + (x.program_score != null ? x.program_score + "点" : "")).join("、");
-          if (pend) return "　※AI編集長の記事は95点に届かず確認待ち（" + pend + "）。今日は分析ページで作りました";
+          if (pend) return "　※AI編集長の記事は" + (ed.pass_score || 95) + "点に届かず確認待ち（" + pend + "）。今日は分析ページで作りました。下の『AI編集長の記事を読む』で中身を読めます";
           return ed.errors && ed.errors.length ? "　※AI編集長は使えなかったため、分析ページで作りました（" + String(ed.errors[0]).slice(0, 80) + "）" : "";
         })();
         group(2, "本日の勝負の裏側" + (ed && ed.ok ? "（記事A：AI編集長）" : ""), p2, i2, info2 + edNote);
         if (p4.ok || i4.length) group(4, "記事B（初心者向け・AI編集長）", p4.ok ? p4 : { ok: !!i4.length }, i4, p4.headline ? "見出し：" + p4.headline + (p4.hook ? "　フック：" + p4.hook : "") : "");
+
+        /* AI編集長の記事の中身（フック・本文・点数の理由）。確認待ちの記事もここで読める（v3.0.5） */
+        const ab = mk("div", "margin-top:14px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
+        const abBtn = btn("AI編集長の記事を読む（フック・本文・点数の理由）", "cyan", ab); abBtn.style.width = "100%";
+        const abOut = mk("div", "", "", ab);
+        abBtn.onclick = () => showArticles(abOut, d);
 
         /* 3投稿目：動画 */
         const g3 = mk("div", "margin-top:16px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
@@ -14879,6 +14885,66 @@ BUILDERS.talk = (el) => TALK.build(el);
         });
       }
 
+
+      /* ---------------- AI編集長の記事を読む（v3.0.5） ---------------- */
+      const SC_LABEL = { hook: "フック", beginner: "初心者", originality: "独自性", readability: "読みやすさ", flow: "構成", facts: "事実", satisfaction: "満足", save_share: "保存" };
+      const SC_MAX = { hook: 25, beginner: 15, originality: 15, readability: 10, flow: 10, facts: 10, satisfaction: 10, save_share: 5 };
+      function pageText(p) {
+        const t = [(p.page_number || "") + "枚目（" + (p.layout || "") + "）"];
+        if (p.number) t.push("数字：" + p.number + (p.unit || ""));
+        if (p.headline) t.push("見出し：" + p.headline);
+        if (p.sub) t.push("補足：" + p.sub);
+        if (p.body) t.push(String(p.body));
+        (p.items || []).forEach((it) => t.push("・" + (it.label || "") + "　" + (it.text != null ? it.text : it.value)));
+        if (p.teaser) t.push("次へ：" + p.teaser);
+        return t.join("\n");
+      }
+      function articleText(a) {
+        const rv = a.review || {}, sc = rv.scores || {};
+        const t = [(a.role === "B" ? "【記事B】" : "【記事A】") + (a.status === "pending" ? "（確認待ち）" : "（画像にした）") + "　" + (a.score != null ? a.score + "点" : ""),
+          "見出し：" + (a.headline || ""), "フック：" + (a.hook || "") + (a.hook_score != null ? "（フック " + a.hook_score + "点）" : "")];
+        const scs = Object.keys(SC_LABEL).filter((k) => sc[k] != null).map((k) => SC_LABEL[k] + " " + sc[k] + "/" + SC_MAX[k]);
+        if (scs.length) t.push("編集長の自己採点：" + scs.join("　"));
+        if ((rv.program_notes || []).length) t.push("プログラムの減点：" + rv.program_notes.join("／"));
+        if ((rv.hard_fail || []).length) t.push("不合格の理由：" + rv.hard_fail.join("／"));
+        if ((rv.unverified || []).length) t.push("確認できなかった点：" + rv.unverified.join("／"));
+        if ((rv.revision_history || []).length) t.push("直した点：" + rv.revision_history.join("／"));
+        (a.pages || []).forEach((p) => { t.push(""); t.push(pageText(p)); });
+        return t.join("\n");
+      }
+      async function showArticles(box, d) {
+        box.textContent = "";
+        mk("div", "font-size:13px;color:var(--muted);margin-top:8px", "読み込み中…", box);
+        let rows;
+        try { rows = await rest("journal_articles?date=eq." + d + "&select=article_id,post,role,headline,hook,hook_score,score,status,pages,review&order=post.asc,status.desc"); }
+        catch (e) {
+          box.textContent = "";
+          mk("div", "font-size:13px;color:var(--muted);margin-top:8px", e.code === "missing" ? "記事の記録の表がまだありません。追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行してください。" : "読み込めませんでした（" + String(e.message || "").slice(0, 100) + "）", box);
+          return;
+        }
+        box.textContent = "";
+        if (!rows || !rows.length) { mk("div", "font-size:13px;color:var(--muted);margin-top:8px", "この日のAI編集長の記事は、まだ記録されていません（編集長が動かなかった日や、記録の表ができる前に作った日です）。", box); return; }
+        rows.forEach((a) => {
+          const card = mk("div", "margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.3)", "", box);
+          const head = mk("div", "display:flex;gap:8px;align-items:center;flex-wrap:wrap", "", card);
+          mk("span", "font-weight:800;font-size:14px", a.role === "B" ? "記事B（初心者向け）" : "記事A（ファン向け）", head);
+          pill(a.status === "pending" ? "確認待ち（画像にしていません）" : "画像にしました", a.status === "pending" ? "#d99a1c" : "#2f9e5b", head);
+          if (a.score != null) mk("span", "font-size:13px;color:var(--muted)", a.score + "点", head);
+          mk("div", "margin-top:8px;font-size:17px;font-weight:800;line-height:1.5", a.hook || "（フックなし）", card);
+          mk("div", "margin-top:2px;font-size:12px;color:var(--muted)", "見出し：" + (a.headline || "") + (a.hook_score != null ? "　フック " + a.hook_score + "点" : ""), card);
+          const rv = a.review || {}, sc = rv.scores || {};
+          const scs = Object.keys(SC_LABEL).filter((k) => sc[k] != null).map((k) => SC_LABEL[k] + " " + sc[k] + "/" + SC_MAX[k]);
+          if (scs.length) mk("div", "margin-top:8px;font-size:12px;color:var(--muted)", "編集長の自己採点：" + scs.join("　"), card);
+          const reasons = [].concat((rv.program_notes || []).map((x) => "減点：" + x), (rv.hard_fail || []).map((x) => "不合格：" + x), (rv.unverified || []).map((x) => "未確認：" + x));
+          reasons.forEach((x) => mk("div", "margin-top:4px;font-size:12px;color:#d99a1c", x, card));
+          const dt = mk("details", "margin-top:8px", "", card);
+          mk("summary", "cursor:pointer;font-size:13px;font-weight:700;min-height:36px", "ページの中身（" + (a.pages || []).length + "枚）", dt);
+          (a.pages || []).forEach((p) => mk("div", "margin-top:8px;font-size:13px;line-height:1.6;white-space:pre-wrap;padding:8px;border-radius:8px;background:rgba(127,127,127,.1)", pageText(p), dt));
+          const cp = btn("この記事の全文をコピー", "", card); cp.style.marginTop = "8px"; cp.style.width = "100%";
+          cp.onclick = async () => { try { await navigator.clipboard.writeText(articleText(a)); toast("コピーしました"); } catch (e) { toast("コピーできませんでした", "err"); } };
+        });
+      }
+
       /* ---------------- 設定 ---------------- */
       let setSeq = 0;
       async function setConf(k, v) {
@@ -14930,6 +14996,13 @@ BUILDERS.talk = (el) => TALK.build(el);
           seg(l7, [["true", "使う"], ["false", "使わない（分析ページで作る）"]], f.editor === "false" ? "false" : "true", (v) => { f.editor = v; setConf("editor", v); paintSet(); });
           if (f.editor !== "false") {
             seg(l7, [["2", "1日2記事（A＋B）"], ["1", "1日1記事（Aだけ）"]], f.articles_per_day === "1" ? "1" : "2", (v) => { f.articles_per_day = v; setConf("articles_per_day", v); paintSet(); });
+            if (f.editor_pass != null) {
+              mk("div", "font-size:13px;font-weight:700;margin-top:10px", "合格点（この点数以上の記事を画像にします）", l7);
+              seg(l7, [["95", "95点（厳しい）"], ["90", "90点"], ["85", "85点"], ["80", "80点"]], String(f.editor_pass || "95"), (v) => { f.editor_pass = v; setConf("editor_pass", v); paintSet(); });
+              mk("div", "font-size:12px;color:var(--muted);margin-top:4px", "点数が足りない記事は『確認待ち』になり、その日は分析ページで作ります。数字・選手名の検査と、事実誤認などの不合格の条件は、点数に関係なく守られます。", l7);
+            } else {
+              mk("div", "font-size:12px;color:var(--muted);margin-top:8px", "合格点を変えるには、追加SQL（journal_v5_追加分）を Supabase の SQL Editor で1回実行してください（いまは95点）。", l7);
+            }
             const row = mk("div", "display:flex;gap:8px;align-items:center;margin-top:8px", "", l7);
             mk("span", "font-size:13px;color:var(--muted);white-space:nowrap", "モデル", row);
             const inp = mk("input", "flex:1;min-width:0;min-height:40px;padding:6px 10px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:14px", "", row);
@@ -14939,7 +15012,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝4投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
         } else {
-          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.10 に、動画サービスを v3.0.4 にしてください。", l7);
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.11 に、動画サービスを v3.0.5 にしてください。", l7);
         }
         const l6 = line("フォローのページに出すアカウント名（各投稿の最後の1枚）");
         if (f.follow_handle != null) {
