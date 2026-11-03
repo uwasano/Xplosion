@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "413";
+const APP_VERSION = "415";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.1.4";
+    const SERVER_NEED = "3.1.5";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14537,7 +14537,7 @@ BUILDERS.talk = (el) => TALK.build(el);
 /* ================= v383 インスタ3投稿（v3.0.0：AI編集長（記事A＝2投稿目・記事B＝4投稿目）の表示と設定／v2.9.12：各投稿の最後に『フォローして見逃さない』のページ。設定にアカウント名を追加／BOAT RACE JOURNAL v1：毎日19時に自動で作成／画像を一括ダウンロード） =================
    毎日19時（日本時間）に、公式データから Instagram の3投稿ぶんを自動で作る。ここは、できたものを見て、まとめてダウンロードする画面。
      1投稿目 明日の注目レース（表紙＋注目の理由＋注目の選手たち）／2投稿目 本日の勝負の裏側（表紙＋結果＋勝負の分岐点＋通が見ている数字の裏側）／3投稿目 高配当動画（同じ色・同じ日付）
-   作るのは Supabase（Edge Function journal-daily ＋ Cron）と動画サービス（Cloud Run）。この画面は journal_sets を読むだけ（押さなければ何もつくらない）。
+   作るのは Supabase（Edge Function journal-daily ＋ Cron）と作成サービス（Cloud Run。高配当動画と同じサービス）。この画面は journal_sets を読むだけ（押さなければ何もつくらない）。
    自動で投稿するAPIは、あとで接続する。いまは、ダウンロードして手動で投稿する。
    ダウンロードしたら（既定30分後に）保管場所のファイルを自動で削除する（端末に保存したものは消えない。設定でオフにできる）。
    隠したいときだけ、URLに ?journal=0 を付けて開く（この端末だけOFF。?journal=1 で戻る）。 */
@@ -14977,7 +14977,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           else if (ed0 && ed0.ok === false) why = "AI編集長が記事を1本も出せなかった日です（審査役を呼べなかった・時間切れなど）。上の2投稿目の注記に理由が出ます。";
           else if (ed0 && ed0.ok) why = "作成の記録にはAI編集長の記事があるのに、記事の表に入っていません。Edge Function を v1.10 以上に、追加SQL（journal_v4_追加分）を実行したか確認してください。";
           else if (state.conf && state.conf.editor === "false") why = "設定『AI編集長』が『使わない』になっています。下の設定で『使う』にして作り直すと記録されます。";
-          else why = "この日は、AI編集長が動いていません（作成の記録に編集長の項目がありません）。動画サービスが v3.0 以上・Edge Function が v1.10 以上で、Secrets に JOURNAL_ANTHROPIC_API_KEY（または ANTHROPIC_API_KEY）があるか確認してください。追加SQL（journal_v4_追加分）を入れる前に作った日も、ここに何も出ません。";
+          else why = "この日は、AI編集長が動いていません（作成の記録に編集長の項目がありません）。作成サービス（Cloud Run）が v3.0 以上・Edge Function が v1.10 以上で、Secrets に JOURNAL_ANTHROPIC_API_KEY（または ANTHROPIC_API_KEY）があるか確認してください。追加SQL（journal_v4_追加分）を入れる前に作った日も、ここに何も出ません。";
           mk("div", "font-size:13px;color:var(--muted);margin-top:8px;line-height:1.7", why, box);
           return;
         }
@@ -14996,6 +14996,10 @@ BUILDERS.talk = (el) => TALK.build(el);
           if ((rv.rounds || []).length) {                                        // 審査→直す→審査…の経過
             mk("div", "margin-top:8px;font-size:13px;font-weight:700", "審査の経過（審査役が採点し、指摘に沿って書き直した）", card);
             mk("div", "margin-top:2px;font-size:12px;line-height:1.7;color:var(--muted);white-space:pre-wrap", roundsText(rv), card);
+          }
+          if (rv.hook_chosen && rv.hook_chosen.hook) {                             // 書く前に審査員が候補から選んだフック（v3.1.5）
+            mk("div", "margin-top:8px;font-size:13px;font-weight:700", "書く前に審査員が選んだフック（候補" + (rv.hook_chosen.index != null ? "の" + (rv.hook_chosen.index + 1) + "番" : "") + (rv.hook_chosen.score ? "・" + rv.hook_chosen.score + "点" : "") + "）", card);
+            mk("div", "margin-top:2px;font-size:12px;line-height:1.7;color:var(--muted);white-space:pre-wrap", "「" + rv.hook_chosen.hook + "」" + (rv.hook_chosen.type ? "（" + rv.hook_chosen.type + "）" : "") + (rv.hook_chosen.why ? "\n理由：" + rv.hook_chosen.why : "") + (rv.hook_changed_by_writer ? "\n※書き手が別のフックに替えています（審査役の審査で確認）" : ""), card);
           }
           if (rv.hook_jury && (rv.hook_jury.weak || rv.hook_jury.best || rv.hook_jury.proposal)) {   // 審査役のフック審査（v3.1.0）
             const j = rv.hook_jury, jl = [];
@@ -15106,7 +15110,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝3投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
         } else {
-          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.16 に、動画サービスを v3.1.4 にしてください。", l7);
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.18 に、作成サービス（Cloud Run）を v3.1.5 にしてください。", l7);
         }
         const l6 = line("フォローのページに出すアカウント名（各投稿の最後の1枚）");
         if (f.follow_handle != null) {
