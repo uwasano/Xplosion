@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "408";
+const APP_VERSION = "410";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.1.0";
+    const SERVER_NEED = "3.1.2";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14807,7 +14807,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           return ed.errors && ed.errors.length ? "　※AI編集長は使えなかったため、分析ページで作りました（" + String(ed.errors[0]).slice(0, 80) + "）" : "";
         })();
         group(2, "本日の勝負の裏側" + (ed && ed.ok ? "（記事A：AI編集長）" : ""), p2, i2, info2 + edNote);
-        if (p4.ok || i4.length) group(3, "きょうの発見（記事B・初心者向け）", p4.ok ? p4 : { ok: !!i4.length }, i4, p4.headline ? "見出し：" + p4.headline + (p4.hook ? "　フック：" + p4.hook : "") : "");
+        if (p4.ok || i4.length) group(3, "今日の知らなきゃ損する話（記事B・初心者向け）", p4.ok ? p4 : { ok: !!i4.length }, i4, p4.headline ? "見出し：" + p4.headline + (p4.hook ? "　フック：" + p4.hook : "") : "");
 
         /* AI編集長の記事の中身（フック・本文・点数の理由）。確認待ちの記事もここで読める（v3.0.5） */
         const ab = mk("div", "margin-top:14px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
@@ -15090,7 +15090,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝3投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
         } else {
-          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.16 に、動画サービスを v3.1.0 にしてください。", l7);
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.16 に、動画サービスを v3.1.2 にしてください。", l7);
         }
         const l6 = line("フォローのページに出すアカウント名（各投稿の最後の1枚）");
         if (f.follow_handle != null) {
