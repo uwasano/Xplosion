@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "410";
+const APP_VERSION = "412";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.1.2";
+    const SERVER_NEED = "3.1.3";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14574,7 +14574,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       partial: ["一部まだ（取り直し待ち）", "#d99a1c"], held: ["保留", "#d14b4b"], error: ["失敗", "#d14b4b"],
     };
     const COLS = "date,tomorrow,status,attempt,mode,started_at,style,hit_color,posts,gaps,images,zip_url,note,video_state,video_url,video_note,purged_at,updated_at";
-    const COLS_V2 = COLS + ",images_downloaded_at,images_purged_at,video_downloaded_at,video_purged_at,editor:audit->editor";
+    const COLS_V2 = COLS + ",images_downloaded_at,images_purged_at,video_downloaded_at,video_purged_at,editor:audit->editor,audit_key:audit->>editor_key_name";
     /* 『全部の画像を保存した』を端末ごとに覚える（個別の『保存』を全部の枚数ぶん押したら、ダウンロードずみとして印を付けるため） */
     const savedGet = (d, tag) => { try { const j = JSON.parse(ls.get("xpl_jn_saved_" + d) || "null"); return j && j.s === tag && Array.isArray(j.n) ? j.n : []; } catch (e) { return []; } };
     const savedAdd = (d, tag, name) => { const n = savedGet(d, tag); if (n.indexOf(name) < 0) n.push(name); ls.set("xpl_jn_saved_" + d, JSON.stringify({ s: tag, n })); return n; };
@@ -14803,6 +14803,8 @@ BUILDERS.talk = (el) => TALK.build(el);
             const ok = (a && a.program_score != null ? "　記事A " + a.program_score + "点（合格" + ps + "）" : "") + (tm ? "　" + tm : "") + (below ? "　※合格点（" + ps + "）に届かなかったため、最高点の版で画像にしました：" + below + "。足りない項目は『AI編集長の記事を読む』に出ます" : "");
             return ok + (pend ? "　※審査役の合格点（" + ps + "）に届かず確認待ち：" + pend + "。下の『AI編集長の記事を読む』で、どこが足りないか読めます" : "");
           }
+          const rej = (ed.rejected || []).map((x) => "記事" + (x.role || "") + "「" + x.headline + "」：" + (x.problems || []).join("／")).join("、");
+          if (!pend && rej) return "　※AI編集長の記事は、機械検査（数字・金額・選手名・裏側の言葉）に" + (ed.initial_problems ? "引っかかり、書き直しても直らなかった" : "3回とも引っかかった") + "ため画像にしませんでした：" + rej.slice(0, 300) + "。今日は分析ページで作りました";
           if (pend) return "　※AI編集長の記事は、審査役の指摘で" + (nr ? "最大" + nr + "回まで直しても" : "") + "合格点（" + ps + "）に届かず確認待ち（" + pend + "）。今日は分析ページで作りました" + tm + "。下の『AI編集長の記事を読む』で、どこが足りないか読めます";
           return ed.errors && ed.errors.length ? "　※AI編集長は使えなかったため、分析ページで作りました（" + String(ed.errors[0]).slice(0, 80) + "）" : "";
         })();
@@ -14964,7 +14966,21 @@ BUILDERS.talk = (el) => TALK.build(el);
           return;
         }
         box.textContent = "";
-        if (!rows || !rows.length) { mk("div", "font-size:13px;color:var(--muted);margin-top:8px", "この日のAI編集長の記事は、まだ記録されていません。追加SQL（journal_v4）を入れる前に作った日、または編集長が動かなかった日です。" + (canRebuild(state.sel) ? "SQLと Edge Function を入れたあと、下のボタンで作り直すと記録されます。" : "この日は作り直せないため、記録できません。今日の画面で作り直すと、今日ぶんから記録されます。"), box); return; }
+        if (!rows || !rows.length) {                                            // 記事が無い理由を、行の状態から言い当てる（v3.1.3。以前は常にSQLの案内を出していて紛らわしかった）
+          const r0 = state.rows.find((x) => x.date === d) || null, ed0 = r0 && r0.editor;
+          const keyName = (r0 && r0.audit_key) || "";
+          let why;
+          if (!r0) why = "この日は、まだ作成されていません。" + (canRebuild(d) ? "下の『今すぐ作る』で作れます。" : "");
+          else if (r0.status === "running") why = "いま作成中です（" + (r0.note || "順番待ち") + "）。記事は、画像ができあがったときにまとめて記録されます。できあがるまで、この表示のままです。";
+          else if (ed0 && ed0.errors && ed0.errors.length) why = "AI編集長が動かなかったため、記事がありません。理由：" + String(ed0.errors[0]).slice(0, 160) + "（この日は分析ページで作りました）";
+          else if (ed0 && ed0.ok === false && (ed0.rejected || []).length) why = "AI編集長は記事を書きましたが、機械検査（数字・金額・選手名・裏側の言葉）に引っかかって出せませんでした：" + (ed0.rejected || []).map((x) => "「" + x.headline + "」" + (x.problems || []).join("／")).join("、").slice(0, 300);
+          else if (ed0 && ed0.ok === false) why = "AI編集長が記事を1本も出せなかった日です（審査役を呼べなかった・時間切れなど）。上の2投稿目の注記に理由が出ます。";
+          else if (ed0 && ed0.ok) why = "作成の記録にはAI編集長の記事があるのに、記事の表に入っていません。Edge Function を v1.10 以上に、追加SQL（journal_v4_追加分）を実行したか確認してください。";
+          else if (state.conf && state.conf.editor === "false") why = "設定『AI編集長』が『使わない』になっています。下の設定で『使う』にして作り直すと記録されます。";
+          else why = "この日は、AI編集長が動いていません（作成の記録に編集長の項目がありません）。動画サービスが v3.0 以上・Edge Function が v1.10 以上で、Secrets に JOURNAL_ANTHROPIC_API_KEY（または ANTHROPIC_API_KEY）があるか確認してください。追加SQL（journal_v4_追加分）を入れる前に作った日も、ここに何も出ません。";
+          mk("div", "font-size:13px;color:var(--muted);margin-top:8px;line-height:1.7", why, box);
+          return;
+        }
         rows.forEach((a) => {
           const card = mk("div", "margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.3)", "", box);
           const head = mk("div", "display:flex;gap:8px;align-items:center;flex-wrap:wrap", "", card);
@@ -15090,7 +15106,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "Supabase の Edge Functions → Secrets に、編集長専用の JOURNAL_ANTHROPIC_API_KEY（無ければ ANTHROPIC_API_KEY）が必要です。専用のキーを入れれば、他の機能が使うキーには影響しません。記事A＝2投稿目の中身、記事B＝3投稿目。編集長が記事を出せなかった日は、これまでの分析ページで作ります（止まりません）。", l7);
         } else {
-          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.16 に、動画サービスを v3.1.2 にしてください。", l7);
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v4_追加分）を Supabase の SQL Editor で1回実行し、Edge Function を v1.16 に、動画サービスを v3.1.3 にしてください。", l7);
         }
         const l6 = line("フォローのページに出すアカウント名（各投稿の最後の1枚）");
         if (f.follow_handle != null) {
