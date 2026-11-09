@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "441";
+const APP_VERSION = "442";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.8.0";
+    const SERVER_NEED = "3.8.2";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14792,6 +14792,15 @@ BUILDERS.talk = (el) => TALK.build(el);
               mk("div", "font-size:12px;color:var(--muted);flex:1 1 180px", (items.length ? "いまの画像は入れ替わります。" : "") + (n === 2 ? "リールも作り直します。" : "") + "ほかの投稿はそのままです（約" + (n === 2 ? "8〜12" : "5〜10") + "分）。", pr);
               bp.onclick = () => runPost(n, bp);
             }
+          }
+          /* v3.8.2：リール（動画）が無い・従来のリールになったときは、画面にはっきり理由を出す（『動画が出ず、画像ばかり出る』のに、理由がどこにも出ていなかった） */
+          if (n === 2 && post.ok && items.length && !r.purged_at && !r.images_purged_at) {
+            const hasVid = items.some(isMp4), rl2 = p2.reel || null;
+            const errs = ((r.audit && r.audit.errors) || []).filter((e) => /リール/.test(String(e))).join(" / ");
+            const why = String(p2.reel_note || (r.audit && r.audit.reel_note) || errs || "").trim();
+            const reelBox = (text) => mk("div", "margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #d99a1c;background:rgba(217,154,28,.10);font-size:13px;line-height:1.55;color:var(--text,inherit)", text, g);
+            if (!hasVid && !r.reel_purged_at) reelBox("リール（動画）は、この回は作れていません（下に並ぶのは記事の画像だけです）。" + (why ? "理由：" + why : "理由の記録がありません。") + "　『2投稿目だけ作り直す』を押すと、リールも作り直します。");
+            else if (hasVid && rl2 && Number(rl2.version) !== 5) reelBox("音つきのリールを作れなかったため、記事の画像をつないだだけの従来のリール（音なし）になっています。" + (why ? "理由：" + why : "") + "　『2投稿目だけ作り直す』で、音つきのリールを作り直せます。");
           }
           if (items.length) {
             const grid = mk("div", "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px", "", g);
