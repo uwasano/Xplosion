@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "442";
+const APP_VERSION = "443";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.8.2";
+    const SERVER_NEED = "3.9.0";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14789,7 +14789,7 @@ BUILDERS.talk = (el) => TALK.build(el);
             if (r.status === "running") mk("div", "font-size:12px;color:var(--muted)", "いま作成中です。終わってから、この投稿だけ作り直せます。", pr);
             else {
               const bp = btn(n + "投稿目だけ作り直す", "", pr); bp.setAttribute("data-post-rebuild", String(n));
-              mk("div", "font-size:12px;color:var(--muted);flex:1 1 180px", (items.length ? "いまの画像は入れ替わります。" : "") + (n === 2 ? "リールも作り直します。" : "") + "ほかの投稿はそのままです（約" + (n === 2 ? "8〜12" : "5〜10") + "分）。", pr);
+              mk("div", "font-size:12px;color:var(--muted);flex:1 1 180px", (items.length ? "いまの画像は入れ替わります。" : "") + (n === 2 ? "リールも作り直します。" : "") + "ほかの投稿はそのままです（約" + (n === 2 ? "10〜15" : "5〜10") + "分）。", pr);
               bp.onclick = () => runPost(n, bp);
             }
           }
@@ -14822,7 +14822,8 @@ BUILDERS.talk = (el) => TALK.build(el);
               }
               if (isVid) {                                                                         // v3.8.1：保管されている名札（『無音・約16秒』）は古いので、作ったときの記録から出す
                 const rl = p2.reel || null, vv = (rl && rl.voice) || {};
-                const txt = !rl ? "リール（縦動画）" : "リール（縦動画" + (rl.seconds ? "・約" + Math.round(rl.seconds) + "秒" : "") + "）：" + (rl.audio ? "効果音" + (vv.ok ? "＋ずんだもんの声（" + (vv.credit || "VOICEVOX") + "）つき" : "つき（声は取れませんでした）") : "音なし（従来のリール）");
+                const txt = !rl ? "リール（縦動画）" : "リール（縦動画" + (rl.seconds ? "・約" + Math.round(rl.seconds) + "秒" : "") + "）：" + (rl.audio ? "効果音" + (vv.ok ? "＋ずんだもんの声（" + (vv.credit || "VOICEVOX") + "）つき" : "つき（声は取れませんでした）") : "音なし（従来のリール）")
+                  + (rl && rl.audio ? (rl.tier === "footage" ? "／公式リプレイの実際のレース映像つき" : (rl.footage && rl.footage.note ? "／実際のレース映像は使えませんでした（" + rl.footage.note + "）" : "")) : "");
                 mk("div", "font-size:12px;line-height:1.4;margin-top:4px;color:" + (rl && rl.audio ? (vv.ok ? "#2f9e5b" : "#d99a1c") : "var(--muted)"), txt, cell);
               } else mk("div", "font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;word-break:break-all;min-height:3.1em", x.label.replace(/^\d投稿目\s*/, ""), cell);
               if (isVid && r.reel_downloaded_at && !r.reel_purged_at) mk("div", "font-size:12px;color:#2f9e5b;margin-top:2px", purgeNote(r.reel_downloaded_at, "リール"), cell);
