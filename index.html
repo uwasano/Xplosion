@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "449";
+const APP_VERSION = "454";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.10.2";
+    const SERVER_NEED = "3.12.2";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14534,9 +14534,9 @@ BUILDERS.talk = (el) => TALK.build(el);
   }
 })();
 
-/* ================= v396 インスタ3投稿（v3.10.1：設定に『リール動画の型』（ランダム（既定）／A〜E を固定。SQL journal_v13・Edge v1.27・作成サービス v3.10.1）／v3.10.0：リールの説明に『型』（A倍率ドーン型／B大金の裏側・事件追跡型／C選択の罠型／D知識の逆転型／E 2着・3着の謎・推理型。日付で順に回る）を表示〔作成サービス v3.10.0〕／v3.9.1：1・2・3の投稿ごとと、リール動画に『投稿文をコピー』ボタン（文章＋ハッシュタグを1回で）／v3.8.1：作り直しボタンを枠の上に移し、2投稿目の画像とリールを分けて表示（リールの説明は作ったときの記録から）／v3.8.0：02のリールに効果音とずんだもんの読み上げ〔作成サービス v3.8.0 のみ。画面の機能は変更なし〕／v3.7.0：投稿1・2・3のどれか1つだけ作り直すボタン（SQL journal_v12・Edge v1.26・作成サービス v3.7.0）／v3.6.1：リールだけ『保存』しても、設定した分あとにリールだけ自動で削除（SQL journal_v11・Edge v1.25）／v3.6.0：設定に『いま話題の言葉』（trend_words。SQL journal_v10・Edge v1.24）／v3.5.2：02のリール（縦動画・無音）を2投稿目の一覧に出して保存できるように〔Edge v1.23〕／v3.5.1：コピー用の文章の案内文を無くし、ハッシュタグは5個まで〔文言のみ〕／v3.4.8：文章とハッシュタグを1つの枠にして、まとめて1回でコピーできるように〔画面のみ。作成サービスの入れ替えは不要〕／v3.4.6：表紙（ジャケット画像）を付けるかどうかのボタンを設定に追加〔OFFなら01〜03の1枚目をいきなりフックにして、1番上の日付を表紙と同じ大きさに。Edge v1.22・追加SQL journal_v9〕／v3.4.5：1枚目のフックを『8つの型の穴埋め』から『その日の発見を掘る』方式に〔サーバー側。画面の機能は変更なし〕／v3.4.4：専門用語が出たページの左上に小さな用語メモ（『展示とは…』）・記事の改行を言葉のまとまり／一文ごとに〔サーバー側〕／v3.4.3：Instagramの文章とハッシュタグを別々の枠にして、それぞれコピー（タグは1個ずつもコピー可）／v3.4.2：記事を1本ずつ書かせて途中で切れないようにした〔サーバー側〕・作り直したとき前の回の記事の記録が残らないようにした〔Edge v1.21〕／v3.4.2：03 が無い日も枠と理由を出す・記事の本数の設定に 02／03 の名前を書く／v3.4.1：審査の回数の上限に達しても不合格の理由だけ最後に直して必ず画像にする（要確認の印つき）／v3.4.0：各記事にInstagramのキャプション＋ハッシュタグ（コピーボタンつき）・最後の1枚は『次に見る3点／問い／フォローと保存』の保存カード／v3.3.0：記事C＝1投稿目『明日の注目レース』の中身も AI編集長／v3.0.0：AI編集長（記事A＝2投稿目・記事B＝4投稿目）の表示と設定／v2.9.12：各投稿の最後に『フォローして見逃さない』のページ。設定にアカウント名を追加／BOAT RACE JOURNAL v1：毎日19時に自動で作成／画像を一括ダウンロード） =================
-   毎日19時（日本時間）に、公式データから Instagram の3投稿ぶんを自動で作る。ここは、できたものを見て、まとめてダウンロードする画面。
-     1投稿目 明日の注目レース（表紙＋注目の理由＋注目の選手たち）／2投稿目 本日の勝負の裏側（表紙＋結果＋勝負の分岐点＋通が見ている数字の裏側）／3投稿目 高配当動画（同じ色・同じ日付）
+/* ================= v400 インスタ3投稿（v3.12.2：自動で作る時刻を、投稿ごとに分けた（2投稿目＝15時・3投稿目＝17時・1投稿目＝19時。設定で変えられる）。投稿の文章・画像には時刻を書かず『毎日更新』に〔Edge v1.30・SQL journal_v15・作成サービス v3.12.2〕／v3.12.1：リールの最初の画面（全部の型）を、日付は表紙と同じ大きさ・見出しと金額はその日の色・背景の写真は明るく〔作成サービス v3.12.1 のみ。画面の機能は変更なし〕／v3.12.0：1投稿目を『明日のレースの考察（動画解説付き）』のリールだけにした（画像なし。作れなかった日だけ従来の画像）。リールの投稿文のコピー・『保存したら削除』は1投稿目と2投稿目の両方に。／v3.11.0：リールの6つ目の型『S ショート型』（サービス側。画面は表示だけ）／v3.10.3：『これまで』の一覧と、黄色の『足りなかった項目と直し方』をなくした／作ったものは24時間で削除（ダウンロードしたら、コピー用の文章も一緒に削除。Edge v1.28・SQL journal_v14）／v3.10.1：設定に『リール動画の型』（ランダム（既定）／A〜E を固定。SQL journal_v13・Edge v1.27・作成サービス v3.10.1）／v3.10.0：リールの説明に『型』（A倍率ドーン型／B大金の裏側・事件追跡型／C選択の罠型／D知識の逆転型／E 2着・3着の謎・推理型。日付で順に回る）を表示〔作成サービス v3.10.0〕／v3.9.1：1・2・3の投稿ごとと、リール動画に『投稿文をコピー』ボタン（文章＋ハッシュタグを1回で）／v3.8.1：作り直しボタンを枠の上に移し、2投稿目の画像とリールを分けて表示（リールの説明は作ったときの記録から）／v3.8.0：02のリールに効果音とずんだもんの読み上げ〔作成サービス v3.8.0 のみ。画面の機能は変更なし〕／v3.7.0：投稿1・2・3のどれか1つだけ作り直すボタン（SQL journal_v12・Edge v1.26・作成サービス v3.7.0）／v3.6.1：リールだけ『保存』しても、設定した分あとにリールだけ自動で削除（SQL journal_v11・Edge v1.25）／v3.6.0：設定に『いま話題の言葉』（trend_words。SQL journal_v10・Edge v1.24）／v3.5.2：02のリール（縦動画・無音）を2投稿目の一覧に出して保存できるように〔Edge v1.23〕／v3.5.1：コピー用の文章の案内文を無くし、ハッシュタグは5個まで〔文言のみ〕／v3.4.8：文章とハッシュタグを1つの枠にして、まとめて1回でコピーできるように〔画面のみ。作成サービスの入れ替えは不要〕／v3.4.6：表紙（ジャケット画像）を付けるかどうかのボタンを設定に追加〔OFFなら01〜03の1枚目をいきなりフックにして、1番上の日付を表紙と同じ大きさに。Edge v1.22・追加SQL journal_v9〕／v3.4.5：1枚目のフックを『8つの型の穴埋め』から『その日の発見を掘る』方式に〔サーバー側。画面の機能は変更なし〕／v3.4.4：専門用語が出たページの左上に小さな用語メモ（『展示とは…』）・記事の改行を言葉のまとまり／一文ごとに〔サーバー側〕／v3.4.3：Instagramの文章とハッシュタグを別々の枠にして、それぞれコピー（タグは1個ずつもコピー可）／v3.4.2：記事を1本ずつ書かせて途中で切れないようにした〔サーバー側〕・作り直したとき前の回の記事の記録が残らないようにした〔Edge v1.21〕／v3.4.2：03 が無い日も枠と理由を出す・記事の本数の設定に 02／03 の名前を書く／v3.4.1：審査の回数の上限に達しても不合格の理由だけ最後に直して必ず画像にする（要確認の印つき）／v3.4.0：各記事にInstagramのキャプション＋ハッシュタグ（コピーボタンつき）・最後の1枚は『次に見る3点／問い／フォローと保存』の保存カード／v3.3.0：記事C＝1投稿目『明日の注目レース』の中身も AI編集長／v3.0.0：AI編集長（記事A＝2投稿目・記事B＝4投稿目）の表示と設定／v2.9.12：各投稿の最後に『フォローして見逃さない』のページ。設定にアカウント名を追加／BOAT RACE JOURNAL v1：毎日自動で作成／画像を一括ダウンロード） =================
+   毎日、投稿ごとの決まった時刻（日本時間。既定は2投稿目15時・3投稿目17時・1投稿目19時）に、公式データから Instagram の3投稿ぶんを自動で作る。ここは、できたものを見て、まとめてダウンロードする画面。
+     1投稿目 明日のレースの考察（動画解説付き。リールだけ）／2投稿目 本日の勝負の裏側（表紙＋結果＋勝負の分岐点＋通が見ている数字の裏側）／3投稿目 高配当動画（同じ色・同じ日付）
    作るのは Supabase（Edge Function journal-daily ＋ Cron）と作成サービス（Cloud Run。高配当動画と同じサービス）。この画面は journal_sets を読むだけ（押さなければ何もつくらない）。
    自動で投稿するAPIは、あとで接続する。いまは、ダウンロードして手動で投稿する。
    ダウンロードしたら（既定30分後に）保管場所のファイルを自動で削除する（端末に保存したものは消えない。設定でオフにできる）。
@@ -14574,7 +14574,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       partial: ["一部まだ（取り直し待ち）", "#d99a1c"], held: ["保留", "#d14b4b"], error: ["失敗", "#d14b4b"],
     };
     const COLS = "date,tomorrow,status,attempt,mode,started_at,style,hit_color,posts,gaps,images,zip_url,note,video_state,video_url,video_note,purged_at,updated_at";
-    const COLS_V2 = COLS + ",images_downloaded_at,images_purged_at,video_downloaded_at,video_purged_at,editor:audit->editor,audit_key:audit->>editor_key_name";
+    const COLS_V2 = COLS + ",images_downloaded_at,images_purged_at,video_downloaded_at,video_purged_at,editor:audit->editor,audit_key:audit->>editor_key_name,audit_phase:audit->phase,audit_only:audit->only";
     const COLS_V3 = COLS_V2 + ",reel_downloaded_at,reel_purged_at";                                   // v3.6.1：追加SQL journal_v11 のあとだけ読める列
     const isMp4 = (x) => /\.mp4$/i.test((x && x.name) || "");
     /* 『全部の画像を保存した』を端末ごとに覚える（個別の『保存』を全部の枚数ぶん押したら、ダウンロードずみとして印を付けるため） */
@@ -14617,8 +14617,8 @@ BUILDERS.talk = (el) => TALK.build(el);
     }
 
     function build(el) {
-      head(el, "インスタ3投稿", "毎日19時（日本時間）に、公式データから『明日の注目レース』『本日の勝負の裏側』と、初心者向けの記事の画像を自動でつくります（動画は、高配当動画のタブで作ります）。ここで確認して、まとめてダウンロードします。", [
-        "19時になると自動で作られます（出走表や結果が出そろっていないときは、30分後・1時間後にもう一度取りに行きます）。",
+      head(el, "インスタ3投稿", "毎日、投稿ごとの決まった時刻（日本時間）に、公式データから『明日のレースの考察（リール）』『本日の勝負の裏側』と、初心者向けの記事の画像を自動でつくります（高配当動画は、高配当動画のタブで作ります）。ここで確認して、まとめてダウンロードします。", [
+        "決まった時刻（既定：2投稿目＝15時・3投稿目＝17時・1投稿目＝19時。下の設定で変えられます）になると、投稿ごとに自動で作られます（出走表や結果が出そろっていないときは、30分後・1時間後にもう一度取りに行きます）。",
         "『まとめてダウンロード（zip）』で、画像（6〜7枚）を一括保存できます。スマホは『写真に保存』が便利です。",
         "公式データを確認できなかった投稿は『保留』になります（推測や見本の数字では作りません）。理由が下に出ます。",
         "投稿は、いまは手動です（自動投稿のAPIはあとで接続します）。",
@@ -14633,7 +14633,7 @@ BUILDERS.talk = (el) => TALK.build(el);
 
       /* v3.9.1：投稿ごとの『投稿文をコピー』（ボス『コメントとハッシュタグのコピーは1・2・3でボタンを分けて』『リール動画の投稿文のコピーがない』）。
          Instagramに貼る文章（おまけの1文＋問い＋お願い＋ハッシュタグ）は、記事の記録（journal_articles）の review.social.text にある。
-         1投稿目＝記事C（post=1）／2投稿目＝記事A（post=2）／3投稿目＝記事B（post=4）。リール（2投稿目の動画）も記事Aの投稿文を使う。 */
+         1投稿目＝記事C（post=1）／2投稿目＝記事A（post=2）／3投稿目＝記事B（post=4）。リール（2投稿目の動画）も記事Aの投稿文を使う。1投稿目のリール（明日のレースの考察）は、1投稿目の投稿文（リールの記録 role=C）を使う。 */
       const SOC_POST = { 1: 1, 2: 2, 3: 4 };
       const socCache = {};
       const loadSocial = (d, stamp) => {
@@ -14674,7 +14674,7 @@ BUILDERS.talk = (el) => TALK.build(el);
             b.onclick = () => copyText(sv.text, "投稿文をコピーしました");
           } else if (o && o._err) {
             b.textContent = "投稿文を読み込めませんでした"; note.textContent = o._err.code === "missing" ? "記事の記録の表がまだありません（追加SQL journal_v4）。" : "通信を確認して、画面を開き直してください。";
-          } else { b.textContent = "投稿文がありません"; note.textContent = "この投稿の記事の記録に、文章が入っていません。"; }
+          } else { b.textContent = "投稿文がありません"; note.textContent = "この投稿の文章は、ありません（ダウンロード後・または24時間たつと、文章も削除します）。"; }
         });
         return b;
       };
@@ -14709,7 +14709,9 @@ BUILDERS.talk = (el) => TALK.build(el);
            以前は、前回見た日を覚えていたため、0時を過ぎても前日の画面のまま固まっていた */
         const t = jstToday(), y = jstYesterday();
         if (state.picked && state.pickDay !== t) state.picked = false;
-        const def = (!state.rows.some((r) => r.date === t) && state.rows.some((r) => r.date === y) && jstMinutes() < CATCHUP_MIN) ? y : t;
+        const yRow = state.rows.find((r) => r.date === y);
+        const yAlive = !!yRow && !yRow.purged_at && (Array.isArray(yRow.images) ? yRow.images.length > 0 : false);       // v3.10.3：昨日ぶんの画像がまだ残っている（24時間以内）
+        const def = (!state.rows.some((r) => r.date === t) && yRow && (jstMinutes() < CATCHUP_MIN || yAlive)) ? y : t;
         if (!state.picked || (state.sel !== t && !state.rows.some((r) => r.date === state.sel))) { state.sel = def; state.picked = false; }
         paint();
       }
@@ -14720,7 +14722,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         state.busy = true; if (b) b.disabled = true;
         try {
           await rest("rpc/journal_run_post", { method: "POST", body: JSON.stringify({ p_date: state.sel, p_post: n }) });
-          toast(n + "投稿目だけの作り直しを始めました。" + (n === 2 ? "リールもあるため、" : "") + "5〜10分ほどかかります。進み具合はこの画面に出ます（ほかの投稿はそのままです）");
+          toast(n + "投稿目だけの作り直しを始めました。" + (n === 1 || n === 2 ? "リール（動画）もあるため、" : "") + "5〜10分ほどかかります。進み具合はこの画面に出ます（ほかの投稿はそのままです）");
           setTimeout(load, 4000);
         } catch (e) {
           if (e && e.code === "missing") toast("1つだけ作り直すには、追加SQL（journal_v12）を Supabase の SQL Editor で1回実行してください", "err");
@@ -14755,6 +14757,14 @@ BUILDERS.talk = (el) => TALK.build(el);
       };
       const cutoffText = () => state.conf.cutoff || "19:00";
       const cutoffMin = () => { const m = /^(\d+):(\d+)$/.exec(cutoffText()); return m ? +m[1] * 60 + +m[2] : 1140; };
+      /* v3.12.2：自動で作る時刻を、投稿ごとに（追加SQL journal_v15 のあと）。1投稿目＝明日のレースの考察（19時）／2投稿目＝本日の勝負の裏側（15時）／3投稿目＝今日の知らなきゃ損する話（17時） */
+      const PH_DEF = { 1: "19:00", 2: "15:00", 3: "17:00" };
+      const PH_NAME = { 1: "明日のレースの考察（1投稿目）", 2: "本日の勝負の裏側（2投稿目）", 3: "今日の知らなきゃ損する話（3投稿目）" };
+      const phasedOn = () => state.conf.time_p2 !== undefined && state.conf.phased !== "false";
+      const phaseText = (n) => (/^\d{2}:\d{2}$/.test(String(state.conf["time_p" + n] || "")) ? state.conf["time_p" + n] : PH_DEF[n]);
+      const phaseMin = (n) => { const m = /^(\d+):(\d+)$/.exec(phaseText(n)); return m ? +m[1] * 60 + +m[2] : 1140; };
+      const firstMin = () => (phasedOn() ? Math.min(phaseMin(1), phaseMin(2), phaseMin(3)) : cutoffMin());
+      const firstText = () => (phasedOn() ? [1, 2, 3].map(phaseText).sort()[0] : cutoffText());
 
       /* ---------------- 日ごとの表示 ---------------- */
       function paintDay() {
@@ -14772,20 +14782,21 @@ BUILDERS.talk = (el) => TALK.build(el);
         const top = mk("div", "display:flex;align-items:center;gap:8px;flex-wrap:wrap", "", c);
         mk("div", "font-weight:800;font-size:18px", dlabel(d) + "の3投稿", top);
         let st = r && ST[r.status];
-        if (!r && d === today && jstMinutes() < cutoffMin()) st = ["" + cutoffText() + " から作り始めます", "#6b7280"];
+        if (!r && d === today && jstMinutes() < firstMin()) st = ["" + firstText() + " から作り始めます", "#6b7280"];
+        else if (r && r.status === "partial" && phasedOn()) st = ["順に作成中（一部まだ）", "#d99a1c"];
         else if (!r) st = ["まだありません", "#6b7280"];
         if (!st) st = [String(r.status || "状態不明"), "#6b7280"];
         pill(st[0], st[1], top);
         if (r && r.hit_color) { const sw = mk("span", "display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)", "", top); mk("i", "display:inline-block;width:14px;height:14px;border-radius:50%;background:" + (COLOR_CSS[r.hit_color] || "#888"), "", sw); sw.appendChild(document.createTextNode("この日の色：" + r.hit_color)); }
         if (!r) {
-          if (d === today) mk("div", "margin-top:8px;color:var(--muted);font-size:13px", "締切時刻（" + cutoffText() + "）になると自動で作ります。すぐほしいときは、下の『今すぐ作る』を押してください。", c);
+          if (d === today) mk("div", "margin-top:8px;color:var(--muted);font-size:13px", (phasedOn() ? "投稿ごとの時刻（2投稿目 " + phaseText(2) + "／3投稿目 " + phaseText(3) + "／1投稿目 " + phaseText(1) + "）になると、順に自動で作ります。" : "締切時刻（" + cutoffText() + "）になると自動で作ります。") + "すぐほしいときは、下の『今すぐ作る』を押してください。", c);
           actions(c, null);
           return;
         }
         if (r.note) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", r.note, c);
         const posts = r.posts || {}, p1 = posts.p1 || {}, p2 = posts.p2 || {}, p3 = posts.p3 || {};
         const imgs = Array.isArray(r.images) ? r.images : [];
-        if (r.purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "保管日数をすぎたため、画像と動画のファイルは削除されています。", c);
+        if (r.purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "作ってから24時間たったため、画像・zip・リール・コピー用の文章は削除されています。", c);
         else {
           if (r.images_purged_at) mk("div", "margin-top:8px;font-size:13px;color:var(--muted)", "ダウンロードずみのため、画像とzipは保管場所から削除しました（端末に保存したものは残っています）。" + (canRebuild(d) ? "必要なら、下のボタンで作り直せます。" : "（この日は作り直せません）"), c);
           else if (r.images_downloaded_at) mk("div", "margin-top:8px;font-size:13px;color:#2f9e5b", purgeNote(r.images_downloaded_at, "画像とzip"), c);
@@ -14825,11 +14836,13 @@ BUILDERS.talk = (el) => TALK.build(el);
           const g = mk("div", "margin-top:16px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
           const h = mk("div", "display:flex;align-items:center;gap:8px;flex-wrap:wrap", "", g);
           mk("div", "font-weight:800;font-size:15px", n + "投稿目　" + title, h);
-          const waiting = r.status === "running" && !items.length;       // 作成中は『保留』と出さない
-          if (!post.ok && !items.length) { if (waiting) pill("作成中…", "#d99a1c", h); else if (r.status === "partial") pill("未作成（取り直し待ち）", "#d99a1c", h); else pill("保留", "#d14b4b", h); }
+          const nowOnly = Array.isArray(r.audit_only) ? r.audit_only.map(Number) : null;             // v3.12.2：投稿ごとに作っているときは、いま作っている投稿だけが『作成中』
+          const waiting = r.status === "running" && !items.length && !(phasedOn() && nowOnly && nowOnly.indexOf(n) < 0);       // 作成中は『保留』と出さない
+          const notYet = phasedOn() && d === jstToday() && jstMinutes() < phaseMin(n) && !post.ok && !items.length;          // まだ作る時刻になっていない
+          if (!post.ok && !items.length) { if (waiting) pill("作成中…", "#d99a1c", h); else if (notYet) pill(phaseText(n) + " に自動で作ります", "#6b7280", h); else if (r.status === "partial") pill("未作成（取り直し待ち）", "#d99a1c", h); else if (r.status === "running") pill("順番に作ります", "#d99a1c", h); else pill("保留", "#d14b4b", h); }
           if (post.ok && info) mk("div", "width:100%;font-size:13px;color:var(--muted)", info, h);
-          if (!post.ok && post.reason && !waiting) mk("div", "margin-top:6px;font-size:13px;" + (r.status === "partial" ? "color:var(--muted)" : "color:#d14b4b"), (r.status === "partial" ? "いまの状況：" : "理由：") + post.reason, g);
-          if (n === 2 && r.reel_purged_at && !items.some(isMp4)) mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "（ダウンロードずみのため、リールは保管場所から削除しました。端末に保存したものは残っています）", g);
+          if (!post.ok && post.reason && !waiting && !notYet) mk("div", "margin-top:6px;font-size:13px;" + (r.status === "partial" ? "color:var(--muted)" : "color:#d14b4b"), (r.status === "partial" ? "いまの状況：" : "理由：") + post.reason, g);
+          if ((n === 1 || n === 2) && r.reel_purged_at && !items.some(isMp4) && (n === 1 ? !items.length : true)) mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "（ダウンロードずみのため、リールは保管場所から削除しました。端末に保存したものは残っています）", g);
           if (!items.length && post.ok && r.images_purged_at) mk("div", "margin-top:6px;font-size:13px;color:var(--muted)", "（ダウンロードずみのため、画像は保管場所から削除しました）", g);
           /* v3.8.1：作り直しボタンは、画像・リールの上（枠の見出しのすぐ下）に出す（2投稿目はリールが縦に長く、下まで見ないと気づけなかった）。v3.7.0：この投稿だけ作り直す（作れなかった投稿があるとき・やり直したいとき）。画像が1つも無い日は、3つ全部の『今すぐ作り直す』（下）を使う */
           if (canRebuild(d) && d === state.sel && !r.purged_at && !r.images_purged_at && imgs.length && !(n === 3 && state.conf && (state.conf.articles_per_day === "1" || state.conf.editor === "false"))) {
@@ -14837,7 +14850,7 @@ BUILDERS.talk = (el) => TALK.build(el);
             if (r.status === "running") mk("div", "font-size:12px;color:var(--muted)", "いま作成中です。終わってから、この投稿だけ作り直せます。", pr);
             else {
               const bp = btn(n + "投稿目だけ作り直す", "", pr); bp.setAttribute("data-post-rebuild", String(n));
-              mk("div", "font-size:12px;color:var(--muted);flex:1 1 180px", (items.length ? "いまの画像は入れ替わります。" : "") + (n === 2 ? "リールも作り直します。" : "") + "ほかの投稿はそのままです（約" + (n === 2 ? "10〜15" : "5〜10") + "分）。", pr);
+              mk("div", "font-size:12px;color:var(--muted);flex:1 1 180px", (items.length ? (n === 1 ? "いまのリール（画像）は入れ替わります。" : "いまの画像は入れ替わります。") : "") + (n === 2 ? "リールも作り直します。" : "") + "ほかの投稿はそのままです（約" + (n === 2 ? "10〜15" : (n === 1 ? "3〜5" : "5〜10")) + "分）。", pr);
               bp.onclick = () => runPost(n, bp);
             }
           }
@@ -14850,7 +14863,9 @@ BUILDERS.talk = (el) => TALK.build(el);
             if (!hasVid && !r.reel_purged_at) reelBox("リール（動画）は、この回は作れていません（下に並ぶのは記事の画像だけです）。" + (why ? "理由：" + why : "理由の記録がありません。") + "　『2投稿目だけ作り直す』を押すと、リールも作り直します。");
             else if (hasVid && rl2 && Number(rl2.version) !== 5) reelBox("音つきのリールを作れなかったため、記事の画像をつないだだけの従来のリール（音なし）になっています。" + (why ? "理由：" + why : "") + "　『2投稿目だけ作り直す』で、音つきのリールを作り直せます。");
           }
-          if (post.ok || items.length) postCopyBtn(g, d, r.started_at || "", n, false);                // v3.9.1：この投稿の投稿文をコピー
+          if (n === 1 && post.reel_note && !items.some(isMp4) && items.length && !r.purged_at && !r.images_purged_at)           // v3.12.0：1投稿目のリールを作れなかった日は、従来の画像にもどす。理由を出す
+            mk("div", "margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #d99a1c;background:rgba(217,154,28,.10);font-size:13px;line-height:1.55", "1投稿目のリール（明日のレースの考察）は、この回は作れていません（下は、従来の画像です）。理由：" + String(post.reel_note) + "　『1投稿目だけ作り直す』で、リールを作り直せます。", g);
+          if ((post.ok || items.length) && !(n === 1 && items.length && items.every(isMp4))) postCopyBtn(g, d, r.started_at || "", n, false);                // v3.9.1：この投稿の投稿文をコピー（v3.12.0：1投稿目がリールだけのときは、リールの下のボタンだけ）
           if (items.length) {
             const grid = mk("div", "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px", "", g);
             const ordered = items.filter((x) => !isMp4(x)).concat(items.filter(isMp4));            // v3.8.1：画像（記事）を先に、リールは別の枠で
@@ -14859,7 +14874,7 @@ BUILDERS.talk = (el) => TALK.build(el);
               const isVid = isMp4(x);                                                              // v3.5.2：02のリール（縦動画）
               if (isVid && !reelHead) {                                                            // v3.8.1：画像とリールを分けて見せる（Instagram では別々の投稿）
                 reelHead = true;
-                mk("div", "grid-column:1 / -1;margin-top:10px;padding-top:10px;border-top:2px dashed rgba(127,127,127,.45);font-weight:800;font-size:14px", "▼ リール（動画）　※上の画像（記事）とは別の投稿です", grid);
+                mk("div", "grid-column:1 / -1;margin-top:10px;padding-top:10px;border-top:2px dashed rgba(127,127,127,.45);font-weight:800;font-size:14px", (items.some((y) => !isMp4(y)) ? "▼ リール（動画）　※上の画像（記事）とは別の投稿です" : "▼ リール（動画）　※この投稿は、リールだけです（画像はありません）"), grid);
               }
               const cell = mk("div", isVid ? "min-width:0;grid-column:1 / -1" : "min-width:0", "", grid);
               if (isVid) {
@@ -14870,13 +14885,13 @@ BUILDERS.talk = (el) => TALK.build(el);
                 const im = mk("img", "width:100%;height:100%;object-fit:cover;display:block", "", a); im.src = x.url; im.alt = x.label; im.loading = "lazy";
               }
               if (isVid) {                                                                         // v3.8.1：保管されている名札（『無音・約16秒』）は古いので、作ったときの記録から出す
-                const rl = p2.reel || null, vv = (rl && rl.voice) || {};
+                const rl = (n === 1 ? p1 : p2).reel || null, vv = (rl && rl.voice) || {};
                 const txt = !rl ? "リール（縦動画）" : "リール（縦動画" + (rl.seconds ? "・約" + Math.round(rl.seconds) + "秒" : "") + "）：" + (rl.audio ? "効果音" + (vv.ok ? "＋ずんだもんの声（" + (vv.credit || "VOICEVOX") + "）つき" : "つき（声は取れませんでした）") : "音なし（従来のリール）")
                   + (rl && rl.audio ? (rl.tier === "footage" ? "／公式リプレイの実際のレース映像つき" : (rl.footage && rl.footage.note ? "／実際のレース映像は使えませんでした（" + rl.footage.note + "）" : "")) : "")
                   + (rl && rl.pattern && rl.pattern_name ? "／型" + rl.pattern + "：" + rl.pattern_name : "");                    // v3.10.0：その日のリールの型（毎日変わる）
                 mk("div", "font-size:12px;line-height:1.4;margin-top:4px;color:" + (rl && rl.audio ? (vv.ok ? "#2f9e5b" : "#d99a1c") : "var(--muted)"), txt, cell);
               } else mk("div", "font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;word-break:break-all;min-height:3.1em", x.label.replace(/^\d投稿目\s*/, ""), cell);
-              if (isVid) postCopyBtn(cell, d, r.started_at || "", 2, true);                                    // v3.9.1：リールの投稿文をコピー
+              if (isVid) postCopyBtn(cell, d, r.started_at || "", n, true);                                    // v3.9.1：リールの投稿文をコピー（v3.12.0：1投稿目のリールは1投稿目の投稿文）
               if (isVid && r.reel_downloaded_at && !r.reel_purged_at) mk("div", "font-size:12px;color:#2f9e5b;margin-top:2px", purgeNote(r.reel_downloaded_at, "リール"), cell);
               const sv = mk("button", "margin-top:4px;width:100%;min-height:36px;font-size:12px", "保存", cell); sv.type = "button"; sv.className = "mini";
               sv.onclick = async () => {
@@ -14884,7 +14899,11 @@ BUILDERS.talk = (el) => TALK.build(el);
                 try {
                   const f = await fetchFile(x.url, x.name, isVid ? "video/mp4" : "image/jpeg"); const res = await saveFiles([f]);
                   if (res === "shared") toast(isVid ? "共有メニューから『ビデオを保存』を選んでください" : "共有メニューから『画像を保存』を選んでください");
-                  if (isVid && (res === "shared" || res === "downloaded")) markDownloaded("reel", r);      // v3.6.1：リールは画像と別に印を付ける（リールだけ消える）
+                  if (isVid && (res === "shared" || res === "downloaded")) {                                // v3.6.1：リールは画像と別に印を付ける（リールだけ消える）。v3.12.0：リールが2本（1投稿目・2投稿目）あるときは、2本とも保存してから印を付ける
+                    const reels = imgs.filter(isMp4).map((y) => y.name), gotR = savedAdd(d, r.started_at || "", x.name), leftR = reels.filter((nm) => gotR.indexOf(nm) < 0).length;
+                    if (leftR === 0) markDownloaded("reel", r);
+                    else if (res === "downloaded") toast("保存しました（あとリール" + leftR + "本。全部保存すると、保管場所のリールを自動で削除します）");
+                  }
                   else if ((res === "shared" || res === "downloaded") && delOn()) {
                     const got = savedAdd(d, r.started_at || "", x.name), all = imgs.filter((y) => !isMp4(y)).map((y) => y.name);
                     const left = all.filter((n) => got.indexOf(n) < 0).length;
@@ -14905,7 +14924,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         const info1 = rc1.venue ? rc1.venue + " " + rc1.race + "R" + (rc1.stage ? "　" + rc1.stage : "") + (rc1.arare ? "　荒れ度 " + rc1.arare.score : "") + (p1.pick && p1.pick.mode === "random" ? "　（ランダム選出）" : "") : "";
         const sel2 = (p2.pick && p2.pick.picked) || {};
         const info2 = rc2.venue ? rc2.venue + " " + rc2.race + "R　3連単 " + (rc2.combo || []).join("-") + "　" + yen(rc2.payout) + (rc2.popularity ? "（" + rc2.popularity + "番人気）" : "") + (sel2.odds_x ? "　" + sel2.odds_x + "倍" + (sel2.is_day_max ? "・この日の最高" : (sel2.day_rank ? "・この日" + sel2.day_rank + "番目" : "")) : "") : "";
-        group(1, "明日の注目レース（" + dlabel(r.tomorrow || d) + "）" + (p1 && p1.editor ? "（記事C：AI編集長）" : ""), p1, i1, info1 + (p1 && p1.editor && p1.editor.headline ? "　見出し：" + p1.editor.headline : ""));
+        group(1, "明日のレースの考察・動画解説付き（" + dlabel(r.tomorrow || d) + "）" + (p1 && p1.editor ? "（記事C：AI編集長）" : ""), p1, i1, info1 + (p1 && p1.editor && p1.editor.headline ? "　見出し：" + p1.editor.headline : ""));
         const edNote = (() => {                                               // AI編集長の状態（審査役つき v3.0.6）
           if (!ed) return "";
           const ps = ed.pass_score || 95, nr = ed.refine_rounds || 0, tm = ed.elapsed ? "（編集長 " + (ed.elapsed / 60).toFixed(1) + "分）" : "";
@@ -15030,26 +15049,12 @@ BUILDERS.talk = (el) => TALK.build(el);
         const b2 = btn(isY ? "昨日ぶんの注目レースをランダムで選び直す" : "明日のレースをランダムで選び直す", "", row);
         b1.onclick = () => run(null, "作成");
         b2.onclick = () => run("random", "ランダム選出");
-        mk("div", "width:100%;font-size:12px;color:var(--muted)", "『ランダム』は、" + (isY ? "昨日ぶんの『明日の注目レース』（＝今日のレース）を" : "明日の優勝戦・準優勝戦などから1レースを") + "選び直します（無ければ荒れそうなレース）。続けて押せるのは2分に1回です。", row);
+        mk("div", "width:100%;font-size:12px;color:var(--muted)", "『ランダム』は、" + (isY ? "昨日ぶんの『明日のレースの考察』（＝今日のレース）を" : "明日の優勝戦・準優勝戦などから1レースを") + "選び直します（無ければ荒れそうなレース）。続けて押せるのは2分に1回です。", row);
         if (isY) goToday(row);
       }
 
-      /* ---------------- 履歴 ---------------- */
-      function paintHist() {
-        const c = histCard; c.textContent = "";
-        if (state.err || !state.rows.length) { c.style.display = "none"; return; }
-        c.style.display = "";
-        mk("div", "font-weight:800;font-size:15px;margin-bottom:8px", "これまで", c);
-        const wrap = mk("div", "display:flex;gap:8px;flex-wrap:wrap", "", c);
-        const tdy = jstToday();
-        const list = state.rows.some((r) => r.date === tdy) ? state.rows : [{ date: tdy, status: "none" }].concat(state.rows);
-        list.forEach((r) => {
-          const b = mk("button", "min-height:44px;padding:4px 12px;font-size:13px;line-height:1.3", "", wrap); b.type = "button"; b.className = "chip" + (r.date === state.sel ? " on" : "");
-          const st = r.status === "none" ? ["まだありません", "#888"] : (ST[r.status] || ["", "#888"]);
-          b.innerHTML = esc(dlabel(r.date)) + '<br><span style="font-size:11px;color:' + st[1] + '">' + esc(st[0].replace("…", "").replace("（一部取りこぼしあり）", "")) + "</span>";
-          b.onclick = () => { state.sel = r.date; state.picked = true; state.pickDay = jstToday(); paint(); };
-        });
-      }
+      /* ---------------- 履歴（v3.10.3：『これまで』の一覧は出さない。ボス 11/11『このこれまでって項目いらない』。作ったものは24時間で消えるため、見るのは今日ぶん〔と、まだ消えていない昨日ぶん〕だけ） ---------------- */
+      function paintHist() { histCard.textContent = ""; histCard.style.display = "none"; }
 
 
       /* ---------------- AI編集長の記事を読む（v3.0.5／v3.0.6 で審査役の○△×と書き直しの経過を追加） ---------------- */
@@ -15112,7 +15117,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         rows.forEach((a) => {
           const card = mk("div", "margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.3)", "", box);
           const head = mk("div", "display:flex;gap:8px;align-items:center;flex-wrap:wrap", "", card);
-          mk("span", "font-weight:800;font-size:14px", a.role === "B" ? "記事B（初心者向け）" : (a.role === "C" ? "記事C（明日の注目レース）" : "記事A（ファン向け）"), head);
+          mk("span", "font-weight:800;font-size:14px", a.role === "B" ? "記事B（初心者向け）" : (a.role === "C" ? (a.pages && a.pages.length ? "記事C（明日のレースの考察）" : "01 明日のレースの考察（リールの投稿文）") : "記事A（ファン向け）"), head);
           const rvb = a.review || {}, pn0 = String((rvb.program_notes || [])[0] || "");
           const needCheck = a.status !== "pending" && pn0.indexOf("要確認：") === 0, repaired = a.status !== "pending" && pn0.indexOf("最後の直し：") === 0;     // v3.4.1
           const below = a.status !== "pending" && (rvb.below_pass === true || needCheck || repaired || pn0.indexOf("合格点（") === 0 && pn0.indexOf("届いていない") > 0);
@@ -15150,11 +15155,8 @@ BUILDERS.talk = (el) => TALK.build(el);
             if (j.proposal) jl.push("審査役の提案：「" + j.proposal + "」");
             if (jl.length) { mk("div", "margin-top:8px;font-size:13px;font-weight:700", "審査役のフック審査（3人の読者の目）", card); mk("div", "margin-top:2px;font-size:12px;line-height:1.7;color:var(--muted);white-space:pre-wrap", jl.join("\n"), card); }
           }
-          const bad = failedChecks(rv);
-          if (bad.length) {
-            mk("div", "margin-top:8px;font-size:13px;font-weight:700;color:#d99a1c", "足りなかった項目（" + bad.length + "）と、直し方", card);
-            bad.forEach((c) => mk("div", "margin-top:4px;font-size:12px;line-height:1.6;color:#d99a1c", c.r + " " + c.id + " " + c.name + "：" + (c.fix || c.evidence || "") + ((c.adjusted || []).length ? "（" + c.adjusted.join("・") + "）" : ""), card));
-          } else if (rv.checks) { mk("div", "margin-top:8px;font-size:13px;font-weight:700;color:#2f9e5b", "20項目すべて○でした", card); }
+          const bad = failedChecks(rv);                                           // v3.10.3：黄色の『足りなかった項目と、直し方』の一覧は出さない（ボス 11/11『邪魔だから消して』）。全部○のときの一言だけ残す
+          if (!bad.length && rv.checks) { mk("div", "margin-top:8px;font-size:13px;font-weight:700;color:#2f9e5b", "20項目すべて○でした", card); }
           const reasons = [].concat(rv.checks ? [] : (rv.program_notes || []).map((x) => "減点：" + x), (rv.hard_fail || []).map((x) => "不合格：" + x), (rv.unverified || []).map((x) => "未確認：" + x));
           reasons.forEach((x) => mk("div", "margin-top:4px;font-size:12px;color:#d99a1c", x, card));
           const okc = (rv.checks || []).filter((c) => c.r === "○");
@@ -15193,15 +15195,32 @@ BUILDERS.talk = (el) => TALK.build(el);
         const l0 = line("毎日の自動作成");
         seg(l0, [["true", "オン"], ["false", "オフ（止める）"]], f.enabled === "false" ? "false" : "true", (v) => { f.enabled = v; setConf("enabled", v); paintSet(); });
 
-        const l1 = line("本日の最高配当を選ぶ『締切時刻』： " + (f.cutoff || "19:00") + "　（この時刻から作り始めます）");
-        const rg = mk("input", "width:100%;margin-top:8px;min-height:36px", "", l1); rg.type = "range"; rg.min = "1080"; rg.max = "1200"; rg.step = "10";
-        const cur = (() => { const m = /^(\d+):(\d+)$/.exec(f.cutoff || "19:00"); return m ? +m[1] * 60 + +m[2] : 1140; })(); rg.value = String(cur);
         const fmt = (n) => String(Math.floor(n / 60)).padStart(2, "0") + ":" + String(n % 60).padStart(2, "0");
-        rg.oninput = () => { l1.firstChild.textContent = "本日の最高配当を選ぶ『締切時刻』： " + fmt(+rg.value) + "　（この時刻から作り始めます）"; };
-        rg.onchange = () => { f.cutoff = fmt(+rg.value); setConf("cutoff", f.cutoff); };
-        mk("div", "font-size:12px;color:var(--muted)", "18:00〜20:00で選べます（既定は19:00）。遅くするほど、その日の最高配当が確定しやすくなります。", l1);
+        const hasPh = f.time_p2 !== undefined;                                       // 追加SQL journal_v15 を流したあとだけ、投稿ごとの時刻を選べる
+        if (hasPh) {
+          const lp = line("自動で作る時刻");
+          seg(lp, [["true", "投稿ごとに（おすすめ）"], ["false", "3つ一度に（これまでどおり）"]], f.phased === "false" ? "false" : "true", (v) => { f.phased = v; setConf("phased", v); paintSet(); });
+        }
+        if (hasPh && f.phased !== "false") {
+          [2, 3, 1].forEach((n) => {
+            const key = "time_p" + n, cur0 = phaseText(n);
+            const lt = line(PH_NAME[n] + "を作る時刻： " + cur0);
+            const rt = mk("input", "width:100%;margin-top:8px;min-height:36px", "", lt); rt.type = "range"; rt.min = "360"; rt.max = "1430"; rt.step = "10";
+            const m0 = /^(\d+):(\d+)$/.exec(cur0); rt.value = String(m0 ? +m0[1] * 60 + +m0[2] : 1140);
+            rt.oninput = () => { lt.firstChild.textContent = PH_NAME[n] + "を作る時刻： " + fmt(+rt.value); };
+            rt.onchange = () => { f[key] = fmt(+rt.value); setConf(key, f[key]); };
+          });
+          mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "06:00〜23:50 で選べます（既定：本日の勝負の裏側15:00／今日の知らなきゃ損する話17:00／明日のレースの考察19:00）。出走表や結果が出そろっていないときは、30分後・1時間後にもう一度取りに行きます（3回まで）。投稿の文章や画像には時刻を書かず、『毎日更新』と出ます。", c);
+        } else {
+          const l1 = line("本日の最高配当を選ぶ『締切時刻』： " + (f.cutoff || "19:00") + "　（この時刻から作り始めます）");
+          const rg = mk("input", "width:100%;margin-top:8px;min-height:36px", "", l1); rg.type = "range"; rg.min = "1080"; rg.max = "1200"; rg.step = "10";
+          const cur = (() => { const m = /^(\d+):(\d+)$/.exec(f.cutoff || "19:00"); return m ? +m[1] * 60 + +m[2] : 1140; })(); rg.value = String(cur);
+          rg.oninput = () => { l1.firstChild.textContent = "本日の最高配当を選ぶ『締切時刻』： " + fmt(+rg.value) + "　（この時刻から作り始めます）"; };
+          rg.onchange = () => { f.cutoff = fmt(+rg.value); setConf("cutoff", f.cutoff); };
+          mk("div", "font-size:12px;color:var(--muted)", "18:00〜20:00で選べます（既定は19:00）。遅くするほど、その日の最高配当が確定しやすくなります。", l1);
+        }
 
-        const l2 = line("明日の注目レースの選び方");
+        const l2 = line("明日のレース（考察するレース）の選び方");
         seg(l2, [["auto", "荒れそうなレース（自動）"], ["random", "優勝戦・準優勝戦などからランダム"]], f.mode === "random" ? "random" : "auto", (v) => { f.mode = v; setConf("mode", v); paintSet(); });
 
         const l2b = line("2投稿目『本日の勝負の裏側』のレース（3連単の配当）");
@@ -15239,7 +15258,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           seg(l7, [["true", "使う"], ["false", "使わない（分析ページで作る）"]], f.editor === "false" ? "false" : "true", (v) => { f.editor = v; setConf("editor", v); paintSet(); });
           if (f.editor !== "false") {
             seg(l7, [["2", "1日2記事（02 勝負の裏側＋03 今日の知らなきゃ損する話）"], ["1", "1日1記事（02だけ・03なし）"]], f.articles_per_day === "1" ? "1" : "2", (v) => { f.articles_per_day = v; setConf("articles_per_day", v); paintSet(); });
-            mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "記事A＝02『本日の勝負の裏側』、記事B＝03『今日の知らなきゃ損する話』。01『明日の注目レース』の中身（記事C）は、明日のレースがある日は本数に関係なく毎日書きます。", l7);
+            mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "記事A＝02『本日の勝負の裏側』、記事B＝03『今日の知らなきゃ損する話』。01『明日のレースの考察』は、記事ではなく、明日の出走表の数字から作るリール（動画）です（記事は書きません）。", l7);
             if (f.editor_pass != null) {
               mk("div", "font-size:13px;font-weight:700;margin-top:10px", "合格点（審査役の点がこの点数以上で、フックも合格点以上の記事を画像にします）", l7);
               seg(l7, [["95", "95点（厳しい）"], ["90", "90点"], ["85", "85点"], ["80", "80点"]], String(f.editor_pass || "95"), (v) => { f.editor_pass = v; setConf("editor_pass", v); paintSet(); });
@@ -15270,7 +15289,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           seg(l9, [["true", "つける"], ["false", "つけない（1枚目をいきなりフックで出す）"]], f.cover === "false" ? "false" : "true", (v) => { f.cover = v; setConf("cover", v); paintSet(); });
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", f.cover === "false"
             ? "いまは表紙なしです。01・02・03とも、1枚目がいきなりフック（01は注目の理由）になります。そのぶん、1番上の日付を表紙と同じ大きさにしています。01の1枚目では、用語メモ（『展示とは…』）は日付・レース名と重なるため2枚目以降に付きます。次に作る分から変わります。"
-            : "01『明日の注目レース』・02『本日の勝負の裏側』・03『今日の知らなきゃ損する話』の先頭に、これまでどおり表紙の1枚絵を付けます。『つけない』にすると、1枚目がいきなりフックになります。次に作る分から変わります。", l9);
+            : "02『本日の勝負の裏側』・03『今日の知らなきゃ損する話』の先頭に、これまでどおり表紙の1枚絵を付けます（01はリールだけなので、表紙はありません）。『つけない』にすると、1枚目がいきなりフックになります。次に作る分から変わります。", l9);
         } else {
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この設定を使うには、追加SQL（journal_v9_追加分）を Supabase の SQL Editor で1回実行してください（実行するまでは、表紙ありで作ります）。", l9);
         }
@@ -15309,7 +15328,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         } else {
           mk("div", "font-size:12px;color:var(--muted);margin-top:6px", "この機能を使うには、追加SQL（journal_v2_追加分）を Supabase の SQL Editor で1回実行してください。", l5);
         }
-        mk("div", "margin-top:12px;font-size:12px;color:var(--muted)", "ダウンロードしなかった画像・zip・動画は " + (f.keep_days || "7") + " 日間保管し、過ぎたら自動で削除します。", c);
+        mk("div", "margin-top:12px;font-size:12px;color:var(--muted)", "ダウンロードしたものは、上で決めた時間のあとに削除します（コピー用の文章も一緒に消えます）。ダウンロードしなかったものも、作ってから24時間で自動で削除します（画像・zip・リール・コピー用の文章。容量を残しません）。Edge Function v1.28 と追加SQL journal_v14 が必要です。", c);
       }
 
       function paint() { paintDay(); paintHist(); paintSet(); }
