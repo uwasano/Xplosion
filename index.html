@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "454";
+const APP_VERSION = "456";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13632,7 +13632,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.12.2";
+    const SERVER_NEED = "3.13.1";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14534,7 +14534,7 @@ BUILDERS.talk = (el) => TALK.build(el);
   }
 })();
 
-/* ================= v400 インスタ3投稿（v3.12.2：自動で作る時刻を、投稿ごとに分けた（2投稿目＝15時・3投稿目＝17時・1投稿目＝19時。設定で変えられる）。投稿の文章・画像には時刻を書かず『毎日更新』に〔Edge v1.30・SQL journal_v15・作成サービス v3.12.2〕／v3.12.1：リールの最初の画面（全部の型）を、日付は表紙と同じ大きさ・見出しと金額はその日の色・背景の写真は明るく〔作成サービス v3.12.1 のみ。画面の機能は変更なし〕／v3.12.0：1投稿目を『明日のレースの考察（動画解説付き）』のリールだけにした（画像なし。作れなかった日だけ従来の画像）。リールの投稿文のコピー・『保存したら削除』は1投稿目と2投稿目の両方に。／v3.11.0：リールの6つ目の型『S ショート型』（サービス側。画面は表示だけ）／v3.10.3：『これまで』の一覧と、黄色の『足りなかった項目と直し方』をなくした／作ったものは24時間で削除（ダウンロードしたら、コピー用の文章も一緒に削除。Edge v1.28・SQL journal_v14）／v3.10.1：設定に『リール動画の型』（ランダム（既定）／A〜E を固定。SQL journal_v13・Edge v1.27・作成サービス v3.10.1）／v3.10.0：リールの説明に『型』（A倍率ドーン型／B大金の裏側・事件追跡型／C選択の罠型／D知識の逆転型／E 2着・3着の謎・推理型。日付で順に回る）を表示〔作成サービス v3.10.0〕／v3.9.1：1・2・3の投稿ごとと、リール動画に『投稿文をコピー』ボタン（文章＋ハッシュタグを1回で）／v3.8.1：作り直しボタンを枠の上に移し、2投稿目の画像とリールを分けて表示（リールの説明は作ったときの記録から）／v3.8.0：02のリールに効果音とずんだもんの読み上げ〔作成サービス v3.8.0 のみ。画面の機能は変更なし〕／v3.7.0：投稿1・2・3のどれか1つだけ作り直すボタン（SQL journal_v12・Edge v1.26・作成サービス v3.7.0）／v3.6.1：リールだけ『保存』しても、設定した分あとにリールだけ自動で削除（SQL journal_v11・Edge v1.25）／v3.6.0：設定に『いま話題の言葉』（trend_words。SQL journal_v10・Edge v1.24）／v3.5.2：02のリール（縦動画・無音）を2投稿目の一覧に出して保存できるように〔Edge v1.23〕／v3.5.1：コピー用の文章の案内文を無くし、ハッシュタグは5個まで〔文言のみ〕／v3.4.8：文章とハッシュタグを1つの枠にして、まとめて1回でコピーできるように〔画面のみ。作成サービスの入れ替えは不要〕／v3.4.6：表紙（ジャケット画像）を付けるかどうかのボタンを設定に追加〔OFFなら01〜03の1枚目をいきなりフックにして、1番上の日付を表紙と同じ大きさに。Edge v1.22・追加SQL journal_v9〕／v3.4.5：1枚目のフックを『8つの型の穴埋め』から『その日の発見を掘る』方式に〔サーバー側。画面の機能は変更なし〕／v3.4.4：専門用語が出たページの左上に小さな用語メモ（『展示とは…』）・記事の改行を言葉のまとまり／一文ごとに〔サーバー側〕／v3.4.3：Instagramの文章とハッシュタグを別々の枠にして、それぞれコピー（タグは1個ずつもコピー可）／v3.4.2：記事を1本ずつ書かせて途中で切れないようにした〔サーバー側〕・作り直したとき前の回の記事の記録が残らないようにした〔Edge v1.21〕／v3.4.2：03 が無い日も枠と理由を出す・記事の本数の設定に 02／03 の名前を書く／v3.4.1：審査の回数の上限に達しても不合格の理由だけ最後に直して必ず画像にする（要確認の印つき）／v3.4.0：各記事にInstagramのキャプション＋ハッシュタグ（コピーボタンつき）・最後の1枚は『次に見る3点／問い／フォローと保存』の保存カード／v3.3.0：記事C＝1投稿目『明日の注目レース』の中身も AI編集長／v3.0.0：AI編集長（記事A＝2投稿目・記事B＝4投稿目）の表示と設定／v2.9.12：各投稿の最後に『フォローして見逃さない』のページ。設定にアカウント名を追加／BOAT RACE JOURNAL v1：毎日自動で作成／画像を一括ダウンロード） =================
+/* ================= v400 インスタ3投稿（v3.13.0：投稿文のコピーは『1・2・3投稿目』の3つのボタンだけ（長い文章は出さない。3投稿目も同じ形。リールもその投稿の文章）／AI編集長の記事を読むから、コピーのボタンと長文の枠をなくした／画面の自動の読み直しで、スクロール中・文字を選んでいる途中に中身が消える不具合を直した〔画面のみ。リールの言い回し・動きの日替わり、説明の図は作成サービス v3.13.0〕／v3.12.2：自動で作る時刻を、投稿ごとに分けた（2投稿目＝15時・3投稿目＝17時・1投稿目＝19時。設定で変えられる）。投稿の文章・画像には時刻を書かず『毎日更新』に〔Edge v1.30・SQL journal_v15・作成サービス v3.12.2〕／v3.12.1：リールの最初の画面（全部の型）を、日付は表紙と同じ大きさ・見出しと金額はその日の色・背景の写真は明るく〔作成サービス v3.12.1 のみ。画面の機能は変更なし〕／v3.12.0：1投稿目を『明日のレースの考察（動画解説付き）』のリールだけにした（画像なし。作れなかった日だけ従来の画像）。リールの投稿文のコピー・『保存したら削除』は1投稿目と2投稿目の両方に。／v3.11.0：リールの6つ目の型『S ショート型』（サービス側。画面は表示だけ）／v3.10.3：『これまで』の一覧と、黄色の『足りなかった項目と直し方』をなくした／作ったものは24時間で削除（ダウンロードしたら、コピー用の文章も一緒に削除。Edge v1.28・SQL journal_v14）／v3.10.1：設定に『リール動画の型』（ランダム（既定）／A〜E を固定。SQL journal_v13・Edge v1.27・作成サービス v3.10.1）／v3.10.0：リールの説明に『型』（A倍率ドーン型／B大金の裏側・事件追跡型／C選択の罠型／D知識の逆転型／E 2着・3着の謎・推理型。日付で順に回る）を表示〔作成サービス v3.10.0〕／v3.9.1：1・2・3の投稿ごとと、リール動画に『投稿文をコピー』ボタン（文章＋ハッシュタグを1回で）／v3.8.1：作り直しボタンを枠の上に移し、2投稿目の画像とリールを分けて表示（リールの説明は作ったときの記録から）／v3.8.0：02のリールに効果音とずんだもんの読み上げ〔作成サービス v3.8.0 のみ。画面の機能は変更なし〕／v3.7.0：投稿1・2・3のどれか1つだけ作り直すボタン（SQL journal_v12・Edge v1.26・作成サービス v3.7.0）／v3.6.1：リールだけ『保存』しても、設定した分あとにリールだけ自動で削除（SQL journal_v11・Edge v1.25）／v3.6.0：設定に『いま話題の言葉』（trend_words。SQL journal_v10・Edge v1.24）／v3.5.2：02のリール（縦動画・無音）を2投稿目の一覧に出して保存できるように〔Edge v1.23〕／v3.5.1：コピー用の文章の案内文を無くし、ハッシュタグは5個まで〔文言のみ〕／v3.4.8：文章とハッシュタグを1つの枠にして、まとめて1回でコピーできるように〔画面のみ。作成サービスの入れ替えは不要〕／v3.4.6：表紙（ジャケット画像）を付けるかどうかのボタンを設定に追加〔OFFなら01〜03の1枚目をいきなりフックにして、1番上の日付を表紙と同じ大きさに。Edge v1.22・追加SQL journal_v9〕／v3.4.5：1枚目のフックを『8つの型の穴埋め』から『その日の発見を掘る』方式に〔サーバー側。画面の機能は変更なし〕／v3.4.4：専門用語が出たページの左上に小さな用語メモ（『展示とは…』）・記事の改行を言葉のまとまり／一文ごとに〔サーバー側〕／v3.4.3：Instagramの文章とハッシュタグを別々の枠にして、それぞれコピー（タグは1個ずつもコピー可）／v3.4.2：記事を1本ずつ書かせて途中で切れないようにした〔サーバー側〕・作り直したとき前の回の記事の記録が残らないようにした〔Edge v1.21〕／v3.4.2：03 が無い日も枠と理由を出す・記事の本数の設定に 02／03 の名前を書く／v3.4.1：審査の回数の上限に達しても不合格の理由だけ最後に直して必ず画像にする（要確認の印つき）／v3.4.0：各記事にInstagramのキャプション＋ハッシュタグ（コピーボタンつき）・最後の1枚は『次に見る3点／問い／フォローと保存』の保存カード／v3.3.0：記事C＝1投稿目『明日の注目レース』の中身も AI編集長／v3.0.0：AI編集長（記事A＝2投稿目・記事B＝4投稿目）の表示と設定／v2.9.12：各投稿の最後に『フォローして見逃さない』のページ。設定にアカウント名を追加／BOAT RACE JOURNAL v1：毎日自動で作成／画像を一括ダウンロード） =================
    毎日、投稿ごとの決まった時刻（日本時間。既定は2投稿目15時・3投稿目17時・1投稿目19時）に、公式データから Instagram の3投稿ぶんを自動で作る。ここは、できたものを見て、まとめてダウンロードする画面。
      1投稿目 明日のレースの考察（動画解説付き。リールだけ）／2投稿目 本日の勝負の裏側（表紙＋結果＋勝負の分岐点＋通が見ている数字の裏側）／3投稿目 高配当動画（同じ色・同じ日付）
    作るのは Supabase（Edge Function journal-daily ＋ Cron）と作成サービス（Cloud Run。高配当動画と同じサービス）。この画面は journal_sets を読むだけ（押さなければ何もつくらない）。
@@ -14631,18 +14631,33 @@ BUILDERS.talk = (el) => TALK.build(el);
       const btn = (label, cls, parent) => { const b = mk("button", "flex:1 1 auto;min-width:120px;min-height:46px;font-size:14px", label, parent); b.type = "button"; b.className = "mini " + (cls || ""); return b; };
       const pill = (text, color, parent) => mk("span", "display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;background:" + color + ";vertical-align:middle", text, parent);
 
-      /* v3.9.1：投稿ごとの『投稿文をコピー』（ボス『コメントとハッシュタグのコピーは1・2・3でボタンを分けて』『リール動画の投稿文のコピーがない』）。
-         Instagramに貼る文章（おまけの1文＋問い＋お願い＋ハッシュタグ）は、記事の記録（journal_articles）の review.social.text にある。
-         1投稿目＝記事C（post=1）／2投稿目＝記事A（post=2）／3投稿目＝記事B（post=4）。リール（2投稿目の動画）も記事Aの投稿文を使う。1投稿目のリール（明日のレースの考察）は、1投稿目の投稿文（リールの記録 role=C）を使う。 */
+      /* v3.13.0：『投稿文をコピー』は、1・2・3投稿目の3つのボタンだけにした（ボス 11/12『コピーは3種類でいい』『ボタンだけでいい。長文を見せなくていい』『3投稿目だけコピーが無く全文コピーになる』）。
+         文章とハッシュタグは画面に出さず、ボタンを1回押すとコピーする。リール（動画）にも、その投稿の文章を使う（1投稿目のリール＝1投稿目、2投稿目のリール＝2投稿目）。
+         文章のもとは、記事の記録（journal_articles）の review.social。1投稿目＝記事C（post=1）／2投稿目＝記事A（post=2）／3投稿目＝記事B（post=4）。
+         text が無い記事（確認待ち・古い記録）は、同じ形（文＋問い＋お願い＋タグ）を、その記事の caption・hashtags から、それも無ければ見出し（フック）＋定型のタグから組み立てる（ボタンが消えない）。 */
       const SOC_POST = { 1: 1, 2: 2, 3: 4 };
+      const SOC_ROLE = { 1: "C", 2: "A", 3: "B" };
+      const SOC_CTA = { C: "【フォローと保存】明日のレース前に見返せます。", A: "【フォローと保存】次のレースの前に見返せます。", B: "【フォローと保存】毎日更新しています。" };
+      const SOC_TAGS = { A: ["#競艇", "#ボートレース", "#雑学", "#勝負の世界", "#ボートレース分析"], B: ["#競艇", "#ボートレース", "#知らなかった", "#豆知識", "#競艇初心者"], C: ["#競艇", "#ボートレース", "#雑学", "#見どころ", "#明日のレース"] };
+      const oneLine = (s) => String(s == null ? "" : s).replace(/\s*\n\s*/g, "").trim();
+      const socialTextOf = (a, role) => {
+        const s = (a && a.review && a.review.social) || null;
+        if (s && s.text) return String(s.text);
+        const tags = s && Array.isArray(s.hashtags) && s.hashtags.length ? s.hashtags.slice(0, 5).map(String) : SOC_TAGS[role];
+        let cap = s && s.caption ? oneLine(s.caption) : "";
+        if (!cap && a) cap = oneLine(a.hook || a.headline);
+        if (!cap) return "";
+        const ask = s && s.ask && s.ask.q ? "Q. " + s.ask.q + (Array.isArray(s.ask.options) && s.ask.options.length ? "\n" + s.ask.options.map((o, i) => "①②③"[i] + o).join("　") + "（番号だけでコメントOK）" : "") : "";
+        return [cap, ask, SOC_CTA[role], tags.join(" ")].filter(Boolean).join("\n\n");
+      };
       const socCache = {};
       const loadSocial = (d, stamp) => {
         const k = d + "|" + (stamp || "");
         if (!socCache[k]) {
-          socCache[k] = rest("journal_articles?date=eq." + d + "&select=post,status,review&order=post.asc,status.desc").then((rows) => {
+          socCache[k] = rest("journal_articles?date=eq." + d + "&select=post,role,status,hook,headline,review&order=post.asc,status.desc").then((rows) => {
             const o = {};
             (rows || []).forEach((a) => {
-              const t = a && a.review && a.review.social && a.review.social.text;
+              const t = a && socialTextOf(a, a.role || SOC_ROLE[a.post === 4 ? 3 : a.post] || "A");
               if (!t) return;
               const pend = a.status === "pending";
               if (!o[a.post] || (o[a.post].pending && !pend)) o[a.post] = { text: String(t), pending: pend };          // 画像にした記事の文章を優先（確認待ちの記事は、ほかに無いときだけ）
@@ -14653,38 +14668,77 @@ BUILDERS.talk = (el) => TALK.build(el);
         return socCache[k];
       };
       const copyText = async (txt, okMsg) => {
-        try { await navigator.clipboard.writeText(txt); toast(okMsg); return true; } catch (e) { /* 次の方法へ */ }
+        try { await navigator.clipboard.writeText(txt); if (okMsg) toast(okMsg); return true; } catch (e) { /* 次の方法へ */ }
         try {                                                                                  // clipboard が使えない端末（古いブラウザ・埋め込み画面）の代わりの方法
           const ta = document.createElement("textarea"); ta.value = txt; ta.setAttribute("readonly", "");
           ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0"; document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, txt.length);
           const ok = document.execCommand("copy"); document.body.removeChild(ta);
-          if (ok) { toast(okMsg); return true; }
+          if (ok) { if (okMsg) toast(okMsg); return true; }
         } catch (e) { /* 失敗 */ }
-        toast("コピーできませんでした。下の『記事を読む』にある文章を長押しして選んでください", "err");
+        toast("コピーできませんでした。もう一度ボタンを押してください", "err");
         return false;
       };
-      const postCopyBtn = (parent, d, stamp, n, forReel) => {
-        const wrap = mk("div", "margin-top:8px", "", parent);
-        const b = btn("投稿文をコピー", "cyan", wrap); b.style.width = "100%"; b.disabled = true; b.setAttribute("data-post-copy", forReel ? "reel" : String(n));
-        const note = mk("div", "font-size:12px;color:var(--muted);margin-top:2px", "読み込み中…", wrap);
-        loadSocial(d, stamp).then((o) => {
-          const sv = o && o[SOC_POST[n]];
-          if (sv) {
-            b.disabled = false; note.textContent = "文章とハッシュタグを、1回でコピーします" + (forReel ? "（リールにも、2投稿目と同じ文章を使います）" : "") + (sv.pending ? "　※この記事は確認待ちです" : "");
-            b.onclick = () => copyText(sv.text, "投稿文をコピーしました");
-          } else if (o && o._err) {
-            b.textContent = "投稿文を読み込めませんでした"; note.textContent = o._err.code === "missing" ? "記事の記録の表がまだありません（追加SQL journal_v4）。" : "通信を確認して、画面を開き直してください。";
-          } else { b.textContent = "投稿文がありません"; note.textContent = "この投稿の文章は、ありません（ダウンロード後・または24時間たつと、文章も削除します）。"; }
+      const copiedAt = {};                                                                     // 押した直後の『コピーしました』の表示（画面を描き直しても消えないように）
+      const copyBar = (parent, d, stamp) => {
+        const wrap = mk("div", "margin-top:14px", "", parent);
+        mk("div", "font-size:13px;font-weight:800", "投稿文をコピー（文章＋ハッシュタグを、1回で）", wrap);
+        const row = mk("div", "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:6px", "", wrap);
+        const note = mk("div", "font-size:12px;color:var(--muted);margin-top:4px;display:none", "", wrap);
+        const lab = (b, n, t) => { b.textContent = n + "投稿目\n" + t; };
+        const bs = [1, 2, 3].map((n) => {
+          const b = mk("button", "min-height:54px;font-size:14px;font-weight:800;line-height:1.35;padding:6px 4px;white-space:pre-line;min-width:0", "", row);
+          b.type = "button"; b.className = "mini cyan"; b.disabled = true; b.setAttribute("data-post-copy", String(n)); lab(b, n, "…"); return b;
         });
-        return b;
+        loadSocial(d, stamp).then((o) => {
+          bs.forEach((b, i) => {
+            const n = i + 1, sv = o && o[SOC_POST[n]];
+            if (sv) {
+              b.disabled = false; lab(b, n, "コピー");
+              const mark = () => { lab(b, n, "✓ コピーしました"); b.style.outline = "2px solid #2f9e5b"; setTimeout(() => { if (b.isConnected) { lab(b, n, "コピー"); b.style.outline = ""; } }, 2500); };
+              if (Date.now() - (copiedAt[d + "|" + n] || 0) < 2500) mark();
+              b.onclick = async () => { if (await copyText(sv.text, "")) { copiedAt[d + "|" + n] = Date.now(); mark(); toast(n + "投稿目の文をコピーしました" + (sv.pending ? "（確認待ちの記事の文です）" : "")); } };
+            } else if (o && o._err) { lab(b, n, "読めません"); }
+            else { lab(b, n, "なし"); }
+          });
+          if (o && o._err) { note.style.display = ""; note.textContent = o._err.code === "missing" ? "投稿文を読み込めませんでした（記事の記録の表がまだありません。追加SQL journal_v4）。" : "投稿文を読み込めませんでした。通信を確認して、画面を開き直してください。"; }
+        });
+        return wrap;
       };
+
 
       const dayCard = card(), histCard = card(), setCard = card();
       const lead = mk("div", "margin-top:12px;font-size:12px;color:var(--muted)", "", box);
 
       /* ---------------- 読み込み ---------------- */
       let loadSeq = 0;
-      async function load() {
+      /* v3.13.0：自動の読み直し（作成中10秒ごと・ふだん1分ごと・アプリに戻ったとき）で、画面を毎回ぜんぶ描き直していた。そのせいで、
+         長い画面を下までスクロールしている途中・文字を選んでいる途中で、中身がいったん消えて上に戻ったり、選択が消えたりした（ボス 11/12『コピーするとき下までいったら途中で消える』）。
+         ① データも時刻の表示も変わっていなければ描き直さない　② 文字を選んでいる・入力している・動画を見ている最中は、変わっていても待つ（次の読み直しで描く）
+         ③ 描き直すときも、枠の高さを保ってスクロール位置を戻す。ボタンを押したあとの読み直しなど、自分で頼んだ読み直し（force）は、いつもどおり描き直す。 */
+      const scrollerOf = () => { let n = el.parentElement; while (n && n !== document.body && n !== document.documentElement) { let o = ""; try { o = getComputedStyle(n).overflowY; } catch (e) {} if ((o === "auto" || o === "scroll") && n.scrollHeight > n.clientHeight) return n; n = n.parentElement; } return null; };
+      const keepScroll = (fn) => {
+        const sc = scrollerOf(), y = sc ? sc.scrollTop : window.scrollY, cards = [dayCard, setCard];
+        const hs = cards.map((x) => x.offsetHeight);
+        cards.forEach((x, i) => { if (hs[i] > 0) x.style.minHeight = hs[i] + "px"; });
+        try { fn(); } finally { cards.forEach((x) => { x.style.minHeight = ""; }); }
+        try { if (sc) sc.scrollTop = y; else window.scrollTo(0, y); } catch (e) {}
+      };
+      const uiBusy = () => {
+        try {
+          const sl = window.getSelection && window.getSelection();
+          if (sl && !sl.isCollapsed && String(sl).length && sl.anchorNode && el.contains(sl.anchorNode)) return true;          // 文字を選んでいる最中
+          const ae = document.activeElement;
+          if (ae && ae !== document.body && el.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return true;       // 入力している最中
+          if (Array.prototype.some.call(el.querySelectorAll("video"), (v) => !v.paused && !v.ended)) return true;               // 動画を見ている最中
+        } catch (e) {}
+        return false;
+      };
+      const timeKey = () => {                                     // 時刻で文が変わるところ（作り始める時刻の前後・削除までの残り分）だけ。変わらない分は描き直さない
+        const m = jstMinutes(), r = selRow();
+        const left = (st) => (st ? Math.max(0, Math.ceil((purgeMin() * 60000 - (Date.now() - new Date(st).getTime())) / 60000)) : 0);
+        return [jstToday(), m < firstMin(), [1, 2, 3].map((n) => m < phaseMin(n)), m < CATCHUP_MIN, r ? [left(r.images_downloaded_at), left(r.reel_downloaded_at), left(r.video_downloaded_at)] : 0];
+      };
+      async function load(force) {
         const my = ++loadSeq;
         try {
           let rows;
@@ -14713,7 +14767,12 @@ BUILDERS.talk = (el) => TALK.build(el);
         const yAlive = !!yRow && !yRow.purged_at && (Array.isArray(yRow.images) ? yRow.images.length > 0 : false);       // v3.10.3：昨日ぶんの画像がまだ残っている（24時間以内）
         const def = (!state.rows.some((r) => r.date === t) && yRow && (jstMinutes() < CATCHUP_MIN || yAlive)) ? y : t;
         if (!state.picked || (state.sel !== t && !state.rows.some((r) => r.date === state.sel))) { state.sel = def; state.picked = false; }
-        paint();
+        let sig = "";
+        try { sig = JSON.stringify([state.rows, state.conf, state.err ? String(state.err.code || "") + "|" + String(state.err.message || "") : "", state.sel, state.picked, state.v2, state.v3, timeKey()]); } catch (e) { force = true; }
+        if (force !== true && state.painted && sig === state.sig) return;                                 // 何も変わっていない：描き直さない
+        if (force !== true && state.painted && uiBusy()) return;                                           // 選択中・入力中・動画を見ている最中：あとで描く（state.sig はそのまま＝次の読み直しで描く）
+        state.sig = sig; state.painted = true;
+        keepScroll(paint);
       }
       const canRebuild = (d) => d === jstToday() || (d === jstYesterday() && jstMinutes() < CATCHUP_MIN);
       /* v3.7.0：投稿1・2・3のどれか1つだけ作り直す（SQL journal_v12・Edge v1.26・作成サービス v3.7.0）。今ある画像・zipに、作り直した投稿の分だけを差し込む（ほかの投稿はそのまま。作れなければ前の画像を残す） */
@@ -14723,7 +14782,7 @@ BUILDERS.talk = (el) => TALK.build(el);
         try {
           await rest("rpc/journal_run_post", { method: "POST", body: JSON.stringify({ p_date: state.sel, p_post: n }) });
           toast(n + "投稿目だけの作り直しを始めました。" + (n === 1 || n === 2 ? "リール（動画）もあるため、" : "") + "5〜10分ほどかかります。進み具合はこの画面に出ます（ほかの投稿はそのままです）");
-          setTimeout(load, 4000);
+          setTimeout(() => load(true), 4000);
         } catch (e) {
           if (e && e.code === "missing") toast("1つだけ作り直すには、追加SQL（journal_v12）を Supabase の SQL Editor で1回実行してください", "err");
           else toast(String((e && e.message) || e).slice(0, 160), "err");
@@ -14775,7 +14834,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           mk("div", "color:var(--muted);font-size:13px", miss
             ? (state.err.code === "nocfg" ? "Supabase の接続情報が見つかりません。" : "追加のSQL（journal_v1.sql）を Supabase の SQL Editor で実行すると、ここに表示されます。")
             : "通信を確認して、もう一度お試しください（" + String(state.err.message || "").slice(0, 120) + "）。", c);
-          const re = btn("もう一度読み込む", "cyan", c); re.style.marginTop = "10px"; re.style.width = "100%"; re.onclick = load;
+          const re = btn("もう一度読み込む", "cyan", c); re.style.marginTop = "10px"; re.style.width = "100%"; re.onclick = () => load(true);
           return;
         }
         const today = jstToday(), d = state.sel || today, r = selRow();
@@ -14831,6 +14890,9 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
         }
 
+        /* v3.13.0：投稿文のコピーは、ここの3ボタンだけ */
+        if (!r.purged_at && (imgs.length || p1.ok || p2.ok || p3.ok || (posts.p4 && posts.p4.ok))) copyBar(c, d, r.started_at || "");
+
         /* 1投稿目・2投稿目 */
         const group = (n, title, post, items, info) => {
           const g = mk("div", "margin-top:16px;padding-top:12px;border-top:1px solid rgba(127,127,127,.25)", "", c);
@@ -14865,7 +14927,6 @@ BUILDERS.talk = (el) => TALK.build(el);
           }
           if (n === 1 && post.reel_note && !items.some(isMp4) && items.length && !r.purged_at && !r.images_purged_at)           // v3.12.0：1投稿目のリールを作れなかった日は、従来の画像にもどす。理由を出す
             mk("div", "margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid #d99a1c;background:rgba(217,154,28,.10);font-size:13px;line-height:1.55", "1投稿目のリール（明日のレースの考察）は、この回は作れていません（下は、従来の画像です）。理由：" + String(post.reel_note) + "　『1投稿目だけ作り直す』で、リールを作り直せます。", g);
-          if ((post.ok || items.length) && !(n === 1 && items.length && items.every(isMp4))) postCopyBtn(g, d, r.started_at || "", n, false);                // v3.9.1：この投稿の投稿文をコピー（v3.12.0：1投稿目がリールだけのときは、リールの下のボタンだけ）
           if (items.length) {
             const grid = mk("div", "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px", "", g);
             const ordered = items.filter((x) => !isMp4(x)).concat(items.filter(isMp4));            // v3.8.1：画像（記事）を先に、リールは別の枠で
@@ -14891,7 +14952,6 @@ BUILDERS.talk = (el) => TALK.build(el);
                   + (rl && rl.pattern && rl.pattern_name ? "／型" + rl.pattern + "：" + rl.pattern_name : "");                    // v3.10.0：その日のリールの型（毎日変わる）
                 mk("div", "font-size:12px;line-height:1.4;margin-top:4px;color:" + (rl && rl.audio ? (vv.ok ? "#2f9e5b" : "#d99a1c") : "var(--muted)"), txt, cell);
               } else mk("div", "font-size:11px;line-height:1.4;color:var(--muted);margin-top:4px;word-break:break-all;min-height:3.1em", x.label.replace(/^\d投稿目\s*/, ""), cell);
-              if (isVid) postCopyBtn(cell, d, r.started_at || "", n, true);                                    // v3.9.1：リールの投稿文をコピー（v3.12.0：1投稿目のリールは1投稿目の投稿文）
               if (isVid && r.reel_downloaded_at && !r.reel_purged_at) mk("div", "font-size:12px;color:#2f9e5b;margin-top:2px", purgeNote(r.reel_downloaded_at, "リール"), cell);
               const sv = mk("button", "margin-top:4px;width:100%;min-height:36px;font-size:12px", "保存", cell); sv.type = "button"; sv.className = "mini";
               sv.onclick = async () => {
@@ -15038,7 +15098,7 @@ BUILDERS.talk = (el) => TALK.build(el);
             if (isY) await rest("rpc/journal_run_day", { method: "POST", body: JSON.stringify({ p_date: day, p_mode: mode }) });
             else await rest("rpc/journal_run_now", { method: "POST", body: JSON.stringify({ p_mode: mode }) });
             toast(who + label + "を始めました。AI編集長が書いて審査するため、10〜15分ほどかかります。進み具合はこの画面に出ます");
-            setTimeout(load, 4000);
+            setTimeout(() => load(true), 4000);
           } catch (e) {
             if (isY && e && e.code === "missing") toast("昨日ぶんを作り直すには、追加SQL（journal_v6）を Supabase の SQL Editor で1回実行してください", "err");
             else toast(String(e.message || e).slice(0, 120), "err");
@@ -15072,22 +15132,6 @@ BUILDERS.talk = (el) => TALK.build(el);
       }
       const roundsText = (rv) => (rv.rounds || []).map((e) => "審査" + ((e.round || 0) + 1) + "回目 " + e.total + "点（フック" + Math.round(e.hook_pct) + "）" + ((e.failed || []).length ? " ○でない項目：" + e.failed.join("・") : " 合格") + (e.stop ? "\n　→ " + e.stop : "")).join("\n");
       const failedChecks = (rv) => (rv.checks || []).filter((c) => c.r !== "○");
-      function articleText(a) {
-        const rv = a.review || {}, sc = rv.scores || {};
-        const t = [(a.role === "B" ? "【記事B】" : (a.role === "C" ? "【記事C】" : "【記事A】")) + (a.status === "pending" ? "（確認待ち）" : ((a.review || {}).below_pass ? "（画像にした。合格点には届いていない）" : "（画像にした）")) + "　" + (a.score != null ? a.score + "点" : ""),
-          "見出し：" + (a.headline || ""), "フック：" + (a.hook || "") + (a.hook_score != null ? "（フック " + a.hook_score + "点）" : "")];
-        const scs = Object.keys(SC_LABEL).filter((k) => sc[k] != null).map((k) => SC_LABEL[k] + " " + sc[k] + "/" + SC_MAX[k]);
-        if (scs.length) t.push((rv.checks ? "審査役の採点：" : "編集長の自己採点：") + scs.join("　"));
-        if ((rv.rounds || []).length) t.push("審査の経過：\n" + roundsText(rv));
-        if (rv.hook_jury && rv.hook_jury.weak) t.push("審査役のフック審査：弱点＝" + rv.hook_jury.weak + (rv.hook_jury.best ? "／最強の候補「" + rv.hook_jury.best + "」" : "") + (rv.hook_jury.proposal ? "／提案「" + rv.hook_jury.proposal + "」" : ""));
-        failedChecks(rv).forEach((c) => t.push("・" + c.id + " " + c.name + "（" + c.r + "）：" + (c.fix || c.evidence || "")));
-        if ((rv.program_notes || []).length && !rv.checks) t.push("プログラムの減点：" + rv.program_notes.join("／"));
-        if ((rv.hard_fail || []).length) t.push("不合格の理由：" + rv.hard_fail.join("／"));
-        if ((rv.unverified || []).length) t.push("確認できなかった点：" + rv.unverified.join("／"));
-        if (rv.social && rv.social.text) t.push("", "Instagramの文章：\n" + rv.social.text);
-        (a.pages || []).forEach((p) => { t.push(""); t.push(pageText(p)); });
-        return t.join("\n");
-      }
       async function showArticles(box, d) {
         box.textContent = "";
         mk("div", "font-size:13px;color:var(--muted);margin-top:8px", "読み込み中…", box);
@@ -15127,17 +15171,6 @@ BUILDERS.talk = (el) => TALK.build(el);
           mk("div", "margin-top:8px;font-size:17px;font-weight:800;line-height:1.5", a.hook || "（フックなし）", card);
           mk("div", "margin-top:2px;font-size:12px;color:var(--muted)", "見出し：" + (a.headline || "") + (a.hook_score != null ? "　フック " + Math.round(a.hook_score) + "点" : ""), card);
           const rv = a.review || {}, sc = rv.scores || {};
-          if (rv.social && rv.social.text) {                                       // v3.4.0：Instagramのキャプション＋ハッシュタグ。v3.4.8：文章とハッシュタグをまとめて1回でコピー
-            const so = rv.social, full = String(so.text);                      // v3.4.8：文章とハッシュタグは、まとめて1回でコピー（ボス『ハッシュタグと文章は一括コピーでいいよ』）
-            const doCopy = async (txt, ok) => { try { await navigator.clipboard.writeText(txt); toast(ok); } catch (e) { toast("コピーできませんでした。上の文字を長押しして選んでください", "err"); } };
-            const boxCss = "margin-top:10px;padding:10px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.35);background:rgba(127,127,127,.08)";
-            const bx = mk("div", boxCss, "", card);
-            mk("div", "font-size:13px;font-weight:800", "Instagramの文章（おまけの1文＋問い＋お願い＋ハッシュタグ5個まで。1回コピーして、そのまま貼ります）", bx);
-            mk("div", "margin-top:6px;font-size:14px;line-height:1.75;white-space:pre-wrap;word-break:break-all;user-select:text;-webkit-user-select:text", full, bx);
-            const row = mk("div", "display:flex;gap:8px;flex-wrap:wrap;margin-top:8px", "", bx);
-            const c1 = btn("投稿文をコピー", "cyan", row); c1.onclick = () => copyText(full, "投稿文をコピーしました");
-            if ((so.fixes || []).length) mk("div", "margin-top:6px;font-size:12px;color:#d99a1c", "代わりの文にした部分：" + so.fixes.join("／"), card);
-          }
           const scs = Object.keys(SC_LABEL).filter((k) => sc[k] != null).map((k) => SC_LABEL[k] + " " + sc[k] + "/" + SC_MAX[k]);
           if (scs.length) mk("div", "margin-top:8px;font-size:12px;color:var(--muted)", (rv.checks ? "審査役の採点：" : "編集長の自己採点：") + scs.join("　"), card);
           if ((rv.rounds || []).length) {                                        // 審査→直す→審査…の経過
@@ -15168,8 +15201,6 @@ BUILDERS.talk = (el) => TALK.build(el);
           const dt = mk("details", "margin-top:8px", "", card);
           mk("summary", "cursor:pointer;font-size:13px;font-weight:700;min-height:36px", "ページの中身（" + (a.pages || []).length + "枚）", dt);
           (a.pages || []).forEach((p) => mk("div", "margin-top:8px;font-size:13px;line-height:1.6;white-space:pre-wrap;padding:8px;border-radius:8px;background:rgba(127,127,127,.1)", pageText(p), dt));
-          const cp = btn("この記事の全文をコピー", "", card); cp.style.marginTop = "8px"; cp.style.width = "100%";
-          cp.onclick = async () => { try { await navigator.clipboard.writeText(articleText(a)); toast("コピーしました"); } catch (e) { toast("コピーできませんでした", "err"); } };
         });
       }
 
@@ -15178,7 +15209,7 @@ BUILDERS.talk = (el) => TALK.build(el);
       async function setConf(k, v) {
         const my = ++setSeq;
         try { const c = await rest("rpc/journal_set_conf", { method: "POST", body: JSON.stringify({ p_key: k, p_value: String(v) }) }); if (c) Object.assign(state.conf, c); if (my === setSeq) toast("設定を保存しました"); }      // 置き換えず中身だけ更新する（画面のボタンが古い設定を指したままにならないように）
-        catch (e) { toast(String(e.message || e).slice(0, 120), "err"); load(); }
+        catch (e) { toast(String(e.message || e).slice(0, 120), "err"); load(true); }
       }
       function paintSet() {
         const c = setCard; c.textContent = "";
