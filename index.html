@@ -1803,7 +1803,7 @@ function followPaceHtml_() {
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = "461";
+const APP_VERSION = "463";
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 /* エラーメッセージ(error_msg)を人間語の「原因＋対処」に翻訳する。
@@ -13563,7 +13563,7 @@ const TALK = {
 };
 BUILDERS.talk = (el) => TALK.build(el);
 
-/* ================= v396 高配当動画（v3.7.0：作成サービスの版の確認を 3.7.0 に〔インスタ3投稿を1つだけ作り直す機能のため。この画面の機能は変更なし〕／v3.6.3：作成サービスの版の確認を 3.6.3 に〔1枚目が写真に。画面の機能は変更なし〕／v3.6.1：作成サービスの版の確認を 3.6.1 に〔画面の機能は変更なし〕／v3.6.0：作成サービスの版の確認を 3.6.0 に〔画面の機能は変更なし〕／v3.5.2：作成サービスの版の確認を 3.5.2 に〔画面の機能は変更なし〕／v3.5.1：作成サービスの版の確認を 3.5.1 に〔画面の機能は変更なし〕／v3.5.0：作成サービスの版の確認を 3.5.0 に〔画面の機能は変更なし〕／v3.4.8：作成サービスの版の確認を 3.4.8 に〔画面の機能は変更なし〕／v3.4.7：作成サービスの版の確認を 3.4.7 に〔画面の機能は変更なし〕／v3.4.6：作成サービスの版の確認を 3.4.6 に〔画面の機能は変更なし〕／v3.4.5：作成サービスの版の確認を 3.4.5 に〔画面の機能は変更なし〕／v3.4.4：作成サービスの版の確認を 3.4.4 に〔画面の機能は変更なし〕／v3.4.3：作成サービスの版の確認を 3.4.3 に〔画面の機能は変更なし〕／v3.4.2：作成サービスの版の確認を 3.4.2 に〔画面の機能は変更なし〕／v3.4.1：作成サービスの版の確認を 3.4.1 に〔画面の機能は変更なし〕／v3.0.1：品質管理・フック指南書・3Dは的中実績のみ（サーバー側）／v3.0.0：AI編集長（サーバー側。この画面は版の確認のみ）／v2.9.11：動画だけ作るときも、オープニングの色『おまかせ』は、その日の色（インスタ3投稿と同じ色）に自動でそろう。毎回変えたいときは『ランダム』／v2.9.10：インスタ3投稿の色を9色にし、同じ色を1週間（7日間）に2度使わない（サーバー側の変更）／動画だけ作るときのオープニングの色：選べる色を9→13色に、おまかせの組み合わせを52→126通りに増やした（枠・帯・日付は変えない）／v2.9.9：公式の実況の録音で『位置を自動で見つけられませんでした』となり合成音声に落ちていたのを改善（結果発表の声が録音に入っていなくても、レース中の本物の実況は使う／小さい声の結果発表も探す／録音を最後まで録る／原因を画面に出す）／v2.9.8：4枚目『通が見ている数字の裏側』の文章を、ふつうの言葉に書き直し（『129R中22R』→『129レース中22レース』『およそ6レースに1回』など）／v2.9.7：動画の最初の画面の日付・章ナビを、インスタのプロフィール格子（3:4）で切られない位置へ／v2.9.6：出走表の平均STが「-」（新人など）の選手がいるレースを読み落としていたのを修正／v2.9.5：明日の開催場が開催場一覧から読めないときは、出走表を直接探す／v2.9.4：2投稿目に4枚目『通が見ている数字の裏側』を追加・ダウンロードしたら保管場所のファイルを自動削除〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.2：インスタ2投稿目に『なぜこの結果か』の裏付けを追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
+/* ================= v396 高配当動画（v3.17.1：ニュース版の音を、女性の読み上げ（四国めたん）だけに〔曲・実況なし。実況を小さく残す設定つき〕。画面の「VOICEVOX」の表記をやめた。作成サービスの版の確認を 3.17.1 に／v3.17.0：ニュース版〔本物のレース映像＋速報風のテロップ15種類＋女性アナウンサーの読み上げ〕を選べるように。作成サービスの版の確認を 3.17.0 に／v3.7.0：作成サービスの版の確認を 3.7.0 に〔インスタ3投稿を1つだけ作り直す機能のため。この画面の機能は変更なし〕／v3.6.3：作成サービスの版の確認を 3.6.3 に〔1枚目が写真に。画面の機能は変更なし〕／v3.6.1：作成サービスの版の確認を 3.6.1 に〔画面の機能は変更なし〕／v3.6.0：作成サービスの版の確認を 3.6.0 に〔画面の機能は変更なし〕／v3.5.2：作成サービスの版の確認を 3.5.2 に〔画面の機能は変更なし〕／v3.5.1：作成サービスの版の確認を 3.5.1 に〔画面の機能は変更なし〕／v3.5.0：作成サービスの版の確認を 3.5.0 に〔画面の機能は変更なし〕／v3.4.8：作成サービスの版の確認を 3.4.8 に〔画面の機能は変更なし〕／v3.4.7：作成サービスの版の確認を 3.4.7 に〔画面の機能は変更なし〕／v3.4.6：作成サービスの版の確認を 3.4.6 に〔画面の機能は変更なし〕／v3.4.5：作成サービスの版の確認を 3.4.5 に〔画面の機能は変更なし〕／v3.4.4：作成サービスの版の確認を 3.4.4 に〔画面の機能は変更なし〕／v3.4.3：作成サービスの版の確認を 3.4.3 に〔画面の機能は変更なし〕／v3.4.2：作成サービスの版の確認を 3.4.2 に〔画面の機能は変更なし〕／v3.4.1：作成サービスの版の確認を 3.4.1 に〔画面の機能は変更なし〕／v3.0.1：品質管理・フック指南書・3Dは的中実績のみ（サーバー側）／v3.0.0：AI編集長（サーバー側。この画面は版の確認のみ）／v2.9.11：動画だけ作るときも、オープニングの色『おまかせ』は、その日の色（インスタ3投稿と同じ色）に自動でそろう。毎回変えたいときは『ランダム』／v2.9.10：インスタ3投稿の色を9色にし、同じ色を1週間（7日間）に2度使わない（サーバー側の変更）／動画だけ作るときのオープニングの色：選べる色を9→13色に、おまかせの組み合わせを52→126通りに増やした（枠・帯・日付は変えない）／v2.9.9：公式の実況の録音で『位置を自動で見つけられませんでした』となり合成音声に落ちていたのを改善（結果発表の声が録音に入っていなくても、レース中の本物の実況は使う／小さい声の結果発表も探す／録音を最後まで録る／原因を画面に出す）／v2.9.8：4枚目『通が見ている数字の裏側』の文章を、ふつうの言葉に書き直し（『129R中22R』→『129レース中22レース』『およそ6レースに1回』など）／v2.9.7：動画の最初の画面の日付・章ナビを、インスタのプロフィール格子（3:4）で切られない位置へ／v2.9.6：出走表の平均STが「-」（新人など）の選手がいるレースを読み落としていたのを修正／v2.9.5：明日の開催場が開催場一覧から読めないときは、出走表を直接探す／v2.9.4：2投稿目に4枚目『通が見ている数字の裏側』を追加・ダウンロードしたら保管場所のファイルを自動削除〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.2：インスタ2投稿目に『なぜこの結果か』の裏付けを追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.1：画面下の章の表示『03 動画』を『03 実績』に変更〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.9.0：インスタ3投稿の自動作成を追加〔動画サービスの入れ替えが必要。この画面の機能は変更なし〕／v2.8.9：動画にも大きな日付・その日の色〔画面の変更なし〕／v2.8.8：動画サービスの版を画面に表示・古いままなら赤字と入れ替えコマンド／v2.8.6：公式実況の録音で、プレイヤーが映像の部品を作り直しても録れる／表が読み取れなかったときは理由を表示・読み取りの幅を拡大／v2.8.5：実況が本物か合成音声かを、つくる前にいつも表示／オフのまま合成音声になったときは理由を表示／v2.8.4：オープニングの見せ方は、数字のみ揺れVerが既定・いちばん上／v2.8.3：オープニングの色を1色選べる〔背景も数字もその色で統一〕／v2.8.2：オープニングの見せ方を3つから選べる〔斜め飛び込み／数字のみ揺れ／スマホ横揺れ〕／v2.8：的中画像を1枚選ぶだけで、最初の的中実績カード（数字が激しく揺れる）と最後の画面を自動でつくる／v2.2：朝・昼・夕方・ナイターの背景／的中画像は作った直後に消える） =================
    BOAT RACEのレースを選んで、そのレースだけ動画（縦型30秒）をつくる。押さなければ何もつくらない。
    選び方は2つ：『レースを選ぶ』（日付→競艇場→レース番号。結果の出たレースならどれでも）／『高配当TOP10』。
    スマホだけで完結する（写真の取得も動画づくりも、すべてサーバー側）。保存は共有メニュー（iPhone/Android）か、ダウンロード（パソコン）。
@@ -13583,7 +13583,7 @@ BUILDERS.talk = (el) => TALK.build(el);
   if (typeof BUILDERS === "undefined" || typeof TABS === "undefined" || typeof NAV_GROUPS === "undefined"
     || typeof head !== "function" || typeof inp !== "function" || typeof toast !== "function" || typeof esc !== "function") return;
   const RACEVID = (() => {
-    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode", K_JOB = "xpl_rv_job", K_RR = "xpl_rv_rr", K_HIT = "xpl_rv_hit", K_HITTBL = "xpl_rv_hittbl", K_HITSTY = "xpl_rv_hitstyle", K_HITCOL = "xpl_rv_hitcolor";
+    const K_ON = "xpl_rv_on", K_CFG = "xpl_rv_cfg", K_INTRO = "xpl_rv_intro", K_END = "xpl_rv_end", K_CM = "xpl_rv_cm", K_MODE = "xpl_rv_mode", K_JOB = "xpl_rv_job", K_RR = "xpl_rv_rr", K_HIT = "xpl_rv_hit", K_HITTBL = "xpl_rv_hittbl", K_HITSTY = "xpl_rv_hitstyle", K_HITCOL = "xpl_rv_hitcolor", K_NEWS = "xpl_rv_news", K_NEWSSTY = "xpl_rv_newssty", K_NEWSVO = "xpl_rv_newsvo", K_NEWSRA = "xpl_rv_newsra";
     const JOB_LIMIT_MS = 25 * 60 * 1000;                     // 動画づくりを待つ上限（これを過ぎたら中止）。サーバーの記録も、動画ができてから1時間で消える
     const ls = {
       get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
@@ -13597,6 +13597,10 @@ BUILDERS.talk = (el) => TALK.build(el);
       ["tilt", "オープニング斜め飛び込みVer", "カードが斜めに回りながら飛び込み、倍率の数字が激しく揺れます。"],
       ["phone", "スマホ横揺れVer", "右上に、選んだ画像をエンディングのようなスマホ画面にして斜めに置き、横に揺らします（倍率の数字も激しく揺れます）。"]];
     const hitStyle = () => { const v = ls.get(K_HITSTY); return HIT_STYLES.some((x) => x[0] === v) ? v : "digits"; };
+    /* ニュース版（v3.17.0）：今の動画の上に『速報』風のテロップを重ねる。札は15種類（おまかせ＝レースに合うものを毎回選ぶ）。読み上げ＝女性アナウンサーの声 */
+    const NEWS_STYLES = ["速報", "緊急速報", "号外", "独自", "スクープ", "衝撃", "LIVE中継", "現場から", "特報", "臨時ニュース", "続報", "注目", "大波乱", "的中速報", "高配当"];
+    const newsOn = () => ls.get(K_NEWS) === "1";
+    const newsStyle = () => { const n = parseInt(ls.get(K_NEWSSTY) || "", 10); return n >= 1 && n <= NEWS_STYLES.length ? n : 0; };
     /* オープニングのカードの色（v2.8.3）。1色を選ぶと、背景・ふち・衣装も数字も、その色でそろう（統一）。『おまかせ』なら、毎回ランダム（文字の色12色×イメージカラー13色の126通り）。色の名前は、サーバー（hitcard.ACCENTS）と同じもの */
     const HIT_COLORS = ["赤", "橙", "緑", "ティール", "水色", "青", "紫", "マゼンタ", "ピンク", "黄", "ライム", "エメラルド", "インディゴ"];
     const hitColor = () => { const v = ls.get(K_HITCOL); return HIT_COLORS.includes(v) ? v : null; };
@@ -13632,7 +13636,7 @@ BUILDERS.talk = (el) => TALK.build(el);
     const daysAgoJst = (n) => new Date(Date.now() + 9 * 3600e3 - n * 86400e3).toISOString().slice(0, 10);
     const today = () => daysAgoJst(0), yesterday = () => daysAgoJst(1);
     /* 動画サービス（導入キット）の版。画面だけ新しくなって、サービスが古いままだと、直した機能が反映されない。画面から見分けられるようにする（v2.8.8） */
-    const SERVER_NEED = "3.16.1";
+    const SERVER_NEED = "3.17.1";
     const verNum = (v) => { const m = /^(\d+)\.(\d+)\.(\d+)$/.exec(String(v || "")); return m ? [+m[1], +m[2], +m[3]] : null; };
     const verLt = (a, b) => { const x = verNum(a), y = verNum(b); if (!x || !y) return true; for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] < y[i]; } return false; };
     const UPDATE_CMD = "mkdir -p ~/racekit && unzip -o ~/Xplosion_*v" + SERVER_NEED + ".zip -d ~/racekit && CPU=4 bash ~/racekit/race-video/deploy.sh";
@@ -14114,8 +14118,13 @@ BUILDERS.talk = (el) => TALK.build(el);
         const line = (txt, bad) => { const d = document.createElement("div"); d.textContent = txt; if (bad) d.className = "err"; info.appendChild(d); };
         if (ph) { const ok = +ph[1], tot = +ph[2]; if (tot && ok === tot) line("選手写真：" + ok + "/" + tot + "枚（公式サイトから取得）"); else line("選手写真：" + ok + "/" + tot + "枚しか取得できませんでした。取得できなかった艇は、艇番の丸印で描いています。", true); }
         const rp = (hdr("X-Replay") || "").split(";");
-        if (au) line(au === "real" ? (rp[0] === "ok" ? "実況：公式リプレイの本物の実況を、サービスが自動で録音して使いました" : "実況：録音した本物の実況を使いました") : au === "synth" ? "実況：合成音声（BGM・効果音つき）" : "音声：なし（無音）");
-        if (rp[0] === "fail") {
+        const nsnd = ((hdr("X-News") || "").split(";")[8]) || "";                 // ニュース版の音の作り（narr＝読み上げだけ／narr+race＝読み上げ＋公式の実況を小さく／comm＝読み上げが取れず実況で作った）
+        if (nsnd === "narr") line("音：女性ナレーターの読み上げだけです（曲・実況は入れていません。効果音は入っています）");
+        else if (nsnd === "narr+race") line("音：女性ナレーターの読み上げと、公式リプレイの実況（小さく）です（曲は入れていません）");
+        else if (au) line(au === "real" ? (rp[0] === "ok" ? "実況：公式リプレイの本物の実況を、サービスが自動で録音して使いました" : "実況：録音した本物の実況を使いました") : au === "synth" ? (nsnd ? "実況：合成音声（効果音つき。ニュース版のため、曲は入れていません）" : "実況：合成音声（BGM・効果音つき）") : "音声：なし（無音）");
+        const narrOnly = nsnd === "narr";                                          // 読み上げだけの動画では、実況についての案内（録音の失敗・位置あわせ）は出さない（映像の案内は、下の『映像：』の行に出る）
+        if (narrOnly) { /* 何も出さない */ }
+        else if (rp[0] === "fail") {
           let why = rp.slice(2).join(";"); try { why = decodeURIComponent(why); } catch (e) {}
           line("公式の実況：自動で録音できなかったため、合成音声でつくりました。理由：" + (why || rp[1] || "不明") + "（下の『音声』の項目で、動作確認ができます）", true);
         } else if (au === "synth" && rrOff) {
@@ -14124,7 +14133,8 @@ BUILDERS.talk = (el) => TALK.build(el);
           line("公式の実況：この動画サービスの版では、自動取得を使えません（導入キットを新しい版に入れ替えてください）。合成音声でつくりました。", true);
         }
         const al = /^(auto|manual);([\d.]+);([\d.]+|none)$/.exec(hdr("X-Audio-Align") || "");
-        if (au === "real" && al && al[3] === "none") {
+        if (narrOnly) { /* 読み上げだけ：実況の位置の案内は出さない */ }
+        else if (au === "real" && al && al[3] === "none") {
           /* 結果発表の声が録音に入っていなかった（v2.9.9）：レース中の実況は本物。結果の場面だけ、効果音になる */
           line("公式の実況：レース中の実況は、公式の本物の実況です（スタート" + al[2] + "秒の位置を自動で見つけました）。結果発表の声は録音に入っていなかったため、結果の場面は効果音だけです。");
         } else if (au === "real" && al) line("実況の位置：" + (al[1] === "auto" ? "自動で見つけました" : "入れた秒どおりです") + "（スタート" + al[2] + "秒／結果発表" + al[3] + "秒）" + (al[1] === "auto" ? "。ずれていたら、下の録音のところに秒を入れて、作り直せます。" : ""));
@@ -14143,6 +14153,18 @@ BUILDERS.talk = (el) => TALK.build(el);
             const d = document.createElement("div"); d.textContent = parts.join("／"); d.style.cssText = "opacity:.7;font-size:12px"; info.appendChild(d);
           }
         } catch (e) { /* 内訳が読めなくても、動画の受け取りには影響しない */ }
+        /* ニュース版（v3.17.0）：どの札・どの見出しで作ったか、読み上げが入ったか（入らなければ理由） */
+        const nx = (hdr("X-News") || "").split(";");
+        if (nx.length >= 4 && nx[0]) {
+          const dq = (v) => { try { return decodeURIComponent(v || ""); } catch (e) { return v || ""; } };
+          line("ニュース版：『" + dq(nx[1]) + "』の札（見出し：" + dq(nx[2]) + "）" + (dq(nx[5]) ? "　※" + dq(nx[5]) : ""));
+          if (nx.length >= 7) {
+            if (nx[6] === "real") line("ニュース版の映像：本物のレース映像（公式リプレイ）で作りました");
+            else line("ニュース版の映像：再現CGで作りました" + (dq(nx[7]) ? "（" + dq(nx[7]) + "）" : ""), !/設定/.test(dq(nx[7])));
+          }
+          if (nx[3] === "ok") line("ニュースの読み上げ（女性ナレーター）：入りました");
+          else line("ニュースの読み上げ：入っていません" + (dq(nx[4]) ? "（" + dq(nx[4]) + "）" : "") + (/設定|無音版/.test(dq(nx[4])) ? "" : "。音は、実況で作りました"), !/設定|無音版/.test(dq(nx[4])));
+        }
         /* 的中実績カード（v2.8）：倍率・色・表の状態を表示し、カードの画像を保存できるようにする */
         const hx = (hdr("X-Hitcard") || "").split(";");
         if (hx[0] === "error") {
@@ -14152,7 +14174,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           let pn = hx[0]; try { pn = decodeURIComponent(hx[0]); } catch (e) {}
           const SHOT_WHY = { band: "レース名の青い帯が見つかりませんでした", bandw: "青い帯の幅が足りません（画面の一部だけを切り取った画像かもしれません）", bottom: "表の下の枠線が見つかりませんでした", shape: "切り出した表の縦横の比率が合いませんでした", error: "画像を読み取れませんでした" };
           const hsh = (hdr("X-Hitshot") || "").split(";"), shotWhy = hsh[0] === "unreadable" ? (SHOT_WHY[hsh[1]] || "") : "";
-          line("的中実績カード：" + hx[1] + "倍（配色：" + pn + "）　右上の表：" + (hx[2] === "ok" ? "スクリーンショットからはめ込みました" : hx[2] === "unreadable" ? "スクリーンショットから表を読み取れなかったため、表なしのカードにしました" + (shotWhy ? "（理由：" + shotWhy + "）" : "") + "。的中明細の画面全体（上のレース名の青い帯から、下の枠まで）が写ったスクリーンショットを選び直してください" : "なし（表を入れない設定のため、数字だけのカードです）") + (hx[4] === "still" ? "。数字が揺れる動きはつくれなかったため、止まったカードになりました" : "。数字は激しく揺れます"), hx[2] === "unreadable" || hx[4] === "still");
+          line("的中実績カード" + (hx.includes("novideo") ? "（ニュース版のため、動画の最初には入れていません。画像の保存はできます）" : "") + "：" + hx[1] + "倍（配色：" + pn + "）　右上の表：" + (hx[2] === "ok" ? "スクリーンショットからはめ込みました" : hx[2] === "unreadable" ? "スクリーンショットから表を読み取れなかったため、表なしのカードにしました" + (shotWhy ? "（理由：" + shotWhy + "）" : "") + "。的中明細の画面全体（上のレース名の青い帯から、下の枠まで）が写ったスクリーンショットを選び直してください" : "なし（表を入れない設定のため、数字だけのカードです）") + (hx[4] === "still" ? "。数字が揺れる動きはつくれなかったため、止まったカードになりました" : "。数字は激しく揺れます"), hx[2] === "unreadable" || hx[4] === "still");
           if (r.card) {
             const cw = document.createElement("div"); cw.style.cssText = "margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap";
             info.appendChild(cw);
@@ -14197,6 +14219,7 @@ BUILDERS.talk = (el) => TALK.build(el);
           const endi = ls.get(K_END); if (endi) body.ending_image = endi;
           const hit = hitOn();
           if (hit) { body.hit_card = true; body.hit_seed = Math.floor(Math.random() * 2147483646) + 1; if (ls.get(K_HITTBL) === "0") body.hit_table = false; body.hit_style = hitStyle(); /* 見せ方は、いつも明示して送る（サーバーの既定は従来どおり tilt のまま。画面の既定は数字のみ揺れVer） */ const hm = hitColorMode(); if (hm === "day") body.hit_color = (await dayColor(dateIn.value)) || "自動"; else if (hm !== "random") body.hit_color = hm; }   /* v2.9.11：おまかせ＝その日の色 */   // 的中実績カード：色の組み合わせは、押すたびに乱数で決める（頼み直しでは同じ seed を使うので、同じ色のまま）
+          if (newsOn()) { body.news = true; const ns = newsStyle(); if (ns) body.news_style = ns; if (ls.get(K_NEWSVO) === "0") body.news_voice = false; if (ls.get(K_NEWSRA) === "1") body.news_race_audio = true; }      // ニュース版（オフなら何も送らない＝今までどおり）
           if (body.commentary && rec.blob && t.recBox && t.recBox.checked) {                   // 録音した本物の実況を、チェックしたこのレースに使う
             if ((rec.start == null) !== (rec.result == null)) throw new Error("『スタートの瞬間』と『結果アナウンスの始まり』は、どちらも空欄（自動で探します）か、どちらも秒を入れてください");
             const up = await audioForUpload();
@@ -14342,6 +14365,39 @@ BUILDERS.talk = (el) => TALK.build(el);
       };
       optBox.onchange = () => { ls.set(K_HITTBL, optBox.checked ? "1" : "0"); refreshOpt(); };
       refreshOpt();
+
+      /* ---- ニュース版（v3.17.0）：今の動画はそのまま、上に『速報』風のテロップを重ねる。オフ（既定）なら今までどおり ---- */
+      const nwCard = section("ニュース版（速報風のテロップ）", false);
+      nwCard.insertAdjacentHTML("beforeend", '<div style="color:var(--muted);font-size:13px"><b>本物のレース映像</b>（公式リプレイ）に、<b>見出しの帯</b>と<b>『速報』などの札</b>・会場と日時を重ねた、ニュース風の動画にします。見出しの文は、レースの結果から自動で作ります。最初の的中実績カード（「○○倍」）は入れず、レースの映像から始まります。<b>最後には、的中画像（スマホ画面）が入ります</b>。本物の映像は、下の「公式リプレイの実況を自動で使う」がオンのときに使います（オフのとき・録画できなかったときは、再現CGで作ります）。ニュース版をオフにすれば、今までどおりの動画です。</div>');
+      const nwLab = document.createElement("label"); nwLab.style.cssText = "display:flex;gap:8px;align-items:center;margin-top:10px;font-size:14px;font-weight:700";
+      const nwBox = document.createElement("input"); nwBox.type = "checkbox"; nwBox.checked = newsOn();
+      nwLab.appendChild(nwBox); nwLab.appendChild(document.createTextNode("ニュース版でつくる")); nwCard.appendChild(nwLab);
+      const nwRow = document.createElement("label"); nwRow.style.cssText = "display:flex;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:14px";
+      nwRow.appendChild(document.createTextNode("ニュースの札"));
+      const nwSel = document.createElement("select"); nwSel.id = "xpl_rv_newsstyle";
+      nwSel.style.cssText = "margin-left:8px;padding:8px;border-radius:8px;border:1px solid var(--border-strong);background:var(--card);color:var(--text);font-size:14px";
+      [["", "おまかせ（15種類から毎回選びます）"], ...NEWS_STYLES.map((n, i) => [String(i + 1), (i + 1) + "．" + n])].forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; nwSel.appendChild(o); });
+      nwRow.appendChild(nwSel); nwCard.appendChild(nwRow);
+      const nwNote = document.createElement("div"); nwNote.style.cssText = "margin-top:6px;font-size:13px;color:var(--muted)"; nwCard.appendChild(nwNote);
+      const nvLab = document.createElement("label"); nvLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px";
+      const nvBox = document.createElement("input"); nvBox.type = "checkbox"; nvBox.style.marginTop = "5px"; nvBox.checked = ls.get(K_NEWSVO) !== "0";
+      const nvTxt = document.createElement("span"); nvTxt.innerHTML = "ニュース風の読み上げ（女性ナレーター）を入れる<br><span style=\"font-size:13px;color:var(--muted)\">ニュース版の音は、この読み上げだけです（曲・実況は入りません。効果音は入ります）。「速報です。○○競艇場、第○レースで…」から、1周1マーク・ゴールと着順・払戻金・「以上、現場からお伝えしました。」まで、場面に合わせて読みます。「音声をつける」がオフのときは入りません。</span>";
+      nvLab.appendChild(nvBox); nvLab.appendChild(nvTxt); nwCard.appendChild(nvLab);
+      const raLab = document.createElement("label"); raLab.style.cssText = "display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:14px";
+      const raBox = document.createElement("input"); raBox.type = "checkbox"; raBox.style.marginTop = "5px"; raBox.checked = ls.get(K_NEWSRA) === "1";
+      const raTxt = document.createElement("span"); raTxt.innerHTML = "レースの音（公式の実況）も、小さく入れる<br><span style=\"font-size:13px;color:var(--muted)\">オフ（既定）なら、読み上げだけです。オンにすると、読み上げのうしろに、公式リプレイの実況が小さく流れます（公式リプレイを録れたときだけ）。</span>";
+      raLab.appendChild(raBox); raLab.appendChild(raTxt); nwCard.appendChild(raLab);
+      raBox.onchange = () => { if (raBox.checked) ls.set(K_NEWSRA, "1"); else ls.del(K_NEWSRA); toast(raBox.checked ? "レースの音も、小さく入れます" : "音は、読み上げだけにします"); };
+      const refreshNews = () => {
+        const on = newsOn(), ns = newsStyle();
+        nwSel.value = ns ? String(ns) : ""; nwSel.disabled = !on; nvBox.disabled = !on; raBox.disabled = !on;
+        nwNote.textContent = !on ? "いまの設定：オフ（今までどおりの動画です）"
+          : ns ? "いまの設定：" + ns + "．" + NEWS_STYLES[ns - 1] + "（レースの内容に合わない札のときは、『速報』になります）" : "いまの設定：おまかせ（そのレースに合う札から、動画ごとに選びます）";
+      };
+      nwBox.onchange = () => { if (nwBox.checked) ls.set(K_NEWS, "1"); else ls.del(K_NEWS); refreshNews(); toast(nwBox.checked ? "ニュース版でつくります" : "ニュース版をやめました（今までどおりの動画です）"); };
+      nwSel.onchange = () => { if (nwSel.value) ls.set(K_NEWSSTY, nwSel.value); else ls.del(K_NEWSSTY); refreshNews(); toast("ニュースの札：" + (nwSel.value ? NEWS_STYLES[parseInt(nwSel.value, 10) - 1] : "おまかせ")); };
+      nvBox.onchange = () => { ls.set(K_NEWSVO, nvBox.checked ? "1" : "0"); toast(nvBox.checked ? "ニュース風の読み上げを入れます" : "ニュース風の読み上げは入れません"); };
+      refreshNews();
 
       /* ---- 実況（合成音声）。初期状態はつける ---- */
       const cmCard = section("音声（実況・BGM・効果音）", false);
